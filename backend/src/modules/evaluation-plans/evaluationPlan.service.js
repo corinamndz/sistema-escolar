@@ -73,18 +73,21 @@ async function getPlanWithActivities(trx, tenantId, planId) {
 }
 
 /**
- * Crea un plan de evaluación respetando la asignación docente del nivel:
+ * Crea un plan de evaluación respetando el nivel del grado:
  *  - Secundaria: `subjectId` obligatorio; la materia debe tener profesor
  *    asignado en la sección y el plan queda a nombre de ese profesor.
- *  - Inicial / Primaria: `subject` es un área de texto libre y el docente
- *    debe ser el titular o el auxiliar de la sección.
+ *  - Primaria (con plan de estudios cargado): `subjectId` obligatorio, de una
+ *    materia del plan del grado. Docente: el especialista de esa materia si lo
+ *    hay; si no, el titular de la sección.
+ *  - Inicial, o Primaria cuyo grado aún no tiene materias: `subject` es un
+ *    área de texto libre y el docente debe ser el titular o el auxiliar.
  */
 async function createPlan(trx, tenantId, { sectionId, termId, teacherId: requestedTeacherId, subject: subjectText, subjectId }) {
   const section = await trx('sections as sec')
     .join('grades as g', 'g.id', 'sec.grade_id')
     .join('education_levels as el', 'el.code', 'g.level_code')
     .where({ 'sec.id': sectionId, 'sec.tenant_id': tenantId })
-    .select('sec.*', 'g.name as grade_name', 'el.name as level_name', 'el.assignment_mode')
+    .select('sec.*', 'g.name as grade_name', 'el.name as level_name', 'el.assignment_mode', 'el.has_curriculum')
     .first();
   if (!section) throw ApiError.notFound('Sección no encontrada.');
 
@@ -96,7 +99,56 @@ async function createPlan(trx, tenantId, { sectionId, termId, teacherId: request
   let teacherId = requestedTeacherId;
   let subject = subjectText?.trim();
 
-  if (section.assignment_mode === 'subjects') {
+  const curriculumSize = section.has_curriculum
+    ? Number((await trx('grade_subjects').where({ grade_id: section.grade_id }).count('* as n').first()).n)
+    : 0;
+  const homeroomWithCurriculum = section.assignment_mode === 'homeroom' && curriculumSize > 0;
+
+  if (homeroomWithCurriculum) {
+    // ---- Primaria con plan de estudios ----
+    if (!subjectId) {
+      throw ApiError.badRequest(`En ${section.grade_name} el plan debe asociarse a una materia del plan de estudios.`, [
+        { path: 'subjectId', message: 'Selecciona la materia.' },
+      ]);
+    }
+    const inCurriculum = await trx('grade_subjects as gs')
+      .join('subjects as s', 's.id', 'gs.subject_id')
+      .where({ 'gs.grade_id': section.grade_id, 'gs.subject_id': subjectId })
+      .select('s.name')
+      .first();
+    if (!inCurriculum) {
+      throw ApiError.unprocessable(`Esa materia no forma parte del plan de estudios de ${section.grade_name}.`, [
+        { path: 'subjectId', message: 'No está en el plan de estudios.' },
+      ]);
+    }
+    const specialist = await trx('teacher_subject_sections as t')
+      .join('staff as st', 'st.id', 't.staff_id')
+      .where({ 't.section_id': sectionId, 't.subject_id': subjectId })
+      .select('t.staff_id', 'st.first_name', 'st.last_name')
+      .first();
+    if (specialist) {
+      if (teacherId && teacherId !== specialist.staff_id) {
+        throw ApiError.unprocessable(
+          `${inCurriculum.name} en esta sección la dicta el especialista ${specialist.first_name} ${specialist.last_name}.`,
+          [{ path: 'teacherId', message: 'No es el docente de la materia.' }]
+        );
+      }
+      teacherId = specialist.staff_id;
+    } else {
+      const homeroom = await trx('teacher_sections').where({ section_id: sectionId }).select('staff_id', 'role');
+      const lead = homeroom.find((h) => h.role === 'lead');
+      if (!lead) {
+        throw ApiError.unprocessable('Esta sección no tiene docente titular. Asígnalo antes de crear planes.');
+      }
+      if (teacherId && !homeroom.some((h) => h.staff_id === teacherId)) {
+        throw ApiError.unprocessable('El docente debe ser el titular de la sección o el especialista de la materia.', [
+          { path: 'teacherId', message: 'No está asignado a esta materia.' },
+        ]);
+      }
+      teacherId = teacherId || lead.staff_id;
+    }
+    subject = inCurriculum.name;
+  } else if (section.assignment_mode === 'subjects') {
     if (!subjectId) {
       throw ApiError.badRequest(`En ${section.level_name} el plan debe asociarse a una materia del plan de estudios.`, [
         { path: 'subjectId', message: 'Selecciona la materia.' },
@@ -150,7 +202,7 @@ async function createPlan(trx, tenantId, { sectionId, termId, teacherId: request
       term_id: termId,
       teacher_id: teacherId,
       subject,
-      subject_id: section.assignment_mode === 'subjects' ? subjectId : null,
+      subject_id: section.assignment_mode === 'subjects' || homeroomWithCurriculum ? subjectId : null,
     })
     .returning('*');
   return plan;

@@ -36,6 +36,7 @@ async function listGrades(trx, tenantId, { levelCode } = {}) {
       'g.*',
       'el.name as level_name',
       'el.assignment_mode',
+      'el.has_curriculum',
       trx.raw('(SELECT count(*)::int FROM grade_subjects gs WHERE gs.grade_id = g.id) AS subject_count'),
       trx.raw('(SELECT count(*)::int FROM sections s WHERE s.grade_id = g.id) AS section_count')
     )
@@ -48,7 +49,7 @@ async function getGradeById(trx, tenantId, id) {
   const grade = await trx('grades as g')
     .join('education_levels as el', 'el.code', 'g.level_code')
     .where({ 'g.id': id, 'g.tenant_id': tenantId })
-    .select('g.*', 'el.name as level_name', 'el.assignment_mode', 'el.allows_assistant')
+    .select('g.*', 'el.name as level_name', 'el.assignment_mode', 'el.allows_assistant', 'el.has_curriculum')
     .first();
   if (!grade) throw ApiError.notFound('Grado no encontrado.');
   return grade;
@@ -100,6 +101,7 @@ function sectionQuery(trx) {
       'el.name as level_name',
       'el.assignment_mode',
       'el.allows_assistant',
+      'el.has_curriculum',
       'sp.name as school_period_name',
       'c.name as classroom_name'
     );
@@ -109,6 +111,9 @@ function sectionQuery(trx) {
  * Secciones con un resumen de la asignación docente según el nivel:
  *  - homeroom (inicial/primaria): `teachers = { lead, assistant }`
  *  - subjects (secundaria): `subjectCoverage = { total, assigned }`
+ *  - homeroom con plan de estudios (primaria): además
+ *    `curriculum = { total, specialists }` (materias del grado y cuántas tienen
+ *    docente especialista; el resto las dicta el titular)
  */
 async function listSections(trx, tenantId, { schoolPeriodId, gradeId, levelCode } = {}) {
   const query = sectionQuery(trx)
@@ -142,6 +147,7 @@ async function listSections(trx, tenantId, { schoolPeriodId, gradeId, levelCode 
       ...s,
       teachers: s.assignment_mode === 'homeroom' ? { lead: find('lead'), assistant: find('assistant') } : null,
       subjectCoverage: s.assignment_mode === 'subjects' ? { total, assigned } : null,
+      curriculum: s.assignment_mode === 'homeroom' && s.has_curriculum ? { total, specialists: assigned } : null,
     };
   });
 }

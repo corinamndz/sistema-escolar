@@ -4,9 +4,34 @@ const tuition = require('../payments/tuition.service');
 
 // ---------- Alumnos ----------
 
+/**
+ * Alumnos con su inscripción vigente (sección, grado, nivel, año escolar) para
+ * poder agruparlos por grado y sección. Si un alumno tuviera inscripciones
+ * activas en más de un año, se toma la del año activo más reciente. Los
+ * campos de inscripción vienen en null si no está inscrito.
+ */
 async function listStudents(trx, tenantId, { status } = {}) {
-  const query = trx('students').where({ tenant_id: tenantId }).orderBy(['last_name', 'first_name']);
-  if (status) query.andWhere({ status });
+  const query = trx('students as s')
+    .joinRaw(
+      `LEFT JOIN LATERAL (
+         SELECT e.id AS enrollment_id, sec.id AS section_id, sec.name AS section_name, sec.max_students,
+                g.id AS grade_id, g.name AS grade_name, g.sort_order AS grade_sort,
+                g.level_code, el.sort_order AS level_sort,
+                sp.id AS school_period_id, sp.name AS school_period_name
+         FROM enrollments e
+         JOIN sections sec ON sec.id = e.section_id
+         JOIN grades g ON g.id = sec.grade_id
+         JOIN education_levels el ON el.code = g.level_code
+         JOIN school_periods sp ON sp.id = sec.school_period_id
+         WHERE e.student_id = s.id AND e.status = 'active'
+         ORDER BY sp.is_active DESC, sp.start_date DESC NULLS LAST
+         LIMIT 1
+       ) cur ON true`
+    )
+    .where('s.tenant_id', tenantId)
+    .select('s.*', 'cur.*')
+    .orderBy(['s.last_name', 's.first_name']);
+  if (status) query.andWhere('s.status', status);
   return query;
 }
 

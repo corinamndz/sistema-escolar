@@ -6,6 +6,8 @@ router.use('/auth', require('../modules/auth/auth.routes'));
 router.use('/tenant', require('../modules/tenants/tenant.routes'));
 router.use('/roles', require('../modules/roles/role.routes'));
 router.use('/staff', require('../modules/staff/staff.routes'));
+// Carga masiva por Excel (plantillas + validación + importación). Antes del montaje en '/'.
+router.use('/imports', require('../modules/imports/import.routes'));
 // Antes del montaje en '/': ese router aplica auth + tenant a todo lo que pasa por él.
 router.use('/portal', require('../modules/portal/portal.routes'));
 router.use('/', require('../modules/students/student.routes')); // expone /students y /guardians

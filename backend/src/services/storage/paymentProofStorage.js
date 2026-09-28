@@ -89,4 +89,4 @@ async function deleteProof(relativePath) {
   }
 }
 
-module.exports = { PROOFS_DIR, detectProofType, saveProof, resolveProof, deleteProof, sanitizeName };
+module.exports = { PROOFS_DIR, detectProofType, saveProof, resolveProof, deleteProof, sanitizeName, fixFilenameEncoding };

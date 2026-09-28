@@ -9,6 +9,10 @@ const { getGradeById, getSectionById } = require('./academic.service');
  *     allows_assistant = true    → titular + auxiliar (Inicial)
  *     allows_assistant = false   → solo titular (Primaria)
  *   assignment_mode = 'subjects' → un profesor por materia y sección (Secundaria)
+ *   has_curriculum = true        → el grado tiene plan de estudios por materias
+ *                                  (Primaria y Secundaria; migrations/009). En
+ *                                  Primaria el titular dicta todas las materias y
+ *                                  se puede asignar un especialista por materia.
  *
  * Un docente puede figurar en cualquier cantidad de asignaciones: varias
  * secciones, varias materias, varios grados.
@@ -139,7 +143,7 @@ async function deleteSubject(trx, tenantId, id) {
   await trx('subjects').where({ id }).delete();
 }
 
-// ---------- Plan de estudios del grado (secundaria) ----------
+// ---------- Plan de estudios del grado (primaria y secundaria) ----------
 
 async function getGradeSubjects(trx, tenantId, gradeId) {
   const grade = await getGradeById(trx, tenantId, gradeId);
@@ -169,7 +173,7 @@ async function getGradeSubjects(trx, tenantId, gradeId) {
  */
 async function setGradeSubjects(trx, tenantId, gradeId, { subjects }) {
   const grade = await getGradeById(trx, tenantId, gradeId);
-  if (grade.assignment_mode !== 'subjects') {
+  if (!grade.has_curriculum) {
     throw ApiError.unprocessable(
       `Los grados de ${grade.level_name} no se organizan por materias: se asigna un docente de aula por sección.`
     );
@@ -236,11 +240,18 @@ async function setGradeSubjects(trx, tenantId, gradeId, { subjects }) {
 /**
  * Estado de la asignación docente de una sección, con la forma que
  * corresponde a su nivel:
- *   { section, mode: 'homeroom', homeroom: { lead, assistant } }
- *   { section, mode: 'subjects', subjects: [{ id, name, code, weekly_hours, teacher }] }
+ *   { section, mode: 'homeroom', homeroom: { lead, assistant }, subjects: [...] }
+ *   { section, mode: 'subjects', subjects: [...] }
+ *
+ * Cada materia: { id, name, code, weekly_hours, teacher, effectiveTeacher, inherited }
+ *   teacher           profesor asignado a ESA materia (Secundaria) o especialista (Primaria)
+ *   effectiveTeacher  quién la dicta de verdad: en Primaria, sin especialista, el titular
+ *   inherited         true si la dicta el titular por no tener especialista
+ * En Inicial (sin plan de estudios) `subjects` es [].
  */
 async function getSectionAssignments(trx, tenantId, sectionId) {
   const section = await getSectionById(trx, tenantId, sectionId);
+  const subjects = section.has_curriculum ? await listSectionSubjects(trx, section) : [];
 
   if (section.assignment_mode === 'homeroom') {
     const rows = await trx('teacher_sections as ts')
@@ -251,9 +262,25 @@ async function getSectionAssignments(trx, tenantId, sectionId) {
       const r = rows.find((x) => x.role === role);
       return r ? { id: r.id, name: fullName(r) } : null;
     };
-    return { section, mode: 'homeroom', homeroom: { lead: pick('lead'), assistant: pick('assistant') } };
+    const lead = pick('lead');
+    return {
+      section,
+      mode: 'homeroom',
+      homeroom: { lead, assistant: pick('assistant') },
+      subjects: subjects.map((s) => ({ ...s, effectiveTeacher: s.teacher || lead, inherited: !s.teacher })),
+    };
   }
 
+  return {
+    section,
+    mode: 'subjects',
+    subjects: subjects.map((s) => ({ ...s, effectiveTeacher: s.teacher, inherited: false })),
+  };
+}
+
+/** Materias del plan de estudios del grado de la sección, con su profesor asignado (si lo hay). */
+async function listSectionSubjects(trx, section) {
+  const sectionId = section.id;
   const subjects = await trx('grade_subjects as gs')
     .join('subjects as s', 's.id', 'gs.subject_id')
     .leftJoin('teacher_subject_sections as t', function joinAssignment() {
@@ -264,14 +291,10 @@ async function getSectionAssignments(trx, tenantId, sectionId) {
     .select('s.id', 's.name', 's.code', 'gs.weekly_hours', 'st.id as teacher_id', 'st.first_name', 'st.last_name')
     .orderBy(['gs.sort_order', 's.name']);
 
-  return {
-    section,
-    mode: 'subjects',
-    subjects: subjects.map(({ teacher_id: teacherId, first_name: first, last_name: last, ...s }) => ({
-      ...s,
-      teacher: teacherId ? { id: teacherId, name: `${first} ${last}` } : null,
-    })),
-  };
+  return subjects.map(({ teacher_id: teacherId, first_name: first, last_name: last, ...s }) => ({
+    ...s,
+    teacher: teacherId ? { id: teacherId, name: `${first} ${last}` } : null,
+  }));
 }
 
 /** Pone `staffId` en el rol `role` de la sección (o lo quita si es null), sin tocar la fecha si no cambia. */
@@ -290,11 +313,14 @@ async function setHomeroomRole(trx, tenantId, sectionId, role, staffId) {
  * Guarda la asignación docente de una sección. El cuerpo se valida contra el
  * nivel REAL del grado en la base de datos (no contra lo que diga el cliente):
  *
- *   homeroom: { leadTeacherId: uuid | null, assistantTeacherId?: uuid | null }
+ *   homeroom: { leadTeacherId: uuid | null, assistantTeacherId?: uuid | null,
+ *               subjects?: [{ subjectId, teacherId: uuid | null }] }   ← especialistas (Primaria)
  *   subjects: { subjects: [{ subjectId, teacherId: uuid | null }] }
  *
- * En secundaria solo se tocan las materias incluidas en la lista (una
- * actualización parcial es válida); `teacherId: null` deja la materia sin profesor.
+ * Solo se tocan las materias incluidas en la lista (una actualización parcial
+ * es válida); `teacherId: null` deja la materia sin profesor (en Primaria: la
+ * vuelve a dictar el titular). En homeroom, si el cuerpo no trae
+ * `leadTeacherId` ni `assistantTeacherId`, los docentes de aula no se tocan.
  */
 async function setSectionAssignments(trx, tenantId, sectionId, body) {
   const section = await getSectionById(trx, tenantId, sectionId);
@@ -302,8 +328,13 @@ async function setSectionAssignments(trx, tenantId, sectionId, body) {
   await trx('sections').where({ id: sectionId }).forUpdate().first();
 
   if (section.assignment_mode === 'homeroom') {
-    if (body.subjects) {
+    if (body.subjects && !section.has_curriculum) {
       throw ApiError.unprocessable(`En ${section.level_name} no se asignan profesores por materia, sino docentes de aula.`);
+    }
+    const touchesHomeroom = 'leadTeacherId' in body || 'assistantTeacherId' in body;
+    if (!touchesHomeroom) {
+      await applySubjectTeachers(trx, tenantId, section, body.subjects || []);
+      return getSectionAssignments(trx, tenantId, sectionId);
     }
     const lead = body.leadTeacherId ?? null;
     const assistant = body.assistantTeacherId ?? null;
@@ -333,6 +364,8 @@ async function setSectionAssignments(trx, tenantId, sectionId, body) {
     await setHomeroomRole(trx, tenantId, sectionId, 'assistant', null);
     await setHomeroomRole(trx, tenantId, sectionId, 'lead', lead);
     await setHomeroomRole(trx, tenantId, sectionId, 'assistant', assistant);
+    // Primaria: especialistas por materia en el mismo guardado.
+    if (body.subjects) await applySubjectTeachers(trx, tenantId, section, body.subjects);
     return getSectionAssignments(trx, tenantId, sectionId);
   }
 
@@ -340,7 +373,17 @@ async function setSectionAssignments(trx, tenantId, sectionId, body) {
   if (!Array.isArray(body.subjects)) {
     throw ApiError.unprocessable(`En ${section.level_name} los docentes se asignan por materia.`);
   }
-  const subjectIds = body.subjects.map((s) => s.subjectId);
+  await applySubjectTeachers(trx, tenantId, section, body.subjects);
+  return getSectionAssignments(trx, tenantId, sectionId);
+}
+
+/**
+ * Profesor por materia en la sección (Secundaria) o especialista (Primaria).
+ * Las materias deben estar en el plan de estudios del grado.
+ */
+async function applySubjectTeachers(trx, tenantId, section, list) {
+  const sectionId = section.id;
+  const subjectIds = list.map((s) => s.subjectId);
   if (new Set(subjectIds).size !== subjectIds.length) throw ApiError.badRequest('Hay materias repetidas en la lista.');
 
   const curriculum = await trx('grade_subjects as gs')
@@ -362,10 +405,10 @@ async function setSectionAssignments(trx, tenantId, sectionId, body) {
   await assertTeachers(
     trx,
     tenantId,
-    body.subjects.filter((s) => s.teacherId && bySubject.get(s.subjectId)?.staff_id !== s.teacherId).map((s) => s.teacherId)
+    list.filter((s) => s.teacherId && bySubject.get(s.subjectId)?.staff_id !== s.teacherId).map((s) => s.teacherId)
   );
 
-  for (const { subjectId, teacherId } of body.subjects) {
+  for (const { subjectId, teacherId } of list) {
     const row = bySubject.get(subjectId);
     if (!teacherId) {
       if (row) await trx('teacher_subject_sections').where({ id: row.id }).delete();
@@ -381,8 +424,6 @@ async function setSectionAssignments(trx, tenantId, sectionId, body) {
       await trx('teacher_subject_sections').where({ id: row.id }).update({ staff_id: teacherId, assigned_at: trx.fn.now() });
     }
   }
-
-  return getSectionAssignments(trx, tenantId, sectionId);
 }
 
 // ---------- Carga docente ----------

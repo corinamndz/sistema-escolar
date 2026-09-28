@@ -80,4 +80,43 @@ function proofUpload(req, res, next) {
   });
 }
 
-module.exports = { logoUpload, MAX_LOGO_BYTES, proofUpload, MAX_PROOF_BYTES };
+// ---------------------------------------------------------------------------
+// Carga masiva (campo `file`): plantilla Excel .xlsx o CSV de hasta 5 MB.
+// Se filtra por extensión porque el mimetype de un CSV varía según el sistema
+// (text/csv, application/vnd.ms-excel, text/plain…); el contenido real se
+// valida al leerlo (firma ZIP del .xlsx o texto sin bytes nulos).
+// ---------------------------------------------------------------------------
+
+const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
+
+const importMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_IMPORT_BYTES, files: 1, fields: 20 },
+  fileFilter: (req, file, cb) => {
+    if (/\.(xlsx|csv)$/i.test(file.originalname)) return cb(null, true);
+    return cb(
+      ApiError.badRequest('Sube la plantilla en formato Excel (.xlsx) o CSV.', [
+        { path: 'file', message: 'Formato no permitido. Usa .xlsx o .csv.' },
+      ])
+    );
+  },
+}).single('file');
+
+function importUpload(req, res, next) {
+  importMulter(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof ApiError) return next(err);
+    if (err instanceof multer.MulterError) {
+      const message =
+        err.code === 'LIMIT_FILE_SIZE'
+          ? 'El archivo no puede pesar más de 5 MB.'
+          : err.code === 'LIMIT_UNEXPECTED_FILE'
+            ? 'Solo se permite un archivo en el campo "file".'
+            : 'No se pudo procesar el archivo subido.';
+      return next(ApiError.badRequest(message, [{ path: 'file', message }]));
+    }
+    return next(err);
+  });
+}
+
+module.exports = { logoUpload, MAX_LOGO_BYTES, proofUpload, MAX_PROOF_BYTES, importUpload, MAX_IMPORT_BYTES };

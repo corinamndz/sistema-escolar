@@ -181,7 +181,8 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
     };
   });
 
-  // Agrupar por materia (en secundaria por subject_id; en inicial/primaria por el nombre del área).
+  // Agrupar por materia: por subject_id si el plan es de una materia del plan de estudios
+  // (Primaria y Secundaria); si no, por el nombre del área (Inicial).
   const subjects = [];
   planViews.forEach(({ _subjectKey: key, _subject: name, _subjectCode: code, ...plan }) => {
     let subject = subjects.find((s) => s.key === key);

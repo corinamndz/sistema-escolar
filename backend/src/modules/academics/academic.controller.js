@@ -23,29 +23,36 @@ const createClassroom = asyncHandler(async (req, res) => {
 });
 
 // ---- Grados ----
+const LEVEL_CODES = ['initial', 'primary', 'secondary'];
+const gradeSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es obligatorio.'),
+  sortOrder: z.number().int().optional(),
+  levelCode: z.enum(LEVEL_CODES, { errorMap: () => ({ message: 'Selecciona el nivel educativo.' }) }),
+});
+
 const listGrades = asyncHandler(async (req, res) => {
-  res.status(200).json(await service.listGrades(req.db, req.tenantId));
+  const levelCode = z.enum(LEVEL_CODES).optional().parse(req.query.levelCode || undefined);
+  res.status(200).json(await service.listGrades(req.db, req.tenantId, { levelCode }));
 });
 const createGrade = asyncHandler(async (req, res) => {
-  const schema = z.object({ name: z.string().min(1), sortOrder: z.number().int().optional() });
-  const data = schema.parse(req.body);
-  res.status(201).json(await service.createGrade(req.db, req.tenantId, data));
+  res.status(201).json(await service.createGrade(req.db, req.tenantId, gradeSchema.parse(req.body)));
+});
+const updateGrade = asyncHandler(async (req, res) => {
+  res.status(200).json(await service.updateGrade(req.db, req.tenantId, req.params.id, gradeSchema.partial().parse(req.body)));
 });
 
 // ---- Secciones ----
 const sectionSchema = z.object({
   gradeId: z.string().uuid(),
   schoolPeriodId: z.string().uuid(),
-  classroomId: z.string().uuid().optional(),
-  name: z.string().min(1),
+  classroomId: z.string().uuid().nullable().optional(),
+  name: z.string().trim().min(1),
   maxStudents: z.number().int().positive().optional(),
-  leadTeacherId: z.string().uuid().optional(),
-  assistantTeacherId: z.string().uuid().optional(),
 });
 
 const listSections = asyncHandler(async (req, res) => {
-  const { schoolPeriodId, gradeId } = req.query;
-  res.status(200).json(await service.listSections(req.db, req.tenantId, { schoolPeriodId, gradeId }));
+  const { schoolPeriodId, gradeId, levelCode } = req.query;
+  res.status(200).json(await service.listSections(req.db, req.tenantId, { schoolPeriodId, gradeId, levelCode }));
 });
 const getSection = asyncHandler(async (req, res) => {
   res.status(200).json(await service.getSectionById(req.db, req.tenantId, req.params.id));
@@ -55,7 +62,8 @@ const createSection = asyncHandler(async (req, res) => {
   res.status(201).json(await service.createSection(req.db, req.tenantId, data));
 });
 const updateSection = asyncHandler(async (req, res) => {
-  const data = sectionSchema.partial().parse(req.body);
+  // El grado y el año escolar no se cambian: moverían la sección de nivel y dejarían asignaciones inválidas.
+  const data = sectionSchema.omit({ gradeId: true, schoolPeriodId: true }).partial().parse(req.body);
   res.status(200).json(await service.updateSection(req.db, req.tenantId, req.params.id, data));
 });
 const getRoster = asyncHandler(async (req, res) => {
@@ -80,6 +88,7 @@ module.exports = {
   createClassroom,
   listGrades,
   createGrade,
+  updateGrade,
   listSections,
   getSection,
   createSection,

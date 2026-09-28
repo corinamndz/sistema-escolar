@@ -19,10 +19,12 @@ const ROLE_TEMPLATES = {
   },
   Representante: {
     isSystem: true,
+    // Solo el panel: el portal de padres (GET /portal/me, GET /payments/mine) filtra
+    // por el usuario autenticado y no necesita permisos de módulo. Dar `payments` o
+    // `grading` en lectura expondría los pagos y notas de TODO el colegio, porque
+    // esos endpoints administrativos no se filtran por representante.
     byModule: {
       dashboard: { can_read: true },
-      grading: { can_read: true },
-      payments: { can_read: true },
     },
   },
 };

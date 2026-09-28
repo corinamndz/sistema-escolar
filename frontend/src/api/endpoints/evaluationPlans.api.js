@@ -18,6 +18,10 @@ const evaluationPlansApi = {
     axiosClient.put(`/evaluation-plans/${planId}/activities/${activityId}`, data).then((r) => r.data),
   deleteActivity: (planId, activityId) =>
     axiosClient.delete(`/evaluation-plans/${planId}/activities/${activityId}`).then((r) => r.data),
+
+  /** Cierra el plan (exige que las actividades sumen exactamente 100%) / lo reabre. */
+  close: (planId) => axiosClient.post(`/evaluation-plans/${planId}/close`).then((r) => r.data),
+  reopen: (planId) => axiosClient.post(`/evaluation-plans/${planId}/reopen`).then((r) => r.data),
 };
 
 export default evaluationPlansApi;

@@ -9,6 +9,7 @@ import Card from '../../../components/ui/Card';
 import StatCard from '../../../components/ui/StatCard';
 import Icon from '../../../components/ui/Icon';
 import { NAV_SECTIONS } from '../../../components/layout/navigation';
+import GuardianPanel from '../components/GuardianPanel';
 
 const STAT_DEFS = [
   {
@@ -51,7 +52,9 @@ function greeting() {
 }
 
 /**
- * Panel de inicio: tarjetas de resumen. Cada tarjeta solo se consulta si el
+ * Panel de inicio. Si el usuario es un representante (`user.guardianId`, viene
+ * de /auth/me) se muestra el portal de padres con sus alumnos; si no, las
+ * tarjetas de resumen del colegio. Cada tarjeta solo se consulta si el
  * usuario tiene permiso de lectura sobre ese módulo, para no disparar
  * requests que el backend rechazaría con 403.
  */
@@ -59,11 +62,14 @@ function DashboardPage() {
   const { user, can } = useAuth();
   const { settings } = useTenant();
   const [stats, setStats] = useState({}); // key → número | null (falló) ; ausente = cargando
+  const isGuardian = Boolean(user?.guardianId);
 
-  const visibleStats = STAT_DEFS.filter((d) => can(d.module, 'read'));
+  // Las cifras de todo el colegio son para el personal, no para el portal de padres.
+  const visibleStats = isGuardian ? [] : STAT_DEFS.filter((d) => can(d.module, 'read'));
 
   useEffect(() => {
     let cancelled = false;
+    if (isGuardian) return undefined;
     STAT_DEFS.filter((d) => can(d.module, 'read')).forEach(async (def) => {
       let value;
       try {
@@ -76,10 +82,11 @@ function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [can]);
+  }, [can, isGuardian]);
 
   const cards = visibleStats.filter((d) => stats[d.key] !== null);
 
+  const displayName = user?.fullName || user?.username || '';
   const quickLinks = NAV_SECTIONS.flatMap((s) => s.items)
     .filter((item) => item.path !== '/' && (item.public || can(item.moduleCode, 'read')))
     .slice(0, 6);
@@ -91,9 +98,9 @@ function DashboardPage() {
       <section className="welcome">
         <div>
           <h2>
-            {greeting()}, {(user?.fullName || user?.username || '').split(' ')[0]} 👋
+            {greeting()}, {displayName} 👋
           </h2>
-          <p>Este es el resumen de {settings.name}.</p>
+          <p>{isGuardian ? `Bienvenido al portal de ${settings.name}.` : `Este es el resumen de ${settings.name}.`}</p>
         </div>
         <span className="welcome__date">{today}</span>
       </section>
@@ -114,6 +121,9 @@ function DashboardPage() {
         </div>
       )}
 
+      {isGuardian && <GuardianPanel />}
+
+      {!isGuardian && (
       <Card title="Accesos rápidos" subtitle="Ve directo a los módulos que más usas">
         {quickLinks.length > 0 ? (
           <div className="quick-links">
@@ -131,6 +141,7 @@ function DashboardPage() {
           <p>Usa el menú lateral para empezar a gestionar el colegio.</p>
         )}
       </Card>
+      )}
     </div>
   );
 }

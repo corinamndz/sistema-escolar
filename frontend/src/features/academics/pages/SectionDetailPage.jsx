@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import academicsApi from '../../../api/endpoints/academics.api';
 import studentsApi from '../../../api/endpoints/students.api';
-import staffApi from '../../../api/endpoints/staff.api';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
 import RequirePermission from '../../../components/RequirePermission';
@@ -16,18 +15,66 @@ import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { LevelBadge } from '../levels';
+import TeacherAssignmentModal from '../components/TeacherAssignmentModal';
 
-function findName(list, id, fallback = '—') {
-  if (!id || !list) return fallback;
-  const item = list.find((i) => i.id === id);
-  return item ? `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.name : fallback;
+/** Docentes de la sección, con la forma que corresponde a su nivel. */
+function SectionTeachersCard({ sectionId, onAssign }) {
+  const { data, loading, error } = useFetch(() => academicsApi.getSectionTeachers(sectionId), [sectionId]);
+
+  let body;
+  if (loading) body = <Spinner label={null} />;
+  else if (error) body = <Alert>{error}</Alert>;
+  else if (data.mode === 'homeroom') {
+    const rows = [['Docente titular', data.homeroom.lead]];
+    if (data.section.allows_assistant) rows.push(['Docente auxiliar', data.homeroom.assistant]);
+    body = (
+      <dl className="detail-list">
+        {rows.map(([label, teacher]) => (
+          <div key={label} className="detail-list__item">
+            <dt>{label}</dt>
+            <dd>{teacher ? teacher.name : <span className="teacher-stack__missing">Sin asignar</span>}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+  } else if (data.subjects.length === 0) {
+    body = <p className="text-muted">El grado no tiene materias en su plan de estudios.</p>;
+  } else {
+    body = (
+      <ul className="assignment-list">
+        {data.subjects.map((s) => (
+          <li key={s.id}>
+            <strong>{s.name}</strong>
+            {s.teacher ? <span>{s.teacher.name}</span> : <span className="teacher-stack__missing">Sin profesor</span>}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <Card
+      title="Docentes asignados"
+      actions={
+        <RequirePermission module="academics" action="update">
+          <Button size="sm" variant="secondary" icon="users" onClick={onAssign}>
+            Asignar docentes
+          </Button>
+        </RequirePermission>
+      }
+    >
+      {body}
+    </Card>
+  );
 }
 
 function SectionDetailPage() {
   const { id } = useParams();
   const { data: section, loading: loadingSection, error, refetch } = useFetch(() => academicsApi.getSection(id), [id]);
   const { data: roster, loading: loadingRoster, refetch: refetchRoster } = useFetch(() => academicsApi.getRoster(id), [id]);
-  const { data: teachers } = useFetch(() => staffApi.list({ staffType: 'teaching' }), []);
+  const [assigning, setAssigning] = useState(false);
+  const [teachersVersion, setTeachersVersion] = useState(0);
   const [showEnroll, setShowEnroll] = useState(false);
   const { run: withdrawRun, error: withdrawError } = useMutation(academicsApi.withdraw);
 
@@ -75,8 +122,14 @@ function SectionDetailPage() {
   return (
     <div>
       <PageHeader
-        title={`Sección ${section.name}`}
-        subtitle={`Cupo: ${occupied}/${section.max_students}`}
+        title={`${section.grade_name} · Sección ${section.name}`}
+        subtitle={
+          <span className="page-header__meta">
+            <LevelBadge code={section.level_code} short={false} />
+            Año escolar {section.school_period_name}
+            {section.classroom_name && ` · Aula ${section.classroom_name}`}
+          </span>
+        }
         actions={
           <Link to="/academics" className="btn btn--secondary">
             Volver
@@ -85,10 +138,7 @@ function SectionDetailPage() {
       />
 
       <div className="grid grid--2">
-        <Card title="Docentes asignados">
-          <p>Titular: {findName(teachers, section.lead_teacher_id)}</p>
-          <p>Auxiliar: {findName(teachers, section.assistant_teacher_id)}</p>
-        </Card>
+        <SectionTeachersCard key={teachersVersion} sectionId={id} onAssign={() => setAssigning(true)} />
         <Card title="Cupo">
           <div className="progress-bar">
             <div
@@ -113,6 +163,14 @@ function SectionDetailPage() {
         <Alert>{withdrawError}</Alert>
         {loadingRoster ? <Spinner /> : <Table columns={rosterColumns} rows={roster} emptyMessage="Sin alumnos inscritos." />}
       </Card>
+
+      {assigning && (
+        <TeacherAssignmentModal
+          sectionId={id}
+          onClose={() => setAssigning(false)}
+          onSaved={() => setTeachersVersion((v) => v + 1)}
+        />
+      )}
 
       {showEnroll && (
         <EnrollModal

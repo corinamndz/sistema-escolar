@@ -20,6 +20,7 @@ import EvaluationPlanDetailPage from '../features/evaluation-plans/pages/Evaluat
 import GradebookPage from '../features/grading/pages/GradebookPage';
 import PaymentsPage from '../features/payments/pages/PaymentsPage';
 import MyPaymentsPage from '../features/payments/pages/MyPaymentsPage';
+import PortalStudentPage from '../features/portal/pages/PortalStudentPage';
 import NotFoundPage from '../features/dashboard/pages/NotFoundPage';
 
 function App() {
@@ -74,6 +75,8 @@ function App() {
 
             {/* Vista de padres: cualquier usuario autenticado con hijos asociados, sin permiso administrativo */}
             <Route path="payments/mine" element={<MyPaymentsPage />} />
+            {/* Portal de padres: detalle y calificaciones de un representado (el backend valida el vínculo) */}
+            <Route path="portal/students/:studentId" element={<PortalStudentPage />} />
 
             <Route path="*" element={<NotFoundPage />} />
           </Route>

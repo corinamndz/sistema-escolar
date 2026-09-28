@@ -1,5 +1,13 @@
 const knex = require('knex');
+const { types } = require('pg');
 const knexConfig = require('../../knexfile');
+
+// Columnas DATE (OID 1082) como texto 'YYYY-MM-DD'. Por defecto `pg` las
+// convierte en Date a medianoche de la zona horaria del SERVIDOR NODE y, al
+// serializar a JSON (UTC), un servidor con zona horaria positiva (ej. Europe/Madrid)
+// enviaba '2026-10-05' como '2026-10-04T22:00:00Z': un día antes. Las fechas
+// de calendario (nacimiento, vencimientos, inicio de año escolar) no tienen hora.
+types.setTypeParser(1082, (value) => value);
 
 const environment = process.env.NODE_ENV || 'development';
 const db = knex(knexConfig[environment]);

@@ -44,6 +44,7 @@ const NAV_SECTIONS = [
 /** Rutas de detalle que no están en el menú, para el título del Topbar. */
 const EXTRA_TITLES = [
   { prefix: '/grading/plans/', label: 'Calificaciones', parent: 'Académico' },
+  { prefix: '/portal/students/', label: 'Mi alumno', parent: 'Portal' },
   { prefix: '/academics/sections/', label: 'Detalle de sección', parent: 'Académico' },
 ];
 

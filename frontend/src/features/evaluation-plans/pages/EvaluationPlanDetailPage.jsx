@@ -18,6 +18,7 @@ import Badge from '../../../components/ui/Badge';
 import Icon from '../../../components/ui/Icon';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { useToast } from '../../../components/ui/Toast';
+import { getErrorMessage } from '../../../api/axiosClient';
 
 const CATEGORY_LABELS = {
   formative: 'Formativa',
@@ -27,6 +28,13 @@ const CATEGORY_LABELS = {
   other: 'Otra',
 };
 
+/** '2026-10-15' → "15 oct 2026" (fecha de calendario, sin corrimiento de zona horaria). */
+function formatDay(value) {
+  if (!value) return null;
+  const [y, m, d] = String(value).slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 function EvaluationPlanDetailPage() {
   const { id } = useParams();
   const { data: plan, loading, error, refetch } = useFetch(() => evaluationPlansApi.getOne(id), [id]);
@@ -35,6 +43,39 @@ function EvaluationPlanDetailPage() {
   const { run: deleteRun, error: deleteError } = useMutation((activityId) => evaluationPlansApi.deleteActivity(id, activityId));
   const confirm = useConfirm();
   const toast = useToast();
+
+  const handleClose = async () => {
+    const ok = await confirm({
+      title: '¿Cerrar el plan de evaluación?',
+      message: 'Las actividades y sus porcentajes quedarán bloqueados. Las notas se podrán seguir cargando. Podrás reabrirlo si necesitas corregir algo.',
+      icon: 'lock',
+      confirmLabel: 'Cerrar plan',
+    });
+    if (!ok) return;
+    try {
+      await evaluationPlansApi.close(id);
+      toast.success('Plan cerrado', 'Las actividades quedaron bloqueadas.');
+      refetch();
+    } catch (err) {
+      toast.error('No se pudo cerrar', getErrorMessage(err));
+    }
+  };
+
+  const handleReopen = async () => {
+    const ok = await confirm({
+      title: '¿Reabrir el plan?',
+      message: 'Se podrán volver a agregar, editar o eliminar actividades.',
+      confirmLabel: 'Reabrir',
+    });
+    if (!ok) return;
+    try {
+      await evaluationPlansApi.reopen(id);
+      toast.success('Plan reabierto');
+      refetch();
+    } catch (err) {
+      toast.error('No se pudo reabrir', getErrorMessage(err));
+    }
+  };
 
   const handleDeleteActivity = async (activity) => {
     const ok = await confirm({
@@ -56,15 +97,38 @@ function EvaluationPlanDetailPage() {
   if (error) return <Alert>{error}</Alert>;
   if (!plan) return null;
 
+  const closed = plan.status === 'closed';
   const activityColumns = [
-    { key: 'title', header: 'Actividad' },
+    {
+      key: 'title',
+      header: 'Actividad',
+      render: (a) => (
+        <div>
+          <div className="cell-person__name">{a.title}</div>
+          {a.description && <div className="cell-person__sub activity-description">{a.description}</div>}
+        </div>
+      ),
+      sortValue: (a) => a.title,
+    },
+    {
+      key: 'planned_date',
+      header: 'Fecha estimada',
+      render: (a) => formatDay(a.planned_date) || <span className="text-muted">Sin fecha</span>,
+      sortValue: (a) => a.planned_date,
+    },
     { key: 'category', header: 'Tipo', render: (a) => <Badge variant="primary">{CATEGORY_LABELS[a.category] || a.category}</Badge> },
-    { key: 'weight_percent', header: '% de la nota', render: (a) => `${Number(a.weight_percent)}%` },
+    {
+      key: 'weight_percent',
+      header: 'Peso',
+      align: 'right',
+      render: (a) => <strong>{Number(a.weight_percent)}%</strong>,
+      sortValue: (a) => Number(a.weight_percent),
+    },
     {
       key: 'actions',
       header: '',
       align: 'right',
-      render: (a) => (
+      render: (a) => closed ? null : (
         <div className="table__actions">
           <RequirePermission module="evaluation_plans" action="update">
             <Button size="sm" variant="secondary" icon="pencil" onClick={() => setActivityModal(a)}>
@@ -89,7 +153,13 @@ function EvaluationPlanDetailPage() {
     <div>
       <PageHeader
         title={plan.subject}
-        subtitle="Plan de evaluación"
+        subtitle={
+          <span className="page-header__meta">
+            Plan de evaluación · {plan.term_name}
+            {plan.term_start && plan.term_end && ` (${formatDay(plan.term_start)} – ${formatDay(plan.term_end)})`}
+            {closed ? <Badge variant="success">Cerrado</Badge> : <Badge variant="info">Abierto</Badge>}
+          </span>
+        }
         actions={
           <>
             <Link to={`/grading/plans/${id}`} className="btn btn--secondary">
@@ -102,7 +172,35 @@ function EvaluationPlanDetailPage() {
         }
       />
 
-      <Card title="Sumatoria de porcentajes" subtitle="El plan debe sumar exactamente 100% de la nota">
+      <Card
+        title="Total acumulado del lapso"
+        subtitle="El plan debe sumar exactamente 100% de la nota para poder cerrarse"
+        actions={
+          <RequirePermission module="evaluation_plans" action="update">
+            {closed ? (
+              <Button size="sm" variant="secondary" icon="lock" onClick={handleReopen}>
+                Reabrir plan
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                icon="lock"
+                onClick={handleClose}
+                disabled={totalWeight !== 100}
+                title={totalWeight === 100 ? 'Bloquear actividades y porcentajes' : `Faltan ${remaining}% para poder cerrarlo`}
+              >
+                Cerrar plan
+              </Button>
+            )}
+          </RequirePermission>
+        }
+      >
+        {closed && (
+          <Alert variant="success">
+            Plan cerrado{plan.closed_at ? ` el ${new Date(plan.closed_at).toLocaleDateString('es')}` : ''}: las actividades y sus
+            porcentajes están bloqueados. Las calificaciones se siguen cargando con normalidad.
+          </Alert>
+        )}
         <div className={`progress-meter progress-meter--${meterState}`}>
           <div className="progress-meter__head">
             <span className="progress-meter__value">
@@ -128,8 +226,10 @@ function EvaluationPlanDetailPage() {
           <div className="progress-meter__foot">
             <Icon name={meterState === 'complete' ? 'checkCircle' : 'info'} size={15} />
             {remaining > 0
-              ? `Queda ${remaining}% disponible para nuevas actividades.`
-              : 'El plan ya suma 100%, no se pueden agregar más actividades.'}
+              ? `Queda ${remaining}% disponible para nuevas actividades. Hasta completar el 100% no se puede cerrar el plan.`
+              : closed
+                ? 'El plan suma 100% y está cerrado.'
+                : 'El plan ya suma 100%: puedes cerrarlo para bloquear las actividades.'}
           </div>
         </div>
       </Card>
@@ -138,9 +238,17 @@ function EvaluationPlanDetailPage() {
         title="Actividades de evaluación"
         actions={
           <RequirePermission module="evaluation_plans" action="create">
-            <Button size="sm" icon="plus" onClick={() => setActivityModal({})} disabled={remaining <= 0}>
-              Nueva actividad
-            </Button>
+            {!closed && (
+              <Button
+                size="sm"
+                icon="plus"
+                onClick={() => setActivityModal({})}
+                disabled={remaining <= 0}
+                title={remaining <= 0 ? 'El plan ya suma 100%' : undefined}
+              >
+                Nueva actividad
+              </Button>
+            )}
           </RequirePermission>
         }
       >
@@ -172,6 +280,8 @@ function EvaluationPlanDetailPage() {
           planId={id}
           initial={activityModal}
           remaining={remaining + (activityModal.weight_percent ? Number(activityModal.weight_percent) : 0)}
+          termStart={plan.term_start}
+          termEnd={plan.term_end}
           onClose={() => setActivityModal(null)}
           onSaved={refetch}
         />
@@ -184,12 +294,14 @@ function EvaluationPlanDetailPage() {
   );
 }
 
-function ActivityFormModal({ planId, initial, remaining, onClose, onSaved }) {
+function ActivityFormModal({ planId, initial, remaining, termStart, termEnd, onClose, onSaved }) {
   const isEdit = Boolean(initial.id);
   const [form, setForm] = useState({
     title: initial.title || '',
     category: initial.category || 'formative',
     weightPercent: initial.weight_percent || '',
+    description: initial.description || '',
+    plannedDate: initial.planned_date || '',
   });
   const { run, loading, error, fieldErrors } = useMutation(
     isEdit
@@ -206,6 +318,8 @@ function ActivityFormModal({ planId, initial, remaining, onClose, onSaved }) {
       ? null
       : !(typed > 0)
         ? 'Debe ser mayor que 0.'
+        : Math.abs(typed * 100 - Math.round(typed * 100)) >= 1e-6
+          ? 'Usa como máximo 2 decimales.'
         : typed > remaining
           ? `Excede lo disponible: el plan quedaría en ${Math.round((100 - remaining + typed) * 100) / 100}%.`
           : null;
@@ -215,7 +329,13 @@ function ActivityFormModal({ planId, initial, remaining, onClose, onSaved }) {
     e.preventDefault();
     if (weightError) return;
     try {
-      await run({ title: form.title, category: form.category, weightPercent: Number(form.weightPercent) });
+      await run({
+        title: form.title,
+        category: form.category,
+        weightPercent: Number(form.weightPercent),
+        description: form.description.trim(),
+        plannedDate: form.plannedDate,
+      });
       toast.success(isEdit ? 'Actividad actualizada' : 'Actividad creada', form.title);
       onSaved();
       onClose();
@@ -261,6 +381,29 @@ function ActivityFormModal({ planId, initial, remaining, onClose, onSaved }) {
               value={form.weightPercent}
               onChange={(e) => setForm((f) => ({ ...f, weightPercent: e.target.value }))}
               required
+            />
+          </Field>
+          <Field
+            label="Fecha estimada"
+            error={fieldErrors.plannedDate}
+            hint={termStart && termEnd ? `Dentro del lapso: ${formatDay(termStart)} – ${formatDay(termEnd)}` : 'Opcional.'}
+          >
+            <Input
+              type="date"
+              value={form.plannedDate}
+              min={termStart || undefined}
+              max={termEnd || undefined}
+              onChange={(e) => setForm((f) => ({ ...f, plannedDate: e.target.value }))}
+            />
+          </Field>
+          <Field label="Descripción" error={fieldErrors.description} hint="Opcional: contenidos, criterios o instrucciones." full>
+            <textarea
+              className="input"
+              rows={3}
+              maxLength={1000}
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              placeholder="Ej.: Evaluación escrita de los temas 1 al 3. Se evalúa ortografía y comprensión."
             />
           </Field>
         </div>

@@ -51,7 +51,7 @@ La respuesta trae `accessToken` — úsalo como `Authorization: Bearer <token>` 
 - **roles** — CRUD de roles + matriz de permisos por módulo.
 - **staff** — personal administrativo/docente/obrero.
 - **students** — alumnos, representantes y su asociación.
-- **academics** — años escolares, aulas, grados, secciones, inscripciones (con control de cupo).
+- **academics** — años escolares, aulas, grados por nivel educativo (Inicial / Primaria / Secundaria), materias y plan de estudios por grado, secciones, asignación docente según el nivel (titular + auxiliar en Inicial, titular único en Primaria, profesor por materia en Secundaria), carga docente e inscripciones (con control de cupo). Ver `migrations/002_education_levels.sql`.
 - **evaluation-plans** — lapsos, planes de evaluación, proyectos pedagógicos, competencias y actividades (**valida que la suma de porcentajes no pase de 100%**).
 - **grading** — carga de notas por actividad (con acumulado automático) y evaluación cualitativa de competencias.
 - **payments** — registro de pagos y, al marcarlos como pagados, generación de PDF + envío de correo con el comprobante.

@@ -1,4 +1,6 @@
 const { ApiError } = require('../../utils/ApiError');
+const { applyPortalAccess, getPortalAccess, deactivatePortalUser } = require('./portalAccess.service');
+const tuition = require('../payments/tuition.service');
 
 // ---------- Alumnos ----------
 
@@ -57,22 +59,78 @@ async function updateStudent(trx, tenantId, id, data) {
 
 // ---------- Representantes ----------
 
+/**
+ * Representantes con un resumen de sus alumnos (cantidad y nombres), para
+ * mostrarlos en la tabla sin una consulta extra por fila.
+ */
 async function listGuardians(trx, tenantId) {
-  return trx('guardians').where({ tenant_id: tenantId }).orderBy(['last_name', 'first_name']);
+  return trx('guardians as g')
+    .where('g.tenant_id', tenantId)
+    .leftJoin('users as u', 'u.id', 'g.user_id')
+    .select(
+      'g.*',
+      // Estado del acceso al portal: 'active' | 'inactive' | null (sin usuario).
+      'u.username as portal_username',
+      'u.status as portal_status',
+      'u.last_login_at as portal_last_login_at',
+      trx.raw(`(
+        SELECT count(*)::int FROM student_guardians sg WHERE sg.guardian_id = g.id
+      ) AS student_count`),
+      trx.raw(`COALESCE((
+        SELECT json_agg(s.first_name || ' ' || s.last_name ORDER BY s.last_name, s.first_name)
+        FROM student_guardians sg JOIN students s ON s.id = sg.student_id
+        WHERE sg.guardian_id = g.id
+      ), '[]'::json) AS student_names`)
+    )
+    .orderBy(['g.last_name', 'g.first_name']);
+}
+
+/**
+ * Alumnos vinculados a un representante, con su grado y sección actuales.
+ * "Actual" = la inscripción activa del año escolar más reciente (un alumno
+ * puede tener inscripciones activas en más de un año si no se cerró el
+ * anterior); si no tiene ninguna, los campos de sección vienen en null.
+ */
+async function listGuardianStudents(trx, guardianId) {
+  const { rows } = await trx.raw(
+    `SELECT s.id, s.first_name, s.last_name, s.national_id, s.status,
+            sg.relationship, sg.is_primary,
+            cur.section_id, cur.section_name, cur.grade_name, cur.level_code, cur.level_name, cur.school_period_name
+     FROM student_guardians sg
+     JOIN students s ON s.id = sg.student_id
+     LEFT JOIN LATERAL (
+       SELECT sec.id AS section_id, sec.name AS section_name, g.name AS grade_name,
+              g.level_code, el.name AS level_name, sp.name AS school_period_name
+       FROM enrollments e
+       JOIN sections sec ON sec.id = e.section_id
+       JOIN grades g ON g.id = sec.grade_id
+       JOIN education_levels el ON el.code = g.level_code
+       JOIN school_periods sp ON sp.id = sec.school_period_id
+       WHERE e.student_id = s.id AND e.status = 'active'
+       ORDER BY sp.is_active DESC, sp.start_date DESC NULLS LAST, e.enrolled_at DESC
+       LIMIT 1
+     ) cur ON true
+     WHERE sg.guardian_id = ?
+     ORDER BY sg.is_primary DESC, s.last_name, s.first_name`,
+    [guardianId]
+  );
+  return rows;
 }
 
 async function getGuardianById(trx, tenantId, id) {
   const guardian = await trx('guardians').where({ id, tenant_id: tenantId }).first();
   if (!guardian) throw ApiError.notFound('Representante no encontrado.');
 
-  const students = await trx('student_guardians as sg')
-    .join('students as s', 's.id', 'sg.student_id')
-    .where('sg.guardian_id', id)
-    .select('s.id', 's.first_name', 's.last_name', 'sg.relationship', 'sg.is_primary');
-
-  return { ...guardian, students };
+  const students = await listGuardianStudents(trx, id);
+  const portal = await getPortalAccess(trx, tenantId, guardian.user_id);
+  return { ...guardian, portal, students };
 }
 
+/**
+ * Crea el representante y, si `data.portal.enabled`, su usuario del portal en
+ * la misma transacción: si falla el usuario (correo repetido, sin rol), no
+ * queda un representante a medias.
+ */
 async function createGuardian(trx, tenantId, data) {
   const [guardian] = await trx('guardians')
     .insert({
@@ -85,7 +143,9 @@ async function createGuardian(trx, tenantId, data) {
       email: data.email,
     })
     .returning('*');
-  return guardian;
+
+  const { access, temporaryPassword } = await applyPortalAccess(trx, tenantId, guardian, data.portal);
+  return { ...guardian, user_id: access?.id ?? guardian.user_id, portal: access, temporaryPassword };
 }
 
 async function updateGuardian(trx, tenantId, id, data) {
@@ -98,8 +158,37 @@ async function updateGuardian(trx, tenantId, id, data) {
     email: data.email,
   };
   Object.keys(payload).forEach((key) => payload[key] === undefined && delete payload[key]);
-  const [updated] = await trx('guardians').where({ id }).update(payload).returning('*');
-  return updated;
+  const [updated] = Object.keys(payload).length
+    ? await trx('guardians').where({ id }).update(payload).returning('*')
+    : [await trx('guardians').where({ id }).first()];
+
+  // También sincroniza el nombre del usuario del portal si el representante cambió de nombre.
+  const portalChanges = data.portal || (updated.user_id && (data.firstName || data.lastName) ? {} : null);
+  const { access, temporaryPassword } = await applyPortalAccess(trx, tenantId, updated, portalChanges);
+  return { ...updated, user_id: access?.id ?? updated.user_id, portal: access, temporaryPassword };
+}
+
+/**
+ * Elimina un representante. Sus vínculos con alumnos se borran en cascada
+ * (student_guardians). Si tiene pagos registrados no se permite: los pagos
+ * son historial contable y la FK `payments.guardian_id` es RESTRICT.
+ * Su usuario del portal no se borra (auditoría) pero queda inactivo, para
+ * que no pueda seguir iniciando sesión.
+ */
+async function deleteGuardian(trx, tenantId, id) {
+  const guardian = await trx('guardians').where({ id, tenant_id: tenantId }).first();
+  if (!guardian) throw ApiError.notFound('Representante no encontrado.');
+
+  const payments = await trx('payments').where({ tenant_id: tenantId, guardian_id: id }).count('id as n').first();
+  if (Number(payments.n) > 0) {
+    throw ApiError.conflict(
+      `No se puede eliminar a ${guardian.first_name} ${guardian.last_name}: tiene ${payments.n} pago(s) registrado(s), ` +
+        'que forman parte del historial contable del colegio.'
+    );
+  }
+
+  await trx('guardians').where({ id }).delete();
+  await deactivatePortalUser(trx, tenantId, guardian.user_id);
 }
 
 // ---------- Asociación alumno <-> representante ----------
@@ -126,6 +215,10 @@ async function linkGuardian(trx, tenantId, studentId, { guardianId, relationship
     is_primary: Boolean(isPrimary),
   });
 
+  // Si el alumno ya estaba inscrito sin representante, sus mensualidades no se
+  // habían podido generar (el pago requiere un responsable): se completan ahora.
+  await tuition.generateTuition(trx, tenantId, { studentId });
+
   return getStudentById(trx, tenantId, studentId);
 }
 
@@ -141,8 +234,10 @@ module.exports = {
   updateStudent,
   listGuardians,
   getGuardianById,
+  listGuardianStudents,
   createGuardian,
   updateGuardian,
+  deleteGuardian,
   linkGuardian,
   unlinkGuardian,
 };

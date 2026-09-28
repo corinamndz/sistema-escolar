@@ -28,8 +28,10 @@ const createPlan = asyncHandler(async (req, res) => {
   const schema = z.object({
     sectionId: z.string().uuid(),
     termId: z.string().uuid(),
-    teacherId: z.string().uuid(),
-    subject: z.string().min(1),
+    // Secundaria: subjectId (el profesor se toma de la asignación). Inicial/Primaria: subject + teacherId.
+    teacherId: z.string().uuid().optional(),
+    subject: z.string().trim().min(1).optional(),
+    subjectId: z.string().uuid().optional(),
   });
   res.status(201).json(await service.createPlan(req.db, req.tenantId, schema.parse(req.body)));
 });
@@ -51,9 +53,21 @@ const addCompetency = asyncHandler(async (req, res) => {
 
 // ---- Actividades (con validación del 100%) ----
 const activitySchema = z.object({
-  title: z.string().min(1),
+  title: z.string().trim().min(1, 'El título es obligatorio.').max(200),
   category: z.enum(['formative', 'exam', 'project', 'homework', 'other']),
-  weightPercent: z.number().positive().max(100),
+  weightPercent: z
+    .number()
+    .positive('Debe ser mayor que 0.')
+    .max(100, 'No puede superar 100%.')
+    // La columna es NUMERIC(5,2): con más decimales se redondearía en silencio y
+    // un plan "de 100%" podría quedar en 99,99% o 100,01%.
+    // Con tolerancia: en punto flotante 33.33 * 100 = 3332.9999999999995, no 3333.
+    .refine((n) => Math.abs(n * 100 - Math.round(n * 100)) < 1e-6, 'Usa como máximo 2 decimales.'),
+  description: z.preprocess((v) => (v === '' ? null : v), z.string().trim().max(1000).nullable().optional()),
+  plannedDate: z.preprocess(
+    (v) => (v === '' ? null : v),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida.').nullable().optional()
+  ),
 });
 
 const createActivity = asyncHandler(async (req, res) => {
@@ -72,11 +86,21 @@ const updateActivity = asyncHandler(async (req, res) => {
 });
 
 const deleteActivity = asyncHandler(async (req, res) => {
-  await service.deleteActivity(req.db, req.tenantId, req.params.activityId);
+  await service.deleteActivity(req.db, req.tenantId, req.params.planId, req.params.activityId);
   res.status(204).send();
 });
 
+// ---- Cierre del plan (exige 100% exacto) ----
+const closePlan = asyncHandler(async (req, res) => {
+  res.status(200).json(await service.closePlan(req.db, req.tenantId, req.params.planId));
+});
+const reopenPlan = asyncHandler(async (req, res) => {
+  res.status(200).json(await service.reopenPlan(req.db, req.tenantId, req.params.planId));
+});
+
 module.exports = {
+  closePlan,
+  reopenPlan,
   listTerms,
   createTerm,
   listPlans,

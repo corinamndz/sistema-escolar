@@ -9,13 +9,42 @@ const studentSchema = z.object({
   nationalId: z.string().optional(),
 });
 
+// Un input vacío llega como "": se guarda como null (así, al editar, borrar el
+// teléfono o el correo realmente lo borra, y un correo vacío no falla .email()).
+const optionalText = (schema) => z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? null : v), schema.nullable().optional());
+
+// Contraseña elegida por el administrador (si se omite, el backend genera una temporal).
+// Máximo 72: bcrypt ignora lo que pase de 72 bytes.
+const passwordSchema = z
+  .string()
+  .min(8, 'Mínimo 8 caracteres.')
+  .max(72, 'Máximo 72 caracteres.')
+  .regex(/[A-Za-z]/, 'Debe incluir al menos una letra.')
+  .regex(/\d/, 'Debe incluir al menos un número.');
+
+/**
+ * Acceso al portal (todo opcional):
+ *   crear:        { enabled: true, email, password? }
+ *   actualizar:   { email?, resetPassword?, password?, status? }
+ */
+const portalSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    email: optionalText(z.string().trim().email('Correo inválido.').max(150)),
+    password: optionalText(passwordSchema),
+    resetPassword: z.boolean().optional(),
+    status: z.enum(['active', 'inactive']).optional(),
+  })
+  .optional();
+
 const guardianSchema = z.object({
   userId: z.string().uuid().optional(),
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  nationalId: z.string().optional(),
-  phone: z.string().optional(),
-  email: z.string().email().optional(),
+  firstName: z.string().trim().min(1, 'El nombre es obligatorio.'),
+  lastName: z.string().trim().min(1, 'El apellido es obligatorio.'),
+  nationalId: optionalText(z.string().trim().max(30)),
+  phone: optionalText(z.string().trim().max(30)),
+  email: optionalText(z.string().trim().email('Correo inválido.').max(150)),
+  portal: portalSchema,
 });
 
 const linkSchema = z.object({
@@ -72,6 +101,11 @@ const updateGuardian = asyncHandler(async (req, res) => {
   res.status(200).json(row);
 });
 
+const deleteGuardian = asyncHandler(async (req, res) => {
+  await service.deleteGuardian(req.db, req.tenantId, req.params.id);
+  res.status(204).send();
+});
+
 // ---- Asociación ----
 
 const linkGuardian = asyncHandler(async (req, res) => {
@@ -94,6 +128,7 @@ module.exports = {
   getGuardian,
   createGuardian,
   updateGuardian,
+  deleteGuardian,
   linkGuardian,
   unlinkGuardian,
 };

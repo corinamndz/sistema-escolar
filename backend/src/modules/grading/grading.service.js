@@ -13,6 +13,16 @@ async function upsertScore(trx, tenantId, { activityId, studentId, rawScore, max
     throw ApiError.badRequest(`La nota debe estar entre 0 y ${maxScore}.`);
   }
 
+  // Solo alumnos inscritos en la sección del plan (antes se podía calificar a
+  // cualquier alumno del colegio, incluso de otra sección).
+  const enrolled = await trx('enrollments as e')
+    .join('evaluation_plans as ep', 'ep.section_id', 'e.section_id')
+    .where({ 'ep.id': activity.evaluation_plan_id, 'e.student_id': studentId, 'e.tenant_id': tenantId })
+    .first();
+  if (!enrolled) {
+    throw ApiError.unprocessable('El alumno no está inscrito en la sección de este plan de evaluación.');
+  }
+
   const weightedScore = (rawScore / maxScore) * Number(activity.weight_percent);
 
   const existing = await trx('activity_scores')

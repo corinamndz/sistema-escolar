@@ -14,6 +14,9 @@ import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
 import { useToast } from '../../../components/ui/Toast';
+import Icon from '../../../components/ui/Icon';
+import StaffAccessModal, { StaffAccessBadge } from '../components/StaffAccessModal';
+import { CredentialsModal, formatDateTime } from '../../students/components/PortalAccessFields';
 
 const STAFF_TYPE_LABELS = {
   administrative: 'Administrativo',
@@ -37,6 +40,10 @@ function StaffPage() {
   );
   const [editing, setEditing] = useState(null); // null = cerrado, {} = crear, {...} = editar
   const [viewing, setViewing] = useState(null);
+  const [managingAccess, setManagingAccess] = useState(null);
+  const [credentials, setCredentials] = useState(null); // contraseña temporal: se muestra una sola vez
+  // Gestionar accesos = asignar roles = otorgar permisos: exige también editar Roles (igual que el backend).
+  const canManageAccess = can('staff', 'update') && can('roles', 'update');
 
   const columns = [
     {
@@ -62,6 +69,17 @@ function StaffPage() {
     { key: 'phone', header: 'Teléfono' },
     { key: 'email', header: 'Correo' },
     { key: 'status', header: 'Estado', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
+    {
+      key: 'access',
+      header: 'Acceso',
+      render: (r) => (
+        <div title={r.access_username || 'Sin usuario de acceso'}>
+          <StaffAccessBadge status={r.access_status} />
+          {r.access_username && <div className="cell-person__sub portal-username">{r.access_username}</div>}
+        </div>
+      ),
+      sortValue: (r) => ({ active: 0, inactive: 1 })[r.access_status] ?? 2,
+    },
   ];
 
   return (
@@ -88,6 +106,11 @@ function StaffPage() {
         createLabel="Nuevo personal"
         onCreate={() => setEditing({})}
         canCreate={can('staff', 'create')}
+        rowActions={
+          canManageAccess
+            ? [{ key: 'access', icon: 'lock', label: 'Gestionar acceso al sistema', onClick: setManagingAccess }]
+            : []
+        }
         onView={setViewing}
         onEdit={setEditing}
         canEdit={can('staff', 'update')}
@@ -121,12 +144,61 @@ function StaffPage() {
                 }
               : undefined
           }
-        />
+        >
+          <div className="detail-section">
+            <h4 className="detail-section__title">
+              <Icon name="lock" size={17} /> Acceso al sistema
+              <StaffAccessBadge status={viewing.access_status} />
+            </h4>
+            <div className="portal-summary" style={{ margin: 0 }}>
+              {viewing.access_username ? (
+                <>
+                  <span>
+                    Usuario: <strong>{viewing.access_username}</strong>
+                  </span>
+                  <span className="text-muted">
+                    {viewing.access_last_login_at ? `Último ingreso: ${formatDateTime(viewing.access_last_login_at)}` : 'Aún no ha ingresado'}
+                  </span>
+                </>
+              ) : (
+                <span className="text-muted">Todavía no tiene usuario para entrar al sistema.</span>
+              )}
+              {canManageAccess && (
+                <Button
+                  size="sm"
+                  variant={viewing.access_username ? 'secondary' : 'primary'}
+                  icon="lock"
+                  onClick={() => {
+                    setManagingAccess(viewing);
+                    setViewing(null);
+                  }}
+                >
+                  {viewing.access_username ? 'Gestionar credenciales' : 'Crear usuario de acceso'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DetailModal>
       )}
 
       {editing !== null && (
         <StaffFormModal initial={editing} onClose={() => setEditing(null)} onSaved={refetch} />
       )}
+
+      {managingAccess && (
+        <StaffAccessModal
+          staff={managingAccess}
+          onClose={() => setManagingAccess(null)}
+          onSaved={({ access, temporaryPassword }) => {
+            refetch();
+            if (temporaryPassword) {
+              setCredentials({ name: fullName(managingAccess), username: access.username, password: temporaryPassword });
+            }
+          }}
+        />
+      )}
+
+      {credentials && <CredentialsModal {...credentials} onClose={() => setCredentials(null)} />}
     </div>
   );
 }

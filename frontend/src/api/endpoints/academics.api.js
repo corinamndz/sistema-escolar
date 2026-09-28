@@ -1,23 +1,49 @@
 import { axiosClient } from '../axiosClient';
 
+const get = (url, params) => axiosClient.get(url, { params }).then((r) => r.data);
+const post = (url, data) => axiosClient.post(url, data).then((r) => r.data);
+const put = (url, data) => axiosClient.put(url, data).then((r) => r.data);
+const del = (url) => axiosClient.delete(url).then((r) => r.data);
+
 const academicsApi = {
-  listSchoolPeriods: () => axiosClient.get('/academics/school-periods').then((r) => r.data),
-  createSchoolPeriod: (data) => axiosClient.post('/academics/school-periods', data).then((r) => r.data),
+  listLevels: () => get('/academics/levels'),
 
-  listClassrooms: () => axiosClient.get('/academics/classrooms').then((r) => r.data),
-  createClassroom: (data) => axiosClient.post('/academics/classrooms', data).then((r) => r.data),
+  listSchoolPeriods: () => get('/academics/school-periods'),
+  createSchoolPeriod: (data) => post('/academics/school-periods', data),
 
-  listGrades: () => axiosClient.get('/academics/grades').then((r) => r.data),
-  createGrade: (data) => axiosClient.post('/academics/grades', data).then((r) => r.data),
+  listClassrooms: () => get('/academics/classrooms'),
+  createClassroom: (data) => post('/academics/classrooms', data),
 
-  listSections: (params) => axiosClient.get('/academics/sections', { params }).then((r) => r.data),
-  getSection: (id) => axiosClient.get(`/academics/sections/${id}`).then((r) => r.data),
-  createSection: (data) => axiosClient.post('/academics/sections', data).then((r) => r.data),
-  updateSection: (id, data) => axiosClient.put(`/academics/sections/${id}`, data).then((r) => r.data),
-  getRoster: (id) => axiosClient.get(`/academics/sections/${id}/roster`).then((r) => r.data),
+  listGrades: (params) => get('/academics/grades', params),
+  createGrade: (data) => post('/academics/grades', data),
+  updateGrade: (id, data) => put(`/academics/grades/${id}`, data),
+  getGradeSubjects: (id) => get(`/academics/grades/${id}/subjects`),
+  /** `subjects = [{ subjectId, weeklyHours? }]` en el orden del plan de estudios. */
+  setGradeSubjects: (id, subjects) => put(`/academics/grades/${id}/subjects`, { subjects }),
 
-  enroll: (data) => axiosClient.post('/academics/enrollments', data).then((r) => r.data),
-  withdraw: (id) => axiosClient.delete(`/academics/enrollments/${id}`).then((r) => r.data),
+  listSubjects: (params) => get('/academics/subjects', params),
+  createSubject: (data) => post('/academics/subjects', data),
+  updateSubject: (id, data) => put(`/academics/subjects/${id}`, data),
+  deleteSubject: (id) => del(`/academics/subjects/${id}`),
+
+  listSections: (params) => get('/academics/sections', params),
+  getSection: (id) => get(`/academics/sections/${id}`),
+  createSection: (data) => post('/academics/sections', data),
+  updateSection: (id, data) => put(`/academics/sections/${id}`, data),
+  getRoster: (id) => get(`/academics/sections/${id}/roster`),
+
+  /**
+   * Asignación docente de una sección. La forma depende del nivel:
+   *   homeroom → { leadTeacherId, assistantTeacherId }
+   *   subjects → { subjects: [{ subjectId, teacherId }] }
+   */
+  getSectionTeachers: (id) => get(`/academics/sections/${id}/teachers`),
+  setSectionTeachers: (id, data) => put(`/academics/sections/${id}/teachers`, data),
+
+  getTeachingLoad: (params) => get('/academics/teaching-load', params),
+
+  enroll: (data) => post('/academics/enrollments', data),
+  withdraw: (id) => del(`/academics/enrollments/${id}`),
 };
 
 export default academicsApi;

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import tenantApi from '../api/endpoints/tenant.api';
 import { useAuth } from './AuthContext';
 
@@ -42,12 +42,41 @@ function TenantProvider({ children }) {
     }
   }, []);
 
+  // Solo se vuelve a los valores por defecto al CERRAR sesión. Al montar sin
+  // sesión no se toca nada: los efectos de los hijos (el login) corren antes que
+  // este, y un reset aquí pisaría la marca que el login acaba de aplicar.
+  const authRef = useRef(isAuthenticated);
   useEffect(() => {
+    const wasAuthenticated = authRef.current;
+    authRef.current = isAuthenticated;
     if (isAuthenticated) load();
-    else setSettings(DEFAULT_SETTINGS);
+    else if (wasAuthenticated) setSettings(DEFAULT_SETTINGS);
   }, [isAuthenticated, load]);
 
-  const value = useMemo(() => ({ settings, loading, refreshTenant: load }), [settings, loading, load]);
+  /**
+   * Marca pública del colegio (GET /public/tenants/:slug/branding) para pintar
+   * el login antes de autenticarse; `null` vuelve a la marca genérica. Con
+   * sesión iniciada se ignora: manda la configuración completa del colegio.
+   */
+  const applyBranding = useCallback((branding) => {
+    if (authRef.current) return;
+    setSettings(
+      branding
+        ? {
+            ...DEFAULT_SETTINGS,
+            name: branding.name,
+            logoUrl: resolveAssetUrl(branding.logoUrl),
+            primaryColor: branding.primaryColor,
+            secondaryColor: branding.secondaryColor,
+          }
+        : DEFAULT_SETTINGS
+    );
+  }, []);
+
+  const value = useMemo(
+    () => ({ settings, loading, refreshTenant: load, applyBranding }),
+    [settings, loading, load, applyBranding]
+  );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;
 }

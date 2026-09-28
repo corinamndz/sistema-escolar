@@ -115,15 +115,21 @@ function StudentDetailPage() {
   );
 }
 
+/** Relaciones estándar alumno ↔ representante. Se guarda el texto tal cual (así se muestra en fichas y portal). */
+const RELATIONSHIPS = ['Madre', 'Padre', 'Representante Legal', 'Tutor / Familiar', 'Otro'];
+
 function LinkGuardianModal({ studentId, onClose, onLinked }) {
   const { data: guardians, loading: loadingGuardians } = useFetch(() => studentsApi.listGuardians(), []);
-  const [form, setForm] = useState({ guardianId: '', relationship: '', isPrimary: false });
-  const { run, loading, error } = useMutation((data) => studentsApi.linkGuardian(studentId, data));
+  const [form, setForm] = useState({ guardianId: '', relationship: '', otherRelationship: '', isPrimary: false });
+  const { run, loading, error, fieldErrors } = useMutation((data) => studentsApi.linkGuardian(studentId, data));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // "Otro" puede precisarse (ej. "Abuela"); si no se especifica, se guarda "Otro".
+    const relationship =
+      form.relationship === 'Otro' && form.otherRelationship.trim() ? form.otherRelationship.trim() : form.relationship;
     try {
-      await run(form);
+      await run({ guardianId: form.guardianId, relationship, isPrimary: form.isPrimary });
       onLinked();
       onClose();
     } catch {
@@ -153,13 +159,34 @@ function LinkGuardianModal({ studentId, onClose, onLinked }) {
             </Select>
           </Field>
           <div style={{ height: 12 }} />
-          <Field label="Relación (padre, madre, representante legal…)">
-            <Input
+          <Field label="Relación con el alumno" error={fieldErrors.relationship} required>
+            <Select
               value={form.relationship}
               onChange={(e) => setForm((f) => ({ ...f, relationship: e.target.value }))}
               required
-            />
+            >
+              <option value="">Selecciona…</option>
+              {RELATIONSHIPS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </Select>
           </Field>
+          {form.relationship === 'Otro' && (
+            <>
+              <div style={{ height: 12 }} />
+              <Field label="Especifica la relación" hint="Opcional. Ej.: Abuela, Tía, Padrino.">
+                <Input
+                  value={form.otherRelationship}
+                  onChange={(e) => setForm((f) => ({ ...f, otherRelationship: e.target.value }))}
+                  maxLength={30}
+                  placeholder="Otro"
+                  autoFocus
+                />
+              </Field>
+            </>
+          )}
           <div style={{ height: 12 }} />
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
             <input

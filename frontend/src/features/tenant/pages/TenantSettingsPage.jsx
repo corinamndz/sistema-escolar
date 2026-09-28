@@ -13,6 +13,7 @@ import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
 import ImageUpload from '../../../components/ui/ImageUpload';
 import { useToast } from '../../../components/ui/Toast';
+import { notifyBrandingChanged } from '../../../lib/tenantSlug';
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 
@@ -101,7 +102,8 @@ function TenantSettingsPage() {
 
     try {
       await run(data);
-      await refreshTenant();
+      await refreshTenant(); // esta pestaña: tema actualizado al instante
+      notifyBrandingChanged(); // otras pestañas con el login abierto: recargan la marca
       setLogoFile(null);
       setRemoveLogo(false);
       toast.success('Configuración guardada', 'Los cambios ya se ven en todo el sistema.');

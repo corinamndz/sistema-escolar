@@ -72,10 +72,21 @@ async function deleteLogo(relativePath) {
   }
 }
 
+/**
+ * Ruta absoluta del archivo del logo (para incrustarlo en PDFs), o null si no
+ * es un logo guardado por este módulo, no existe, o cae fuera de storage/logos.
+ */
+function resolveLogoFile(storedValue) {
+  if (!isStoredLogo(storedValue)) return null;
+  const absolute = path.resolve(STORAGE_ROOT, storedValue);
+  if (!absolute.startsWith(LOGOS_DIR + path.sep)) return null;
+  return require('fs').existsSync(absolute) ? absolute : null;
+}
+
 /** Ruta relativa en BD → URL servida por el backend. Las URLs externas antiguas se devuelven tal cual. */
 function toPublicUrl(storedValue) {
   if (!storedValue) return null;
   return isStoredLogo(storedValue) ? `/storage/${storedValue}` : storedValue;
 }
 
-module.exports = { LOGOS_DIR, saveLogo, deleteLogo, toPublicUrl };
+module.exports = { LOGOS_DIR, saveLogo, deleteLogo, toPublicUrl, resolveLogoFile };

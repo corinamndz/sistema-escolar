@@ -55,6 +55,26 @@ app.use((err, req, res, next) => {
     return res.status(err.statusCode).json({ error: { message: err.message, details: err.details } });
   }
 
+  // Errores de integridad de PostgreSQL que llegaron hasta aquí (el servicio
+  // valida antes, pero la base es la última red de seguridad).
+  if (err.code === '23514') {
+    // Los RAISE de nuestros triggers (sin `constraint`) ya traen un mensaje pensado
+    // para el usuario; un CHECK de columna trae texto técnico, así que se generaliza.
+    // Knex antepone la consulta al mensaje ("<sql> - <mensaje>"): se conserva solo
+    // el mensaje, que por convención nunca contiene " - ".
+    const raw = err.message || '';
+    const message = err.constraint
+      ? 'Los datos no cumplen una regla de validación.'
+      : raw.slice(raw.lastIndexOf(' - ') + (raw.includes(' - ') ? 3 : 0));
+    return res.status(422).json({ error: { message } });
+  }
+  if (err.code === '23505') {
+    return res.status(409).json({ error: { message: 'Ya existe un registro con esos datos.' } });
+  }
+  if (err.code === '23503') {
+    return res.status(409).json({ error: { message: 'El registro está en uso o hace referencia a un dato inexistente.' } });
+  }
+
   // eslint-disable-next-line no-console
   console.error(err);
   return res.status(500).json({ error: { message: 'Error interno del servidor.' } });

@@ -30,14 +30,22 @@ function signRefreshToken(user) {
  * con `app.tenant_id` fijado.
  */
 async function login({ tenantSlug, username, password }) {
-  const tenant = await db('tenants').where({ slug: tenantSlug, status: 'active' }).first();
+  // Los slugs son minúsculas: "Demo" o " demo " deben encontrar el mismo colegio
+  // (igual que el branding público del login).
+  const slug = String(tenantSlug || '').trim().toLowerCase();
+  const tenant = await db('tenants').where({ slug, status: 'active' }).first();
   if (!tenant) {
     throw ApiError.unauthorized('Colegio no encontrado o inactivo.');
   }
 
+  // Los usuarios del portal (representantes) usan su correo como usuario y se
+  // guardan en minúsculas: "Maria@Correo.com" debe poder iniciar sesión igual.
+  // Los usuarios que no son correo se comparan tal cual, como siempre.
+  const lookup = typeof username === 'string' && username.includes('@') ? username.trim().toLowerCase() : username;
+
   return withTenantTransaction(tenant.id, async (trx) => {
     const user = await trx('users')
-      .where({ tenant_id: tenant.id, username })
+      .where({ tenant_id: tenant.id, username: lookup })
       .first();
 
     if (!user || user.status !== 'active') {
@@ -127,10 +135,33 @@ async function changePassword(trx, tenantId, userId, { currentPassword, newPassw
   invalidatePermissionsCache(tenantId, userId);
 }
 
+/**
+ * Perfil del usuario autenticado, con la MISMA forma (camelCase) que el
+ * `user` del login: el frontend reemplaza el usuario del login por esta
+ * respuesta, así que cualquier campo con otro nombre se "pierde" (antes
+ * `full_name` hacía que el saludo mostrara el correo en vez del nombre).
+ *
+ * El nombre no va en el JWT a propósito: el token dura horas y un cambio de
+ * nombre no se vería hasta volver a iniciar sesión.
+ */
 async function getMe(trx, tenantId, userId) {
-  const user = await trx('users')
-    .where({ id: userId, tenant_id: tenantId })
-    .select('id', 'username', 'full_name', 'status', 'last_login_at')
+  const user = await trx('users as u')
+    .join('tenants as t', 't.id', 'u.tenant_id')
+    .leftJoin('guardians as g', function joinGuardian() {
+      this.on('g.user_id', 'u.id').andOn('g.tenant_id', 'u.tenant_id');
+    })
+    .where({ 'u.id': userId, 'u.tenant_id': tenantId })
+    .select(
+      'u.id',
+      'u.username',
+      'u.full_name',
+      'u.status',
+      'u.last_login_at',
+      't.id as tenant_id',
+      't.name as tenant_name',
+      't.slug as tenant_slug',
+      'g.id as guardian_id'
+    )
     .first();
   if (!user) throw ApiError.notFound('Usuario no encontrado.');
 
@@ -139,7 +170,19 @@ async function getMe(trx, tenantId, userId) {
     .where('ur.user_id', userId)
     .select('r.id', 'r.name');
 
-  return { ...user, roles };
+  return {
+    id: user.id,
+    username: user.username,
+    fullName: user.full_name,
+    status: user.status,
+    lastLoginAt: user.last_login_at,
+    tenantId: user.tenant_id,
+    tenantName: user.tenant_name,
+    tenantSlug: user.tenant_slug,
+    // Si el usuario es un representante (portal de padres), su id de representante.
+    guardianId: user.guardian_id || null,
+    roles,
+  };
 }
 
 module.exports = { login, refresh, createUser, changePassword, getMe };

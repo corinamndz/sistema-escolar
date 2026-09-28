@@ -4,3 +4,4 @@ storage/receipts/*.pdf
 npm-debug.log*
 .DS_Store
 storage/logos/*/
+storage/payment-proofs/*/

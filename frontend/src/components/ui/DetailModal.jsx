@@ -22,6 +22,7 @@ function DetailModal({ title, subtitle, badge, fields, onClose, onEdit, children
         </div>
       )}
 
+      {fields.length > 0 && (
       <dl className="detail-list">
         {fields.map((f) => (
           <div key={f.label} className={`detail-list__item ${f.full ? 'detail-list__item--full' : ''}`}>
@@ -30,6 +31,7 @@ function DetailModal({ title, subtitle, badge, fields, onClose, onEdit, children
           </div>
         ))}
       </dl>
+      )}
 
       {children}
 

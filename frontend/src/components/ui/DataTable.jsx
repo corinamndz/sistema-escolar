@@ -59,6 +59,9 @@ const allowed = (rule, row) => (typeof rule === 'function' ? rule(row) : rule !=
  * promesa: la tabla pide confirmación, muestra el estado de carga en la fila y
  * notifica el éxito o el error del backend con un toast.
  *
+ * `rowActions` agrega botones propios del módulo (ej. "Asignar docentes")
+ * antes de Ver / Editar / Eliminar.
+ *
  * `bare` omite la tarjeta contenedora (para usarla dentro de otra tarjeta).
  */
 function DataTable({
@@ -92,6 +95,8 @@ function DataTable({
   deleteConfirm,
   onDeleted,
   deleteSuccessMessage = 'Registro eliminado',
+  // Acciones adicionales: [{ key, icon, label, onClick(row), show?(row), tone?: 'accent' | 'view' | 'edit' | 'delete' }]
+  rowActions = [],
   // Otros
   emptyMessage = 'No hay registros todavía.',
   stackOnMobile = true,
@@ -138,7 +143,7 @@ function DataTable({
 
   const showCreate = Boolean(onCreate) && canCreate;
   const showSearch = searchable && allRows.length > searchThreshold;
-  const hasActions = Boolean(onView || onEdit || onDelete);
+  const hasActions = Boolean(onView || onEdit || onDelete || rowActions.length);
 
   const handleDelete = async (row) => {
     const texts = deleteConfirm?.(row) || {};
@@ -307,6 +312,20 @@ function DataTable({
                   {hasActions && (
                     <td data-label="" style={{ textAlign: 'right' }}>
                       <div className="row-actions">
+                        {rowActions
+                          .filter((a) => !a.show || a.show(row))
+                          .map((a) => (
+                            <button
+                              key={a.key}
+                              type="button"
+                              className={`row-action row-action--${a.tone || 'accent'}`}
+                              onClick={() => a.onClick(row)}
+                              title={a.label}
+                              aria-label={a.label}
+                            >
+                              <Icon name={a.icon} size={16} />
+                            </button>
+                          ))}
                         {onView && allowed(canView, row) && (
                           <button type="button" className="row-action row-action--view" onClick={() => onView(row)} title="Ver detalle" aria-label="Ver detalle">
                             <Icon name="eye" size={16} />

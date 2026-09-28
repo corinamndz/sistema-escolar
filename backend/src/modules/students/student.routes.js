@@ -19,5 +19,6 @@ router.get('/guardians', requirePermission('guardians', 'read'), controller.list
 router.post('/guardians', requirePermission('guardians', 'create'), controller.createGuardian);
 router.get('/guardians/:id', requirePermission('guardians', 'read'), controller.getGuardian);
 router.put('/guardians/:id', requirePermission('guardians', 'update'), controller.updateGuardian);
+router.delete('/guardians/:id', requirePermission('guardians', 'delete'), controller.deleteGuardian);
 
 module.exports = router;

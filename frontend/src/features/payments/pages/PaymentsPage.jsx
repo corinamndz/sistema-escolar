@@ -1,117 +1,601 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import paymentsApi from '../../../api/endpoints/payments.api';
 import studentsApi from '../../../api/endpoints/students.api';
+import academicsApi from '../../../api/endpoints/academics.api';
+import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
-import RequirePermission from '../../../components/RequirePermission';
 import PageHeader from '../../../components/ui/PageHeader';
-import Table from '../../../components/ui/Table';
+import DataTable from '../../../components/ui/DataTable';
+import StatCard from '../../../components/ui/StatCard';
 import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
-import Badge from '../../../components/ui/Badge';
 import Spinner from '../../../components/ui/Spinner';
+import Icon from '../../../components/ui/Icon';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { useToast } from '../../../components/ui/Toast';
+import { getErrorMessage } from '../../../api/axiosClient';
+import { LEVELS, LEVEL_CODES } from '../../academics/levels';
+import { BsBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatAmounts, formatDate, formatMoney } from '../paymentStatus';
+import { ExchangeRatePanel } from '../components/ExchangeRatePanel';
+import { PaymentFormModal } from '../components/PaymentForms';
+import { PaymentDetailModal } from '../components/PaymentDetailModal';
+import { Link } from 'react-router-dom';
 
-const STATUS_BADGE = {
-  pending: ['Pendiente', 'warning'],
-  paid: ['Pagado', 'success'],
-  failed: ['Fallido', 'danger'],
-  refunded: ['Reembolsado', 'neutral'],
-};
+const FILTERS = [
+  { key: 'due', label: 'Por cobrar' },
+  { key: 'overdue', label: 'Vencidos' },
+  { key: 'reported', label: 'Reportados' },
+  { key: 'scheduled', label: 'Programados' },
+  { key: 'paid', label: 'Pagados' },
+  { key: 'cancelled', label: 'Anulados' },
+  { key: '', label: 'Todos' },
+];
 
 function PaymentsPage() {
-  const [status, setStatus] = useState('');
-  const { data: rows, loading, error, refetch } = useFetch(() => paymentsApi.list(status ? { status } : undefined), [status]);
-  const [showCreate, setShowCreate] = useState(false);
-  const [notice, setNotice] = useState(null);
-  const { run: markPaidRun, loading: marking, error: markError } = useMutation(paymentsApi.markAsPaid);
-
+  const { can, user } = useAuth();
   const confirm = useConfirm();
+  const toast = useToast();
+  const { data: periods } = useFetch(() => academicsApi.listSchoolPeriods(), []);
+  const [status, setStatus] = useState('due');
+  const [schoolPeriodId, setSchoolPeriodId] = useState('');
+  const params = { ...(status ? { status } : {}), ...(schoolPeriodId ? { schoolPeriodId } : {}) };
+  const { data: rows, loading, error, refetch } = useFetch(() => paymentsApi.list(params), [status, schoolPeriodId]);
+  const { data: summary, refetch: refetchSummary } = useFetch(
+    () => paymentsApi.summary(schoolPeriodId ? { schoolPeriodId } : undefined),
+    [schoolPeriodId]
+  );
+  const [modal, setModal] = useState(null); // 'fees' | 'generate' | 'other'
 
-  const handleMarkAsPaid = async (id) => {
+  const reload = () => {
+    refetch();
+    refetchSummary();
+  };
+
+  const [viewing, setViewing] = useState(null); // cobro en "Ver detalle"
+  const [paying, setPaying] = useState(null); // { payment, mode: 'register' | 'report' }
+
+  const canRegister = can('payments', 'approve_payment');
+  const canCancel = can('payments', 'update');
+  // Un representante que llega a esta página solo puede REPORTAR sus propias cuotas.
+  const isOwnPayment = (p) => Boolean(user?.guardianId) && p.guardian_id === user.guardianId;
+
+  const handleCancel = async (p) => {
     const ok = await confirm({
-      title: '¿Confirmar que este pago fue recibido?',
-      message: 'Se generará el comprobante y se enviará por correo al representante.',
-      icon: 'checkCircle',
-      confirmLabel: 'Sí, confirmar pago',
+      title: `¿Anular ${p.period_label}?`,
+      message: `El cobro a ${p.student_first_name} ${p.student_last_name} dejará de ser exigible. Queda en el historial como anulado.`,
+      danger: true,
+      confirmLabel: 'Anular cobro',
     });
     if (!ok) return;
-    setNotice(null);
     try {
-      const result = await markPaidRun(id);
-      setNotice(
-        result.emailSent
-          ? 'Pago registrado y comprobante enviado por correo.'
-          : `Pago registrado, pero el correo no pudo enviarse${result.emailError ? `: ${result.emailError}` : '.'}`
-      );
-      refetch();
-    } catch {
-      // error visible arriba
+      await paymentsApi.cancel(p.id);
+      toast.success('Cobro anulado', p.period_label);
+      reload();
+    } catch (err) {
+      toast.error('No se pudo anular', getErrorMessage(err));
     }
   };
 
   const columns = [
-    { key: 'student', header: 'Alumno', render: (p) => `${p.student_first_name} ${p.student_last_name}` },
-    { key: 'guardian', header: 'Representante', render: (p) => `${p.guardian_first_name} ${p.guardian_last_name}` },
-    { key: 'period_label', header: 'Concepto' },
-    { key: 'amount', header: 'Monto', render: (p) => `${p.currency} ${Number(p.amount).toFixed(2)}` },
-    { key: 'status', header: 'Estado', render: (p) => { const [label, variant] = STATUS_BADGE[p.status] || ['—', 'neutral']; return <Badge variant={variant}>{label}</Badge>; } },
     {
-      key: 'receipt',
-      header: 'Comprobante',
-      render: (p) => (p.receipt_url ? <a href={p.receipt_url} target="_blank" rel="noreferrer">Ver PDF</a> : '—'),
+      key: 'student',
+      header: 'Alumno',
+      render: (p) => (
+        <div>
+          <div className="cell-person__name">
+            {p.student_first_name} {p.student_last_name}
+          </div>
+          <div className="cell-person__sub">
+            Resp.: {p.guardian_first_name} {p.guardian_last_name}
+          </div>
+        </div>
+      ),
+      sortValue: (p) => `${p.student_last_name} ${p.student_first_name}`,
     },
     {
-      key: 'actions',
-      header: '',
+      key: 'period_label',
+      header: 'Concepto',
+      render: (p) => (
+        <div>
+          <div>{p.period_label}</div>
+          {p.kind === 'tuition' ? <span className="chip">Mensualidad</span> : <span className="chip">Otro cobro</span>}
+        </div>
+      ),
+      sortValue: (p) => p.billing_month || p.period_label,
+    },
+    {
+      key: 'amount',
+      header: 'Monto',
       align: 'right',
-      render: (p) =>
-        p.status === 'pending' && (
-          <RequirePermission module="payments" action="approve_payment">
-            <Button size="sm" onClick={() => handleMarkAsPaid(p.id)} loading={marking}>
-              Marcar como pagado
-            </Button>
-          </RequirePermission>
-        ),
+      render: (p) => (
+        <div className="amount-cell">
+          <strong>{formatMoney(p.amount, p.currency)}</strong>
+          <BsBreakdown payment={p} compact />
+        </div>
+      ),
+      sortValue: (p) => Number(p.amount),
+    },
+    { key: 'due_date', header: 'Fecha límite', render: (p) => <DueDate payment={p} />, sortValue: (p) => p.due_date },
+    {
+      key: 'status',
+      header: 'Estado',
+      render: (p) => (
+        <div>
+          <PaymentStatusBadge payment={p} />
+          {p.display_status === 'reported' && (
+            <div className="cell-person__sub">
+              {REPORT_METHODS[p.report_method]}
+              {p.report_reference && ` · ${p.report_reference}`}
+            </div>
+          )}
+          {p.proof_path && (
+            <div className="cell-person__sub proof-flag" title={`Soporte adjunto: ${p.proof_original_name}`}>
+              <Icon name="paperclip" size={12} /> Con soporte
+            </div>
+          )}
+          {p.display_status === 'paid' && p.paid_at && <div className="cell-person__sub">{formatDate(p.paid_at)}</div>}
+        </div>
+      ),
+      sortValue: (p) => p.display_status,
     },
   ];
+
+  const pendingStatuses = ['pending', 'overdue', 'reported', 'scheduled'];
+  const rowActions = [
+    {
+      key: 'register',
+      icon: 'check',
+      label: 'Registrar pago',
+      tone: 'edit',
+      show: (p) => canRegister && pendingStatuses.includes(p.display_status),
+      onClick: (p) => setPaying({ payment: p, mode: 'register' }),
+    },
+    {
+      key: 'report',
+      icon: 'wallet',
+      label: 'Reportar pago',
+      tone: 'edit',
+      show: (p) => !canRegister && isOwnPayment(p) && pendingStatuses.includes(p.display_status),
+      onClick: (p) => setPaying({ payment: p, mode: 'report' }),
+    },
+    {
+      key: 'receipt',
+      icon: 'receipt',
+      label: 'Ver comprobante',
+      tone: 'view',
+      show: (p) => Boolean(p.receipt_url),
+      onClick: (p) => window.open(p.receipt_url, '_blank', 'noopener'),
+    },
+    {
+      key: 'cancel',
+      icon: 'x',
+      label: 'Anular cobro',
+      tone: 'delete',
+      show: (p) => canCancel && pendingStatuses.includes(p.display_status),
+      onClick: handleCancel,
+    },
+  ];
+
+  const dueTotal = summary && ['pending', 'overdue', 'reported'].reduce((n, s) => n + summary[s].count, 0);
+  /** "≈ Bs. 192.120,00" con la tasa vigente; vacío si falta la tasa. */
+  const bsHint = (statuses) => {
+    if (!summary || statuses.every((s) => summary[s].count === 0)) return '';
+    if (statuses.some((s) => summary[s].total_ves === null)) return '';
+    return `≈ ${formatMoney(statuses.reduce((n, s) => n + summary[s].total_ves, 0), 'VES')}`;
+  };
+  const dueAmounts = summary
+    ? mergeAmounts(['pending', 'overdue', 'reported'].flatMap((s) => summary[s].amounts))
+    : [];
 
   return (
     <div>
       <PageHeader
         title="Pagos"
-        subtitle="Mensualidades y comprobantes"
+        subtitle="Mensualidades y otros cobros. Cada mes se exige dentro de sus primeros 5 días."
         actions={
-          <RequirePermission module="payments" action="create">
-            <Button onClick={() => setShowCreate(true)}>+ Registrar pago</Button>
-          </RequirePermission>
+          <>
+            {can('payments', 'update') && (
+              <Button variant="secondary" icon="settings" onClick={() => setModal('fees')}>
+                Tarifas
+              </Button>
+            )}
+            {can('payments', 'create') && (
+              <>
+                <Button variant="secondary" icon="plus" onClick={() => setModal('other')}>
+                  Otro cobro
+                </Button>
+                <Button icon="sparkles" onClick={() => setModal('generate')}>
+                  Generar mensualidades
+                </Button>
+              </>
+            )}
+          </>
         }
       />
 
-      <div className="card">
-        <div style={{ marginBottom: 16, maxWidth: 220 }}>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">Todos los estados</option>
-            <option value="pending">Pendiente</option>
-            <option value="paid">Pagado</option>
-            <option value="failed">Fallido</option>
-            <option value="refunded">Reembolsado</option>
-          </Select>
+      {summary?.billing_issues?.length > 0 && (
+        <div className="alert alert--warning billing-issues">
+          <Icon name="alertTriangle" size={18} />
+          <div>
+            <strong>
+              {summary.billing_issues.length} alumno(s) inscrito(s) sin mensualidades.
+            </strong>{' '}
+            Mientras no se corrija, su estado de cuenta muestra 0 pendientes.
+            <ul>
+              {summary.billing_issues.slice(0, 5).map((b) => (
+                <li key={b.enrollment_id}>
+                  {b.student_name} ({b.section}): {b.reasons.join(' ')}
+                </li>
+              ))}
+              {summary.billing_issues.length > 5 && <li>…y {summary.billing_issues.length - 5} más.</li>}
+            </ul>
+            {can('payments', 'update') && summary.billing_issues.some((b) => b.reasons.some((r) => /tarifa/.test(r))) && (
+              <Button size="sm" icon="settings" onClick={() => setModal('fees')}>
+                Configurar tarifas
+              </Button>
+            )}
+          </div>
         </div>
+      )}
 
-        <Alert variant="success">{notice}</Alert>
-        <Alert>{error || markError}</Alert>
-        {loading ? <Spinner /> : <Table columns={columns} rows={rows} emptyMessage="Aún no hay pagos registrados." />}
+      {user?.guardianId && !canRegister && !canCancel && (
+        <div className="alert alert--info">
+          <Icon name="info" size={17} />
+          <div>
+            Para consultar y reportar los pagos de tus representados usa <Link to="/payments/mine">Mis pagos</Link>.
+          </div>
+        </div>
+      )}
+
+      <ExchangeRatePanel onChanged={reload} />
+
+      <div className="grid grid--4" style={{ marginBottom: 24 }}>
+        <StatCard label="Por cobrar" value={summary ? dueTotal : undefined} icon="wallet" tone="warning" hint={summary ? [formatAmounts(dueAmounts), bsHint(['pending', 'overdue', 'reported'])].filter(Boolean).join(' · ') || '—' : ''} />
+        <StatCard label="Vencidos" value={summary?.overdue.count} icon="alertCircle" tone="danger" hint={summary ? [formatAmounts(summary.overdue.amounts), bsHint(['overdue'])].filter(Boolean).join(' · ') || 'Sin atrasos' : ''} />
+        <StatCard label="Reportados por confirmar" value={summary?.reported.count} icon="receipt" tone="info" hint="Pagos informados por representantes" />
+        <StatCard label="Cobrado" value={summary?.paid.count} icon="checkCircle" tone="success" hint={summary ? formatAmounts(summary.paid.amounts) || '—' : ''} />
       </div>
 
-      {showCreate && <RegisterPaymentModal onClose={() => setShowCreate(false)} onCreated={refetch} />}
+      <DataTable
+        title={FILTERS.find((f) => f.key === status)?.label || 'Pagos'}
+        columns={columns}
+        rows={rows}
+        loading={loading}
+        error={error}
+        searchPlaceholder="Buscar alumno, representante o concepto…"
+        getSearchText={(p) =>
+          [p.student_first_name, p.student_last_name, p.guardian_first_name, p.guardian_last_name, p.period_label, p.report_reference].join(' ')
+        }
+        filters={
+          <>
+            <div className="level-filter" role="group" aria-label="Estado">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.key || 'all'}
+                  type="button"
+                  className={`level-filter__item ${status === f.key ? 'level-filter__item--active' : ''}`}
+                  onClick={() => setStatus(f.key)}
+                  aria-pressed={status === f.key}
+                >
+                  {f.label}
+                  {summary && f.key && f.key !== 'due' && summary[f.key] && (
+                    <span className="level-filter__count">{summary[f.key].count}</span>
+                  )}
+                  {summary && f.key === 'due' && <span className="level-filter__count">{dueTotal}</span>}
+                </button>
+              ))}
+            </div>
+            <Select value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)} aria-label="Año escolar">
+              <option value="">Todos los años escolares</option>
+              {(periods || []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </>
+        }
+        emptyMessage={
+          status === 'due'
+            ? 'No hay pagos por cobrar. Si aún no generaste las mensualidades, usa “Generar mensualidades”.'
+            : 'No hay pagos en este estado.'
+        }
+        rowActions={rowActions}
+        onView={setViewing}
+        pageSize={25}
+      />
+
+      {modal === 'fees' && (
+        <TuitionFeesModal
+          periods={periods || []}
+          onClose={() => {
+            setModal(null);
+            reload(); // al recargar, las consultas completan las mensualidades con la tarifa nueva
+          }}
+        />
+      )}
+      {modal === 'generate' && (
+        <GenerateTuitionModal periods={periods || []} onClose={() => setModal(null)} onGenerated={reload} />
+      )}
+      {modal === 'other' && <RegisterPaymentModal onClose={() => setModal(null)} onCreated={reload} />}
+
+      {viewing && (
+        <PaymentDetailModal
+          payment={viewing}
+          onClose={() => setViewing(null)}
+          actions={
+            viewing.display_status === 'paid' && canRegister ? (
+              <Button
+                variant="secondary"
+                icon="receipt"
+                onClick={async () => {
+                  try {
+                    const updated = await paymentsApi.regenerateReceipt(viewing.id);
+                    toast.success('Comprobante regenerado', 'Se abrió con el diseño y los datos actuales.');
+                    // Evita la versión anterior en caché del navegador.
+                    window.open(`${updated.receipt_url}?v=${Date.now()}`, '_blank', 'noopener');
+                    reload();
+                  } catch (err) {
+                    toast.error('No se pudo regenerar', getErrorMessage(err));
+                  }
+                }}
+              >
+                Regenerar comprobante
+              </Button>
+            ) : pendingStatuses.includes(viewing.display_status) && (canRegister || isOwnPayment(viewing)) ? (
+              <Button
+                icon={canRegister ? 'check' : 'wallet'}
+                onClick={() => {
+                  setPaying({ payment: viewing, mode: canRegister ? 'register' : 'report' });
+                  setViewing(null);
+                }}
+              >
+                {canRegister ? 'Registrar pago' : 'Reportar pago'}
+              </Button>
+            ) : null
+          }
+        />
+      )}
+
+      {paying && (
+        <PaymentFormModal payment={paying.payment} mode={paying.mode} onClose={() => setPaying(null)} onDone={reload} />
+      )}
     </div>
   );
 }
+
+/** Suma montos de la misma moneda: [{currency,total}] → [{currency,total}]. */
+function mergeAmounts(amounts) {
+  const acc = {};
+  amounts.forEach((a) => {
+    acc[a.currency] = (acc[a.currency] || 0) + a.total;
+  });
+  return Object.entries(acc).map(([currency, total]) => ({ currency, total }));
+}
+
+// ---------------------------------------------------------------------------
+// Tarifas de mensualidad por año escolar (general + por nivel)
+// ---------------------------------------------------------------------------
+
+function TuitionFeesModal({ periods, onClose }) {
+  const [schoolPeriodId, setSchoolPeriodId] = useState(periods.find((p) => p.is_active)?.id || periods[0]?.id || '');
+  const { data: fees, loading, error, refetch } = useFetch(
+    () => (schoolPeriodId ? paymentsApi.listFees(schoolPeriodId) : Promise.resolve([])),
+    [schoolPeriodId]
+  );
+  const period = periods.find((p) => p.id === schoolPeriodId);
+
+  return (
+    <Modal title="Tarifas de mensualidad" onClose={onClose} size="lg">
+      <p style={{ marginTop: -6 }}>
+        Las mensualidades se configuran en <strong>dólares</strong> y se cobran en bolívares con la <strong>tasa BCV del día</strong>.
+        Se cobra una mensualidad por cada mes del año escolar. Cada nivel usa su tarifa propia o, si no tiene, la <strong>tarifa general</strong>.
+        Cambiar una tarifa no modifica mensualidades ya generadas.
+      </p>
+      <Field label="Año escolar">
+        <Select value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)}>
+          {periods.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {period && (!period.start_date || !period.end_date) && (
+        <Alert variant="warning">Este año escolar no tiene fechas de inicio y fin: sin ellas no se pueden calcular los meses a cobrar.</Alert>
+      )}
+      <Alert>{error}</Alert>
+      {loading ? (
+        <Spinner />
+      ) : (
+        schoolPeriodId && (
+          <div className="fee-rows">
+            {[null, ...LEVEL_CODES].map((levelCode) => (
+              <FeeRow
+                key={`${schoolPeriodId}-${levelCode || 'general'}`}
+                schoolPeriodId={schoolPeriodId}
+                levelCode={levelCode}
+                fee={fees.find((f) => (f.level_code || null) === levelCode)}
+                fallback={fees.find((f) => !f.level_code)}
+                onChanged={refetch}
+              />
+            ))}
+          </div>
+        )
+      )}
+      <div className="form-actions">
+        <Button type="button" onClick={onClose}>
+          Listo
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function FeeRow({ schoolPeriodId, levelCode, fee, fallback, onChanged }) {
+  const [form, setForm] = useState({
+    amount: fee ? String(Number(fee.amount)) : '',
+    currency: fee?.currency || fallback?.currency || 'USD',
+    dueDay: fee?.due_day || 5,
+  });
+  const { run, loading, error } = useMutation(paymentsApi.upsertFee);
+  const toast = useToast();
+  const confirm = useConfirm();
+  const title = levelCode ? LEVELS[levelCode].name : 'Tarifa general';
+
+  const save = async () => {
+    try {
+      await run({ schoolPeriodId, levelCode, amount: Number(form.amount), currency: 'USD', dueDay: Number(form.dueDay) });
+      toast.success('Tarifa guardada', title);
+      onChanged();
+    } catch {
+      // error visible en la fila
+    }
+  };
+
+  const remove = async () => {
+    if (!(await confirm({ title: `¿Quitar la tarifa de ${title}?`, message: levelCode ? 'Ese nivel usará la tarifa general.' : 'Los niveles sin tarifa propia no generarán mensualidades.', danger: true, confirmLabel: 'Quitar' }))) return;
+    try {
+      await paymentsApi.deleteFee(fee.id);
+      onChanged();
+    } catch (err) {
+      toast.error('No se pudo quitar', getErrorMessage(err));
+    }
+  };
+
+  const invalid = !(Number(form.amount) > 0) || !(Number(form.dueDay) >= 1 && Number(form.dueDay) <= 28);
+
+  return (
+    <div className={`fee-row ${fee ? 'fee-row--set' : ''}`}>
+      <div className="fee-row__title">
+        <strong>{title}</strong>
+        <span className="cell-person__sub">
+          {fee
+            ? `${formatMoney(fee.amount, fee.currency)} · vence el día ${fee.due_day}`
+            : levelCode
+              ? fallback
+                ? `Usa la general (${formatMoney(fallback.amount, fallback.currency)})`
+                : 'Sin tarifa'
+              : 'Sin tarifa general'}
+        </span>
+      </div>
+      <Input type="number" min="0.01" step="0.01" placeholder="Monto" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} aria-label={`Monto ${title}`} />
+      <Input value="USD" disabled aria-label={`Moneda ${title}`} title="Las mensualidades se configuran en dólares y se cobran en Bs con la tasa BCV del día" />
+      <Input type="number" min="1" max="28" value={form.dueDay} onChange={(e) => setForm((f) => ({ ...f, dueDay: e.target.value }))} aria-label={`Día límite ${title}`} title="Día límite de pago" />
+      <div className="row-actions">
+        <Button size="sm" onClick={save} loading={loading} disabled={invalid}>
+          {fee ? 'Actualizar' : 'Guardar'}
+        </Button>
+        {fee && (
+          <button type="button" className="row-action row-action--delete" onClick={remove} title="Quitar tarifa" aria-label={`Quitar tarifa ${title}`}>
+            <Icon name="trash" size={15} />
+          </button>
+        )}
+      </div>
+      {error && <span className="field-error fee-row__error">{error}</span>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Generar mensualidades (idempotente: solo crea lo que falta)
+// ---------------------------------------------------------------------------
+
+function GenerateTuitionModal({ periods, onClose, onGenerated }) {
+  const [schoolPeriodId, setSchoolPeriodId] = useState(periods.find((p) => p.is_active)?.id || periods[0]?.id || '');
+  const { run, loading, error } = useMutation(paymentsApi.generateTuition);
+  const [result, setResult] = useState(null);
+
+  const handleGenerate = async () => {
+    try {
+      const r = await run(schoolPeriodId);
+      setResult(r);
+      onGenerated();
+    } catch {
+      // error visible en el modal
+    }
+  };
+
+  return (
+    <Modal title="Generar mensualidades" onClose={onClose}>
+      <Alert>{error}</Alert>
+      {!result ? (
+        <>
+          <p style={{ marginTop: -6 }}>
+            Crea las mensualidades de cada alumno inscrito para todos los meses del año escolar (emisión el día 1, vencimiento
+            según la tarifa). <strong>Es seguro repetirlo:</strong> nunca duplica meses, solo completa lo que falta.
+          </p>
+          <p className="text-sm">
+            Normalmente no hace falta: las mensualidades se generan solas al inscribir a un alumno. Úsalo después de cargar o cambiar
+            tarifas, o para inscripciones previas.
+          </p>
+          <Field label="Año escolar">
+            <Select value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)}>
+              {periods.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="form-actions">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="button" icon="sparkles" onClick={handleGenerate} loading={loading} loadingText="Generando…" disabled={!schoolPeriodId}>
+              Generar
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <dl className="detail-list">
+            <div className="detail-list__item">
+              <dt>Mensualidades creadas</dt>
+              <dd>{result.created}</dd>
+            </div>
+            <div className="detail-list__item">
+              <dt>Reactivadas</dt>
+              <dd>{result.reactivated}</dd>
+            </div>
+          </dl>
+          {result.skipped.length > 0 ? (
+            <div className="detail-section">
+              <Alert variant="warning">
+                {result.skipped.length} alumno(s) inscrito(s) no recibieron mensualidades. Corrige lo indicado y vuelve a generar.
+              </Alert>
+              <ul className="assignment-list">
+                {result.skipped.map((s) => (
+                  <li key={s.enrollment_id}>
+                    <strong>{s.student_name}</strong>
+                    <span className="text-muted">{s.section}</span>
+                    <span className="teacher-stack__missing">{s.reasons.join(' ')}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <Alert variant="success">Todos los alumnos inscritos tienen sus mensualidades al día.</Alert>
+          )}
+          <div className="form-actions">
+            <Button type="button" onClick={onClose}>
+              Listo
+            </Button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Otro cobro (inscripción, uniforme…): cargo manual, sin fecha límite
+// ---------------------------------------------------------------------------
 
 function RegisterPaymentModal({ onClose, onCreated }) {
   const { data: students, loading: loadingStudents } = useFetch(() => studentsApi.list({ status: 'active' }), []);
@@ -120,14 +604,17 @@ function RegisterPaymentModal({ onClose, onCreated }) {
     () => (studentId ? studentsApi.getOne(studentId) : Promise.resolve(null)),
     [studentId]
   );
-
   const [form, setForm] = useState({ guardianId: '', periodLabel: '', amount: '', currency: 'USD' });
   const { run, loading, error, fieldErrors } = useMutation(paymentsApi.register);
+  const toast = useToast();
+
+  const guardians = useMemo(() => studentDetail?.guardians || [], [studentDetail]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       await run({ studentId, guardianId: form.guardianId, periodLabel: form.periodLabel, amount: Number(form.amount), currency: form.currency });
+      toast.success('Cobro registrado', form.periodLabel);
       onCreated();
       onClose();
     } catch {
@@ -136,23 +623,34 @@ function RegisterPaymentModal({ onClose, onCreated }) {
   };
 
   return (
-    <Modal title="Registrar pago" onClose={onClose}>
+    <Modal title="Otro cobro" onClose={onClose}>
+      <p style={{ marginTop: -6 }} className="text-sm">
+        Para cargos puntuales (inscripción, uniforme, actividades). Las mensualidades se generan automáticamente.
+      </p>
       <Alert>{error}</Alert>
       {loadingStudents ? (
         <Spinner />
       ) : (
         <form onSubmit={handleSubmit}>
           <div className="form-grid">
-            <Field label="Alumno" error={fieldErrors.studentId} full>
-              <Select value={studentId} onChange={(e) => { setStudentId(e.target.value); setForm((f) => ({ ...f, guardianId: '' })); }} required>
+            <Field label="Alumno" error={fieldErrors.studentId} required>
+              <Select
+                value={studentId}
+                onChange={(e) => {
+                  setStudentId(e.target.value);
+                  setForm((f) => ({ ...f, guardianId: '' }));
+                }}
+                required
+              >
                 <option value="">Selecciona…</option>
                 {students.map((s) => (
-                  <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>
+                  <option key={s.id} value={s.id}>
+                    {s.first_name} {s.last_name}
+                  </option>
                 ))}
               </Select>
             </Field>
-
-            <Field label="Representante que paga" error={fieldErrors.guardianId} full>
+            <Field label="Representante responsable" error={fieldErrors.guardianId} required>
               <Select
                 value={form.guardianId}
                 onChange={(e) => setForm((f) => ({ ...f, guardianId: e.target.value }))}
@@ -160,30 +658,25 @@ function RegisterPaymentModal({ onClose, onCreated }) {
                 required
               >
                 <option value="">{studentId ? 'Selecciona…' : 'Elige un alumno primero'}</option>
-                {studentDetail?.guardians.map((g) => (
-                  <option key={g.id} value={g.id}>{g.first_name} {g.last_name}{g.is_primary ? ' (principal)' : ''}</option>
+                {guardians.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.first_name} {g.last_name}
+                    {g.is_primary ? ' (principal)' : ''}
+                  </option>
                 ))}
               </Select>
-              {studentId && studentDetail && studentDetail.guardians.length === 0 && (
-                <span className="text-muted text-sm">Este alumno no tiene representantes asociados todavía.</span>
+              {studentId && studentDetail && guardians.length === 0 && (
+                <span className="form-hint">Este alumno no tiene representantes asociados todavía.</span>
               )}
             </Field>
-
-            <Field label="Concepto" error={fieldErrors.periodLabel} full>
-              <Input
-                value={form.periodLabel}
-                onChange={(e) => setForm((f) => ({ ...f, periodLabel: e.target.value }))}
-                placeholder="Mensualidad Octubre 2026"
-                required
-              />
+            <Field label="Concepto" error={fieldErrors.periodLabel} full required>
+              <Input value={form.periodLabel} onChange={(e) => setForm((f) => ({ ...f, periodLabel: e.target.value }))} placeholder="Inscripción 2026-2027" maxLength={30} required />
             </Field>
-
-            <Field label="Monto" error={fieldErrors.amount}>
+            <Field label="Monto" error={fieldErrors.amount} required>
               <Input type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} required />
             </Field>
-
-            <Field label="Moneda" error={fieldErrors.currency}>
-              <Input value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))} required />
+            <Field label="Moneda" error={fieldErrors.currency} required>
+              <Input value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value.toUpperCase() }))} required />
             </Field>
           </div>
           <div className="form-actions">
@@ -191,7 +684,7 @@ function RegisterPaymentModal({ onClose, onCreated }) {
               Cancelar
             </Button>
             <Button type="submit" loading={loading}>
-              Registrar
+              Registrar cobro
             </Button>
           </div>
         </form>

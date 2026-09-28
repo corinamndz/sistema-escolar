@@ -20,4 +20,7 @@ router.post('/:planId/activities', requirePermission('evaluation_plans', 'create
 router.put('/:planId/activities/:activityId', requirePermission('evaluation_plans', 'update'), controller.updateActivity);
 router.delete('/:planId/activities/:activityId', requirePermission('evaluation_plans', 'delete'), controller.deleteActivity);
 
+router.post('/:planId/close', requirePermission('evaluation_plans', 'update'), controller.closePlan);
+router.post('/:planId/reopen', requirePermission('evaluation_plans', 'update'), controller.reopenPlan);
+
 module.exports = router;

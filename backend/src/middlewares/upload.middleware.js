@@ -41,4 +41,43 @@ function logoUpload(req, res, next) {
   });
 }
 
-module.exports = { logoUpload, MAX_LOGO_BYTES };
+// ---------------------------------------------------------------------------
+// Comprobante de pago (campo `proof`, OPCIONAL): JPG, PNG o PDF de hasta 5 MB.
+// En memoria para validar la firma binaria antes de escribir en disco
+// (ver services/storage/paymentProofStorage.js).
+// ---------------------------------------------------------------------------
+
+const MAX_PROOF_BYTES = 5 * 1024 * 1024;
+const ALLOWED_PROOF_MIMES = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+
+const proofMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PROOF_BYTES, files: 1, fields: 20 },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_PROOF_MIMES.includes(file.mimetype)) return cb(null, true);
+    return cb(
+      ApiError.badRequest('El comprobante debe ser una imagen JPG/PNG o un PDF.', [
+        { path: 'proof', message: 'Formato no permitido. Usa JPG, PNG o PDF.' },
+      ])
+    );
+  },
+}).single('proof');
+
+function proofUpload(req, res, next) {
+  proofMulter(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof ApiError) return next(err);
+    if (err instanceof multer.MulterError) {
+      const message =
+        err.code === 'LIMIT_FILE_SIZE'
+          ? 'El comprobante no puede pesar más de 5 MB.'
+          : err.code === 'LIMIT_UNEXPECTED_FILE'
+            ? 'Solo se permite un archivo en el campo "proof".'
+            : 'No se pudo procesar el archivo subido.';
+      return next(ApiError.badRequest(message, [{ path: 'proof', message }]));
+    }
+    return next(err);
+  });
+}
+
+module.exports = { logoUpload, MAX_LOGO_BYTES, proofUpload, MAX_PROOF_BYTES };

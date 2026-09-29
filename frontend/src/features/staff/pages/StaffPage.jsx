@@ -5,6 +5,7 @@ import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
 import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
+import ImportButton from '../../../components/import/ImportButton';
 import DetailModal from '../../../components/ui/DetailModal';
 import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
@@ -106,6 +107,7 @@ function StaffPage() {
         createLabel="Nuevo personal"
         onCreate={() => setEditing({})}
         canCreate={can('staff', 'create')}
+        headerActions={can('staff', 'create') && <ImportButton type="staff" title="Importar personal desde Excel" onImported={refetch} />}
         rowActions={
           canManageAccess
             ? [{ key: 'access', icon: 'lock', label: 'Gestionar acceso al sistema', onClick: setManagingAccess }]

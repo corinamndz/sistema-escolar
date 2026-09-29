@@ -15,6 +15,8 @@ import Spinner from '../../../components/ui/Spinner';
 import { useToast } from '../../../components/ui/Toast';
 import { LEVELS, LEVEL_CODES, LevelBadge, LevelFilter, LevelRule } from '../levels';
 import TeacherAssignmentModal from './TeacherAssignmentModal';
+import ImportActions from '../../../components/import/ImportActions';
+import HelpTip from '../../../components/ui/HelpTip';
 
 /** Resumen de la asignación docente de una sección, según su nivel. */
 export function TeachersSummary({ section }) {
@@ -42,14 +44,27 @@ export function TeachersSummary({ section }) {
         ) : (
           <span className="cell-person__sub teacher-stack__missing">Sin auxiliar</span>
         ))}
+      {section.curriculum &&
+        (section.curriculum.total === 0 ? (
+          <span className="cell-person__sub">Grado sin materias</span>
+        ) : (
+          <span className="cell-person__sub">
+            {section.curriculum.total} materias
+            {section.curriculum.specialists > 0 && ` · ${section.curriculum.specialists} con especialista`}
+          </span>
+        ))}
     </div>
   );
 }
 
-function SectionsTab() {
+function SectionsTab({ onChanged }) {
   const { can } = useAuth();
   const navigate = useNavigate();
   const { data: sections, loading, error, refetch } = useFetch(() => academicsApi.listSections(), []);
+  const reload = () => {
+    refetch();
+    onChanged?.();
+  };
   const [level, setLevel] = useState('');
   const [editing, setEditing] = useState(null); // null | {} crear | sección
   const [assigning, setAssigning] = useState(null); // id de sección
@@ -78,7 +93,16 @@ function SectionsTab() {
       sortValue: (s) => `${LEVEL_CODES.indexOf(s.level_code)}-${s.grade_name}-${s.name}`,
     },
     { key: 'level_code', header: 'Nivel', render: (s) => <LevelBadge code={s.level_code} />, sortValue: (s) => LEVEL_CODES.indexOf(s.level_code) },
-    { key: 'teachers', header: 'Docentes', render: (s) => <TeachersSummary section={s} /> },
+    {
+      key: 'teachers',
+      header: (
+        <>
+          Docentes{' '}
+          <HelpTip placement="bottom">
+            Inicial: titular + auxiliar. Primaria: un titular. Secundaria: un profesor por cada materia del plan de estudios.
+          </HelpTip>
+        </>
+      ), render: (s) => <TeachersSummary section={s} /> },
     {
       key: 'enrolled_count',
       header: 'Inscritos',
@@ -109,6 +133,16 @@ function SectionsTab() {
         createLabel="Nueva sección"
         onCreate={() => setEditing({})}
         canCreate={can('academics', 'create')}
+        headerActions={
+          can('academics', 'create') && (
+            <ImportActions
+              type="sections"
+              noun="secciones"
+              description="Grado, nombre, año escolar, cupo, aula y docentes. Los grados, años, aulas y docentes deben existir antes; la plantilla trae listas con los registrados."
+              onImported={reload}
+            />
+          )
+        }
         rowActions={
           can('academics', 'update')
             ? [{ key: 'assign', icon: 'users', label: 'Asignar docentes', onClick: (s) => setAssigning(s.id) }]
@@ -124,14 +158,14 @@ function SectionsTab() {
           initial={editing}
           onClose={() => setEditing(null)}
           onSaved={(saved, isNew) => {
-            refetch();
+            reload();
             // Recién creada: se abre directamente la asignación docente de su nivel.
             if (isNew && can('academics', 'update')) setAssigning(saved.id);
           }}
         />
       )}
 
-      {assigning && <TeacherAssignmentModal sectionId={assigning} onClose={() => setAssigning(null)} onSaved={refetch} />}
+      {assigning && <TeacherAssignmentModal sectionId={assigning} onClose={() => setAssigning(null)} onSaved={reload} />}
     </>
   );
 }
@@ -235,7 +269,7 @@ function SectionFormModal({ initial, onClose, onSaved }) {
               </Select>
             </Field>
           </div>
-          {grades.length === 0 && <Alert variant="warning">Primero crea al menos un grado en la pestaña Grados.</Alert>}
+          {grades.length === 0 && <Alert variant="warning">Primero crea al menos un grado en el Paso 2: Grados y aulas.</Alert>}
           <div className="form-actions">
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancelar

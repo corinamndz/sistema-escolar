@@ -11,11 +11,16 @@ import Input from '../../../components/ui/Input';
 import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
 import { useToast } from '../../../components/ui/Toast';
+import ImportActions from '../../../components/import/ImportActions';
 
-/** Catálogo de materias del colegio (se usan en los planes de estudio de Secundaria). */
-function SubjectsTab() {
+/** Catálogo de materias del colegio (se usan en los planes de estudio de Primaria y Secundaria). */
+function SubjectsTab({ onChanged }) {
   const { can } = useAuth();
   const { data: rows, loading, error, refetch } = useFetch(() => academicsApi.listSubjects(), []);
+  const reload = () => {
+    refetch();
+    onChanged?.();
+  };
   const [editing, setEditing] = useState(null);
 
   const columns = [
@@ -52,7 +57,7 @@ function SubjectsTab() {
     <>
       <DataTable
         title="Materias"
-        description="Catálogo de asignaturas. Se agregan al plan de estudios de cada grado de Secundaria."
+        description="Crea cada asignatura una sola vez; después se reutiliza en el plan de estudios de todos los grados que la vean."
         columns={columns}
         rows={rows}
         loading={loading}
@@ -63,6 +68,16 @@ function SubjectsTab() {
         createLabel="Nueva materia"
         onCreate={() => setEditing({})}
         canCreate={can('academics', 'create')}
+        headerActions={
+          can('academics', 'create') && (
+            <ImportActions
+              type="subjects"
+              noun="materias"
+              description="Nombre, abreviatura, descripción y, si quieres, los grados de Primaria o Secundaria que la ven (se agrega a su plan de estudios)."
+              onImported={reload}
+            />
+          )
+        }
         onEdit={setEditing}
         canEdit={can('academics', 'update')}
         onDelete={(s) => academicsApi.deleteSubject(s.id)}
@@ -75,9 +90,9 @@ function SubjectsTab() {
               : 'Esta acción no se puede deshacer.',
           successMessage: `Materia "${s.name}" eliminada`,
         })}
-        onDeleted={refetch}
+        onDeleted={reload}
       />
-      {editing !== null && <SubjectFormModal initial={editing} onClose={() => setEditing(null)} onSaved={refetch} />}
+      {editing !== null && <SubjectFormModal initial={editing} onClose={() => setEditing(null)} onSaved={reload} />}
     </>
   );
 }

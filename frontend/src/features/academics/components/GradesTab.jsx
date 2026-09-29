@@ -12,12 +12,17 @@ import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
+import ImportActions from '../../../components/import/ImportActions';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { LEVELS, LEVEL_CODES, LevelBadge, LevelFilter } from '../levels';
 
-function GradesTab() {
+function GradesTab({ onChanged }) {
   const { can } = useAuth();
   const { data: grades, loading, error, refetch } = useFetch(() => academicsApi.listGrades(), []);
+  const reload = () => {
+    refetch();
+    onChanged?.();
+  };
   const [level, setLevel] = useState('');
   const [editing, setEditing] = useState(null);
   const [curriculumFor, setCurriculumFor] = useState(null);
@@ -35,7 +40,7 @@ function GradesTab() {
       key: 'subject_count',
       header: 'Materias',
       render: (g) =>
-        g.assignment_mode === 'subjects' ? (
+        g.has_curriculum ? (
           g.subject_count ? (
             `${g.subject_count} materia${g.subject_count === 1 ? '' : 's'}`
           ) : (
@@ -65,12 +70,22 @@ function GradesTab() {
         createLabel="Nuevo grado"
         onCreate={() => setEditing({ level_code: level || '' })}
         canCreate={can('academics', 'create')}
+        headerActions={
+          can('academics', 'create') && (
+            <ImportActions
+              type="grades"
+              noun="grados"
+              description="Nombre, nivel (Inicial, Primaria o Secundaria) y orden. El nivel define cómo se asignan los docentes de sus secciones."
+              onImported={reload}
+            />
+          )
+        }
         rowActions={[
           {
             key: 'curriculum',
             icon: 'clipboard',
             label: 'Plan de estudios (materias)',
-            show: (g) => g.assignment_mode === 'subjects',
+            show: (g) => g.has_curriculum,
             onClick: setCurriculumFor,
           },
         ]}
@@ -78,13 +93,13 @@ function GradesTab() {
         canEdit={can('academics', 'update')}
       />
 
-      {editing !== null && <GradeFormModal initial={editing} onClose={() => setEditing(null)} onSaved={refetch} />}
+      {editing !== null && <GradeFormModal initial={editing} onClose={() => setEditing(null)} onSaved={reload} />}
       {curriculumFor && (
         <CurriculumModal
           grade={curriculumFor}
           canEdit={can('academics', 'update')}
           onClose={() => setCurriculumFor(null)}
-          onSaved={refetch}
+          onSaved={reload}
         />
       )}
     </>
@@ -173,7 +188,7 @@ function GradeFormModal({ initial, onClose, onSaved }) {
 }
 
 /**
- * Plan de estudios de un grado de secundaria: qué materias tiene, en qué orden
+ * Plan de estudios de un grado de Primaria o Secundaria: qué materias tiene, en qué orden
  * y cuántas horas semanales. Se guarda la lista completa.
  */
 function CurriculumModal({ grade, canEdit, onClose, onSaved }) {
@@ -359,4 +374,5 @@ function CurriculumModal({ grade, canEdit, onClose, onSaved }) {
   );
 }
 
+export { CurriculumModal };
 export default GradesTab;

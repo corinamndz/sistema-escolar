@@ -3,7 +3,7 @@ import Icon from '../../components/ui/Icon';
 /**
  * Presentación de los niveles educativos. Las REGLAS (modo de asignación,
  * auxiliar permitido) vienen del backend en cada grado/sección
- * (`assignment_mode`, `allows_assistant`); aquí solo hay textos y colores.
+ * (`assignment_mode`, `allows_assistant`, `has_curriculum`); aquí solo hay textos y colores.
  */
 export const LEVELS = {
   initial: {
@@ -16,7 +16,7 @@ export const LEVELS = {
     short: 'Primaria',
     name: 'Educación Primaria',
     icon: 'school',
-    rule: 'Cada sección tiene un único docente titular (maestra/o de grado).',
+    rule: 'Cada sección tiene un docente titular que dicta las materias del plan de estudios; puedes asignar especialistas por materia.',
   },
   secondary: {
     short: 'Secundaria',

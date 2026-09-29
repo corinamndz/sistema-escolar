@@ -16,7 +16,8 @@ import { LevelBadge, LevelRule, teacherName } from '../levels';
  * Asignación docente de una sección. La interfaz se adapta al nivel del grado
  * (leído del backend, no elegido por el usuario):
  *   Inicial     → selector de titular + selector de auxiliar
- *   Primaria    → selector de titular único
+ *   Primaria    → selector de titular único + materias del plan de estudios:
+ *                 las dicta el titular salvo que se elija un especialista
  *   Secundaria  → una fila por materia del plan de estudios, con su profesor
  *
  * Las opciones de docente muestran su carga actual para repartir mejor.
@@ -29,7 +30,7 @@ function TeacherAssignmentModal({ sectionId, onClose, onSaved }) {
   const title = section ? `Asignar docentes · ${section.grade_name} ${section.name}` : 'Asignar docentes';
 
   return (
-    <Modal title={title} onClose={onClose} size={data?.mode === 'subjects' ? 'lg' : undefined}>
+    <Modal title={title} onClose={onClose} size={data?.mode === 'subjects' || data?.subjects?.length ? 'lg' : undefined}>
       <Alert>{error}</Alert>
       {loading || loadingLoad || !data ? (
         <Spinner />
@@ -93,12 +94,15 @@ function TeacherSelect({ value, onChange, options, excludeId, placeholder = 'Sin
 // ---------------------------------------------------------------------------
 
 function HomeroomForm({ data, load, onClose, onSaved }) {
-  const { section, homeroom } = data;
+  const { section, homeroom, subjects = [] } = data;
   const allowsAssistant = section.allows_assistant;
   const initial = { lead: homeroom.lead?.id || null, assistant: homeroom.assistant?.id || null };
   const [lead, setLead] = useState(initial.lead);
   const [assistant, setAssistant] = useState(initial.assistant);
-  const options = useTeacherOptions(load, [initial.lead, initial.assistant].filter(Boolean));
+  // Primaria: especialista por materia (null = la dicta el titular).
+  const initialSpecialists = useMemo(() => Object.fromEntries(subjects.map((x) => [x.id, x.teacher?.id || null])), [subjects]);
+  const [specialists, setSpecialists] = useState(initialSpecialists);
+  const options = useTeacherOptions(load, [initial.lead, initial.assistant, ...Object.values(initialSpecialists)].filter(Boolean));
   const toast = useToast();
   const { run, loading, error, fieldErrors } = useMutation((body) => academicsApi.setSectionTeachers(section.id, body));
 
@@ -108,13 +112,17 @@ function HomeroomForm({ data, load, onClose, onSaved }) {
   }, [lead, assistant]);
 
   const assistantError = assistant && !lead ? 'Asigna primero el docente titular.' : null;
-  const dirty = lead !== initial.lead || assistant !== initial.assistant;
+  const changedSubjects = subjects.filter((x) => specialists[x.id] !== initialSpecialists[x.id]);
+  const dirty = lead !== initial.lead || assistant !== initial.assistant || changedSubjects.length > 0;
+  const leadLabel = options.find((o) => o.id === lead)?.label;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (assistantError) return;
+    const body = allowsAssistant ? { leadTeacherId: lead, assistantTeacherId: assistant } : { leadTeacherId: lead };
+    if (changedSubjects.length) body.subjects = changedSubjects.map((x) => ({ subjectId: x.id, teacherId: specialists[x.id] }));
     try {
-      await run(allowsAssistant ? { leadTeacherId: lead, assistantTeacherId: assistant } : { leadTeacherId: lead });
+      await run(body);
       toast.success('Docentes asignados', `${section.grade_name} ${section.name}`);
       onSaved?.();
       onClose();
@@ -130,7 +138,13 @@ function HomeroomForm({ data, load, onClose, onSaved }) {
         <Field
           label="Docente titular"
           error={fieldErrors.leadTeacherId}
-          hint={allowsAssistant ? 'Responsable principal de la sección.' : 'Maestra/o de grado: atiende todas las áreas.'}
+          hint={
+            allowsAssistant
+              ? 'Responsable principal de la sección.'
+              : section.has_curriculum
+                ? 'Maestra/o de grado: dicta todas las materias que no tengan especialista.'
+                : 'Maestra/o de grado: atiende todas las áreas.'
+          }
         >
           <TeacherSelect value={lead} onChange={setLead} options={options} />
         </Field>
@@ -143,6 +157,63 @@ function HomeroomForm({ data, load, onClose, onSaved }) {
       {options.length === 0 && (
         <Alert variant="warning">No hay personal docente activo. Regístralo en el módulo Personal con tipo "Docente".</Alert>
       )}
+
+      {section.has_curriculum && (
+        <div className="specialists">
+          <div className="specialists__head">
+            <strong>Materias del plan de estudios</strong>
+            <span className="text-sm text-muted">
+              Por defecto las dicta el titular. Elige un especialista solo para las materias que da otro docente (ej. Inglés,
+              Educación Física).
+            </span>
+          </div>
+          {subjects.length === 0 ? (
+            <Alert variant="info">
+              {section.grade_name} todavía no tiene materias. Configura su plan de estudios en Estructura académica → Paso 3 para
+              evaluar por materia.
+            </Alert>
+          ) : (
+            <div className="table-wrap">
+              <table className="table assign-table">
+                <thead>
+                  <tr>
+                    <th>Materia</th>
+                    <th style={{ width: '52%' }}>Quién la dicta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subjects.map((x) => {
+                    const isChanged = specialists[x.id] !== initialSpecialists[x.id];
+                    return (
+                      <tr key={x.id} className={isChanged ? 'is-changed' : undefined}>
+                        <td>
+                          <div className="assign-table__subject">
+                            {x.name}
+                            {x.code && <span className="chip">{x.code}</span>}
+                            {isChanged && <span className="assign-table__dot" title="Cambio sin guardar" />}
+                          </div>
+                          {x.weekly_hours && <div className="cell-person__sub">{x.weekly_hours} h semanales</div>}
+                        </td>
+                        <td>
+                          <TeacherSelect
+                            value={specialists[x.id]}
+                            onChange={(id) => setSpecialists((m) => ({ ...m, [x.id]: id }))}
+                            options={options}
+                            excludeId={lead}
+                            placeholder={leadLabel ? `Titular (${leadLabel})` : 'Titular (sin asignar)'}
+                            aria-label={`Docente de ${x.name}`}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="form-actions">
         <Button type="button" variant="secondary" onClick={onClose}>
           Cancelar

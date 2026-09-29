@@ -1,39 +1,140 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import PageHeader from '../../../components/ui/PageHeader';
 import Tabs from '../../../components/ui/Tabs';
+import Alert from '../../../components/ui/Alert';
+import Spinner from '../../../components/ui/Spinner';
 import SchoolPeriodsTab from '../components/SchoolPeriodsTab';
 import ClassroomsTab from '../components/ClassroomsTab';
 import GradesTab from '../components/GradesTab';
 import SectionsTab from '../components/SectionsTab';
 import SubjectsTab from '../components/SubjectsTab';
 import TeachingLoadTab from '../components/TeachingLoadTab';
+import SetupProgress from '../setup/SetupProgress';
+import CurriculumChecklist from '../setup/CurriculumChecklist';
+import { StepGuide, StepFooter, BlockedNotice } from '../setup/StepGuide';
+import { SETUP_STEPS, useSetupStatus } from '../setup/useSetupStatus';
+import { LEVELS } from '../levels';
 
-const TABS = [
-  { key: 'sections', label: 'Secciones' },
-  { key: 'load', label: 'Carga docente' },
-  { key: 'grades', label: 'Grados' },
-  { key: 'subjects', label: 'Materias' },
-  { key: 'classrooms', label: 'Aulas' },
-  { key: 'periods', label: 'Años escolares' },
-];
+/** Textos de ayuda de cada paso: qué hacer y cómo se conecta con el resto. */
+const GUIDES = {
+  period: {
+    intro:
+      'El año escolar es el contenedor de todo un ciclo. Empieza creando el año en curso: sin él no se pueden abrir secciones ni inscribir alumnos.',
+    links: [
+      'Las secciones, las inscripciones y las notas quedan asociadas a un año escolar.',
+      'Al comenzar un nuevo ciclo creas otro año y abres secciones nuevas; el historial del anterior se conserva.',
+    ],
+  },
+  structure: {
+    intro:
+      'Registra los grados que ofrece el colegio (ej. "Sala 5", "3er grado", "1er año"). Al crear cada grado eliges su nivel educativo, y el nivel define cómo se asignan los docentes:',
+    links: [
+      `Inicial — ${LEVELS.initial.rule}`,
+      `Primaria — ${LEVELS.primary.rule}`,
+      `Secundaria — ${LEVELS.secondary.rule}`,
+      'Las aulas físicas son opcionales: solo sirven para indicar dónde funciona cada sección.',
+    ],
+  },
+  subjects: {
+    intro:
+      'Necesario para Primaria y Secundaria. Primero crea el catálogo de materias (una sola vez) y después arma el plan de estudios de cada grado (ej. 1er a 6to grado: Castellano, Matemática, Ciencias Naturales…).',
+    links: [
+      'Una misma materia (ej. Matemática) se reutiliza en todos los grados que la vean.',
+      'Las materias del plan de estudios son las que tendrán plan de evaluación y notas por lapso. En Primaria las dicta el titular de la sección (o un especialista); en Secundaria, un profesor por materia (paso 4).',
+    ],
+  },
+  sections: {
+    intro:
+      'Crea las secciones del año en curso (ej. "3er grado A") y asígnales docentes. Cada sección hereda las reglas del nivel de su grado:',
+    links: [
+      'Inicial: docente titular y auxiliar. Primaria: un titular que dicta las materias, con especialistas opcionales. Secundaria: un profesor por materia.',
+      'Al crear una sección se abre directamente la asignación de docentes.',
+      'Después, inscribe a los alumnos desde el detalle de cada sección.',
+    ],
+  },
+};
+
+const STEP_KEYS = SETUP_STEPS.map((s) => s.key);
 
 function AcademicsPage() {
-  const [active, setActive] = useState('sections');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [version, setVersion] = useState(0);
+  const [sectionsView, setSectionsView] = useState('sections');
+  const { status, loading, error } = useSetupStatus(version);
+
+  // Cualquier alta/edición en un paso recalcula el progreso.
+  const refreshProgress = useCallback(() => setVersion((v) => v + 1), []);
+
+  // Paso abierto: el de la URL (?paso=…), o el siguiente pendiente, o el 4 si todo está listo.
+  const fromUrl = searchParams.get('paso');
+  const active = STEP_KEYS.includes(fromUrl) ? fromUrl : status?.next?.key || 'sections';
+
+  // Al entrar sin ?paso= se fija el paso sugerido en la URL: así, al completar
+  // algo, la pantalla no salta sola al paso siguiente (el usuario decide cuándo avanzar).
+  useEffect(() => {
+    if (status && !STEP_KEYS.includes(fromUrl)) setSearchParams({ paso: active }, { replace: true });
+  }, [status, fromUrl, active, setSearchParams]);
+
+  const goTo = (key) => {
+    setSearchParams({ paso: key }, { replace: true });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  if (loading) return <Spinner />;
+
+  const step = status?.byKey[active];
 
   return (
     <div>
       <PageHeader
         title="Estructura académica"
-        subtitle="Niveles (Inicial, Primaria y Secundaria), grados, materias, secciones y asignación docente"
+        subtitle="Configura el colegio en 4 pasos. Puedes volver a cualquiera cuando lo necesites."
       />
-      <Tabs tabs={TABS} active={active} onChange={setActive} />
+      <Alert>{error}</Alert>
 
-      {active === 'sections' && <SectionsTab />}
-      {active === 'load' && <TeachingLoadTab />}
-      {active === 'grades' && <GradesTab />}
-      {active === 'subjects' && <SubjectsTab />}
-      {active === 'classrooms' && <ClassroomsTab />}
-      {active === 'periods' && <SchoolPeriodsTab />}
+      {status && <SetupProgress status={status} active={active} onSelect={goTo} />}
+
+      {step && (
+        <>
+          <StepGuide key={active} step={step} guide={GUIDES[active]} />
+          {step.blockedBy && <BlockedNotice blockedBy={step.blockedBy} onGo={goTo} />}
+        </>
+      )}
+
+      <div className="setup-step-content">
+        {active === 'period' && <SchoolPeriodsTab onChanged={refreshProgress} />}
+
+        {active === 'structure' && (
+          <>
+            <GradesTab onChanged={refreshProgress} />
+            <ClassroomsTab onChanged={refreshProgress} />
+          </>
+        )}
+
+        {active === 'subjects' && (
+          <div className="setup-split">
+            <SubjectsTab onChanged={refreshProgress} />
+            <CurriculumChecklist onChanged={refreshProgress} />
+          </div>
+        )}
+
+        {active === 'sections' && (
+          <>
+            <Tabs
+              tabs={[
+                { key: 'sections', label: 'Por sección' },
+                { key: 'load', label: 'Carga por docente' },
+              ]}
+              active={sectionsView}
+              onChange={setSectionsView}
+            />
+            {sectionsView === 'sections' ? <SectionsTab onChanged={refreshProgress} /> : <TeachingLoadTab />}
+          </>
+        )}
+      </div>
+
+      {step && <StepFooter step={step} onGo={goTo} />}
     </div>
   );
 }

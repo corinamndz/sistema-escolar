@@ -81,8 +81,12 @@ function DataTable({
   filters = null,
   // Paginación
   pageSize: initialPageSize = 10,
+  // false: muestra todas las filas, sin pie de paginación (ej. tablas dentro de un grupo)
+  paginated = true,
   // Crear
   createLabel = 'Nuevo registro',
+  // Botones extra junto a "Nuevo" (ej. Importar Excel)
+  headerActions = null,
   onCreate,
   canCreate = true,
   // Acciones por fila
@@ -177,13 +181,13 @@ function DataTable({
 
   const isSortable = (col) => col.sortable ?? (!col.render || Boolean(col.sortValue));
 
-  const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const visible = paginated ? filtered.slice((page - 1) * pageSize, page * pageSize) : filtered;
   const from = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, filtered.length);
 
   // ---------- Render ----------
 
-  const header = (title || description || showCreate) && (
+  const header = (title || description || showCreate || headerActions) && (
     <div className="data-table__header">
       <div>
         {title && (
@@ -194,10 +198,15 @@ function DataTable({
         )}
         {description && <p className="card__subtitle">{description}</p>}
       </div>
-      {showCreate && (
-        <Button icon="plus" onClick={onCreate} className="data-table__create">
-          {createLabel}
-        </Button>
+      {(showCreate || headerActions) && (
+        <div className="data-table__header-actions">
+          {headerActions}
+          {showCreate && (
+            <Button icon="plus" onClick={onCreate} className="data-table__create">
+              {createLabel}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -361,7 +370,7 @@ function DataTable({
   }
 
   // Con pocos registros (caben en la página más chica) el pie solo agrega ruido.
-  const footer = !loading && filtered.length > 0 && allRows.length > Math.min(initialPageSize, PAGE_SIZE_OPTIONS[0]) && (
+  const footer = paginated && !loading && filtered.length > 0 && allRows.length > Math.min(initialPageSize, PAGE_SIZE_OPTIONS[0]) && (
     <nav className="pagination" aria-label="Paginación">
       <div className="pagination__info">
         <span>

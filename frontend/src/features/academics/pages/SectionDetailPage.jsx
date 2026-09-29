@@ -29,14 +29,33 @@ function SectionTeachersCard({ sectionId, onAssign }) {
     const rows = [['Docente titular', data.homeroom.lead]];
     if (data.section.allows_assistant) rows.push(['Docente auxiliar', data.homeroom.assistant]);
     body = (
-      <dl className="detail-list">
-        {rows.map(([label, teacher]) => (
-          <div key={label} className="detail-list__item">
-            <dt>{label}</dt>
-            <dd>{teacher ? teacher.name : <span className="teacher-stack__missing">Sin asignar</span>}</dd>
-          </div>
-        ))}
-      </dl>
+      <>
+        <dl className="detail-list">
+          {rows.map(([label, teacher]) => (
+            <div key={label} className="detail-list__item">
+              <dt>{label}</dt>
+              <dd>{teacher ? teacher.name : <span className="teacher-stack__missing">Sin asignar</span>}</dd>
+            </div>
+          ))}
+        </dl>
+        {data.subjects?.length > 0 && (
+          <ul className="assignment-list" style={{ marginTop: 12 }}>
+            {data.subjects.map((s) => (
+              <li key={s.id}>
+                <strong>{s.name}</strong>
+                {s.effectiveTeacher ? (
+                  <span>
+                    {s.effectiveTeacher.name}
+                    <span className="text-muted">{s.inherited ? ' · titular' : ' · especialista'}</span>
+                  </span>
+                ) : (
+                  <span className="teacher-stack__missing">Sin docente</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
     );
   } else if (data.subjects.length === 0) {
     body = <p className="text-muted">El grado no tiene materias en su plan de estudios.</p>;

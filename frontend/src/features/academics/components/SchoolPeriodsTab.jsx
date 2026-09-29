@@ -10,8 +10,11 @@ import Input from '../../../components/ui/Input';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Badge from '../../../components/ui/Badge';
+import HelpTip from '../../../components/ui/HelpTip';
+import ImportActions from '../../../components/import/ImportActions';
 
-function SchoolPeriodsTab() {
+/** `onChanged` avisa al asistente de configuración para recalcular el progreso. */
+function SchoolPeriodsTab({ onChanged }) {
   const { data: rows, loading, error, refetch } = useFetch(() => academicsApi.listSchoolPeriods(), []);
   const [form, setForm] = useState({ name: '', startDate: '', endDate: '' });
   const { run, loading: saving, error: saveError, fieldErrors } = useMutation(academicsApi.createSchoolPeriod);
@@ -22,6 +25,7 @@ function SchoolPeriodsTab() {
       await run(form);
       setForm({ name: '', startDate: '', endDate: '' });
       refetch();
+      onChanged?.();
     } catch {
       // error visible arriba del formulario
     }
@@ -37,14 +41,35 @@ function SchoolPeriodsTab() {
   return (
     <div className="grid grid--2">
       <div className="card">
-        <h3 className="card__title">Años escolares</h3>
+        <div className="card__header">
+          <h3 className="card__title">Años escolares</h3>
+          <RequirePermission module="academics" action="create">
+            <div className="card__actions">
+              <ImportActions
+                type="school-periods"
+                noun="años escolares"
+                size="sm"
+                onImported={() => {
+                  refetch();
+                  onChanged?.();
+                }}
+              />
+            </div>
+          </RequirePermission>
+        </div>
         <Alert>{error}</Alert>
         {loading ? <Spinner /> : <Table columns={columns} rows={rows} emptyMessage="Aún no hay años escolares." />}
       </div>
 
       <RequirePermission module="academics" action="create">
         <div className="card">
-          <h3 className="card__title">Nuevo año escolar</h3>
+          <h3 className="card__title">
+            Nuevo año escolar{' '}
+            <HelpTip>
+              Usa el formato del ciclo (ej. 2026-2027). Las fechas son opcionales, pero ayudan a ubicar el año en reportes y
+              mensualidades.
+            </HelpTip>
+          </h3>
           <Alert>{saveError}</Alert>
           <form onSubmit={handleSubmit}>
             <Field label="Nombre" error={fieldErrors.name}>
@@ -60,8 +85,8 @@ function SchoolPeriodsTab() {
               </Field>
             </div>
             <div className="form-actions">
-              <Button type="submit" loading={saving}>
-                Crear
+              <Button type="submit" icon="plus" loading={saving}>
+                Crear año escolar
               </Button>
             </div>
           </form>

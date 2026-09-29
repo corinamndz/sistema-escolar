@@ -11,6 +11,7 @@ import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
+import ImportButton from '../../../components/import/ImportButton';
 
 const DEFAULT_MAX_SCORE = 20;
 
@@ -29,9 +30,23 @@ function GradebookPage() {
         title="Calificaciones"
         subtitle={plan?.subject}
         actions={
-          <Link to={`/evaluation-plans/${planId}`} className="btn btn--secondary">
-            Volver al plan
-          </Link>
+          <>
+            {gradebook.activities.length > 0 && gradebook.plan.status !== 'closed' && (
+              <RequirePermission module="grading" action="update">
+                <ImportButton
+                  type="scores"
+                  params={{ planId }}
+                  label="Importar notas"
+                  title="Importar calificaciones desde Excel"
+                  description="La plantilla viene con los alumnos de la sección y una columna por actividad (con las notas actuales). Solo completa las notas de 0 a 20."
+                  onImported={refetch}
+                />
+              </RequirePermission>
+            )}
+            <Link to={`/evaluation-plans/${planId}`} className="btn btn--secondary">
+              Volver al plan
+            </Link>
+          </>
         }
       />
 

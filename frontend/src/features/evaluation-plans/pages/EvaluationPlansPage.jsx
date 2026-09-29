@@ -244,8 +244,11 @@ function CreatePlanModal({ onClose, onCreated }) {
   const toast = useToast();
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  const bySubjects = assignment?.mode === 'subjects';
-  const assignedSubjects = bySubjects ? assignment.subjects.filter((s) => s.teacher) : [];
+  // Secundaria siempre; Primaria cuando su grado ya tiene plan de estudios.
+  const primaryCurriculum = assignment?.mode === 'homeroom' && assignment.subjects?.length > 0;
+  const bySubjects = assignment?.mode === 'subjects' || primaryCurriculum;
+  // effectiveTeacher: el profesor de la materia, o en Primaria el titular si no hay especialista.
+  const assignedSubjects = bySubjects ? assignment.subjects.filter((s) => s.effectiveTeacher) : [];
   const homeroomTeachers = assignment?.mode === 'homeroom'
     ? [
         assignment.homeroom.lead && { ...assignment.homeroom.lead, role: 'Titular' },
@@ -257,7 +260,9 @@ function CreatePlanModal({ onClose, onCreated }) {
   // Sin docente/materia asignada no se puede crear el plan: se explica en vez de mostrar un selector vacío.
   let blocker = null;
   if (assignment && bySubjects && assignedSubjects.length === 0) {
-    blocker = 'Ninguna materia de esta sección tiene profesor asignado. Asígnalos en Estructura académica → Secciones.';
+    blocker = primaryCurriculum
+      ? 'Esta sección no tiene docente titular. Asígnalo en Estructura académica → Secciones.'
+      : 'Ninguna materia de esta sección tiene profesor asignado. Asígnalos en Estructura académica → Secciones.';
   } else if (assignment && !bySubjects && homeroomTeachers.length === 0) {
     blocker = 'Esta sección no tiene docente asignado. Asígnalo en Estructura académica → Secciones.';
   }
@@ -346,7 +351,12 @@ function CreatePlanModal({ onClose, onCreated }) {
 
                 {bySubjects ? (
                   <>
-                    <Field label="Materia" error={fieldErrors.subjectId} required hint="Solo materias con profesor asignado en esta sección.">
+                    <Field
+                      label="Materia"
+                      error={fieldErrors.subjectId}
+                      required
+                      hint={primaryCurriculum ? 'Materias del plan de estudios del grado.' : 'Solo materias con profesor asignado en esta sección.'}
+                    >
                       <Select value={form.subjectId} onChange={set('subjectId')} required>
                         <option value="">Selecciona…</option>
                         {assignedSubjects.map((s) => (
@@ -356,8 +366,16 @@ function CreatePlanModal({ onClose, onCreated }) {
                         ))}
                       </Select>
                     </Field>
-                    <Field label="Profesor" full hint="Se toma de la asignación docente de la materia.">
-                      <Input icon="user" value={selectedSubject?.teacher.name || ''} placeholder="Elige una materia" disabled readOnly />
+                    <Field
+                      label={primaryCurriculum ? 'Docente' : 'Profesor'}
+                      full
+                      hint={
+                        primaryCurriculum
+                          ? 'El especialista de la materia o, si no tiene, el titular de la sección.'
+                          : 'Se toma de la asignación docente de la materia.'
+                      }
+                    >
+                      <Input icon="user" value={selectedSubject?.effectiveTeacher.name || ''} placeholder="Elige una materia" disabled readOnly />
                     </Field>
                   </>
                 ) : (

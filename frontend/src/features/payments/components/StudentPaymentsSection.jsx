@@ -4,6 +4,7 @@ import Table from '../../../components/ui/Table';
 import Icon from '../../../components/ui/Icon';
 import { ConversionBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatAmounts, formatDate, formatMoney } from '../paymentStatus';
 import { ProofButton } from './ProofViewer';
+import ReceiptButton from './ReceiptButton';
 
 // ---------------------------------------------------------------------------
 // Agrupación y totales
@@ -127,9 +128,7 @@ const paidColumns = [
     header: 'Comprobante',
     render: (p) =>
       p.receipt_url ? (
-        <a href={p.receipt_url} target="_blank" rel="noreferrer" className="link-icon">
-          <Icon name="receipt" size={15} /> Descargar PDF
-        </a>
+        <ReceiptButton paymentId={p.id} />
       ) : (
         '—'
       ),

@@ -5,6 +5,11 @@ const evaluationPlansApi = {
     axiosClient.get('/evaluation-plans/terms', { params: { schoolPeriodId } }).then((r) => r.data),
   createTerm: (data) => axiosClient.post('/evaluation-plans/terms', data).then((r) => r.data),
 
+  // Opciones para crear planes: el docente recibe solo lo de su carga del período activo.
+  listPeriodOptions: () => axiosClient.get('/evaluation-plans/options/school-periods').then((r) => r.data),
+  listSectionOptions: () => axiosClient.get('/evaluation-plans/options/sections').then((r) => r.data),
+  getSectionAssignment: (sectionId) => axiosClient.get(`/evaluation-plans/options/sections/${sectionId}/assignment`).then((r) => r.data),
+
   list: (params) => axiosClient.get('/evaluation-plans', { params }).then((r) => r.data),
   getOne: (id) => axiosClient.get(`/evaluation-plans/${id}`).then((r) => r.data),
   /** { sectionIds: [...] (o sectionId), termId, format: 'simple' | 'detailed', subjectId | subject + teacherId } */

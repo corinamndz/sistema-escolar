@@ -35,6 +35,7 @@ const STAT_DEFS = [
   {
     key: 'pendingPayments',
     module: 'payments',
+    blockTeacher: true,
     label: 'Pagos pendientes',
     icon: 'wallet',
     tone: 'warning',
@@ -65,12 +66,13 @@ function DashboardPage() {
   const isGuardian = Boolean(user?.guardianId);
 
   // Las cifras de todo el colegio son para el personal, no para el portal de padres.
-  const visibleStats = isGuardian ? [] : STAT_DEFS.filter((d) => can(d.module, 'read'));
+  const statAllowed = (d) => can(d.module, 'read') && !(d.blockTeacher && user?.isRestrictedTeacher);
+  const visibleStats = isGuardian ? [] : STAT_DEFS.filter(statAllowed);
 
   useEffect(() => {
     let cancelled = false;
     if (isGuardian) return undefined;
-    STAT_DEFS.filter((d) => can(d.module, 'read')).forEach(async (def) => {
+    STAT_DEFS.filter(statAllowed).forEach(async (def) => {
       let value;
       try {
         value = await def.load();

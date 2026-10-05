@@ -10,9 +10,11 @@ import Icon from '../../../components/ui/Icon';
 import { LevelBadge } from '../../academics/levels';
 import { formatAmounts, formatDate, formatMoney } from '../../payments/paymentStatus';
 import StudentGrades from '../components/StudentGrades';
+import AcademicHistory from '../../students/components/AcademicHistory';
 
 const TABS = [
   { key: 'grades', label: 'Calificaciones' },
+  { key: 'history', label: 'Historial académico' },
   { key: 'info', label: 'Información' },
 ];
 
@@ -68,6 +70,7 @@ function PortalStudentPage() {
       <Tabs tabs={TABS} active={tab} onChange={(key) => setParams({ tab: key }, { replace: true })} />
 
       {tab === 'grades' && <StudentGrades studentId={studentId} />}
+      {tab === 'history' && <PortalHistory studentId={studentId} />}
 
       {tab === 'info' && (
         <div className="grid grid--2">
@@ -114,6 +117,18 @@ function PortalStudentPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Historial académico (años anteriores y el actual) para el representante. */
+function PortalHistory({ studentId }) {
+  const { data, loading, error } = useFetch(() => portalApi.getStudentHistory(studentId), [studentId]);
+  if (loading) return <Spinner />;
+  if (error) return <Alert>{error}</Alert>;
+  return (
+    <Card title="Historial académico" subtitle="Grados cursados en cada año escolar, resultado y notas finales">
+      <AcademicHistory data={data} />
+    </Card>
   );
 }
 

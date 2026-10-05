@@ -3,6 +3,8 @@ import { axiosClient } from '../axiosClient';
 const studentsApi = {
   list: (params) => axiosClient.get('/students', { params }).then((r) => r.data),
   getOne: (id) => axiosClient.get(`/students/${id}`).then((r) => r.data),
+  /** Años cursados: grado, sección, resultado (promovido, repite…), promedio y boleta por materia. */
+  academicHistory: (id) => axiosClient.get(`/students/${id}/academic-history`).then((r) => r.data),
   create: (data) => axiosClient.post('/students', data).then((r) => r.data),
   update: (id, data) => axiosClient.put(`/students/${id}`, data).then((r) => r.data),
   linkGuardian: (id, data) => axiosClient.post(`/students/${id}/guardians`, data).then((r) => r.data),

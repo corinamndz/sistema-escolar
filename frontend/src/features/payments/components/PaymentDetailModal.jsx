@@ -6,6 +6,7 @@ import Icon from '../../../components/ui/Icon';
 import Spinner from '../../../components/ui/Spinner';
 import { ConversionBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatDate, formatMoney } from '../paymentStatus';
 import { ProofButton } from './ProofViewer';
+import ReceiptButton from './ReceiptButton';
 
 /** Eventos del cobro en orden cronológico, a partir de sus fechas. */
 function timelineOf(p) {
@@ -108,9 +109,7 @@ export function PaymentDetailModal({ payment: p, showStudentHistory = true, acti
             </div>
           )}
           {p.receipt_url && (
-            <a href={p.receipt_url} target="_blank" rel="noreferrer" className="btn btn--secondary btn--sm" style={{ marginTop: 12 }}>
-              <Icon name="receipt" size={15} /> Descargar comprobante
-            </a>
+            <ReceiptButton paymentId={p.id} label="Descargar comprobante" className="btn btn--secondary btn--sm" style={{ marginTop: 12 }} />
           )}
         </div>
 

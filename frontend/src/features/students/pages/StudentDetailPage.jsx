@@ -15,6 +15,8 @@ import Table from '../../../components/ui/Table';
 import Spinner from '../../../components/ui/Spinner';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import Card from '../../../components/ui/Card';
+import AcademicHistory from '../components/AcademicHistory';
+import { useAuth } from '../../../context/AuthContext';
 
 function StudentDetailPage() {
   const { id } = useParams();
@@ -23,6 +25,7 @@ function StudentDetailPage() {
   const { run: unlinkRun, error: unlinkError } = useMutation((guardianId) => studentsApi.unlinkGuardian(id, guardianId));
 
   const confirm = useConfirm();
+  const { user } = useAuth();
 
   const handleUnlink = async (guardianId) => {
     const ok = await confirm({
@@ -79,12 +82,16 @@ function StudentDetailPage() {
         <Card title="Inscripción actual">
           {student.currentEnrollment ? (
             <p>
-              <Link to={`/academics/sections/${student.currentEnrollment.section_id}`}>
-                {student.currentEnrollment.grade_name} - Sección {student.currentEnrollment.section_name}
-              </Link>
+              {user?.isRestrictedTeacher ? (
+                `${student.currentEnrollment.grade_name} - Sección ${student.currentEnrollment.section_name}`
+              ) : (
+                <Link to={`/academics/sections/${student.currentEnrollment.section_id}`}>
+                  {student.currentEnrollment.grade_name} - Sección {student.currentEnrollment.section_name}
+                </Link>
+              )}
             </p>
           ) : (
-            <p>Sin inscripción activa. Ve a Académico → Secciones para inscribirlo.</p>
+            <p>{user?.isRestrictedTeacher ? 'Sin inscripción activa.' : 'Sin inscripción activa. Ve a Académico → Secciones para inscribirlo.'}</p>
           )}
         </Card>
 
@@ -93,6 +100,10 @@ function StudentDetailPage() {
           <p>Estado: {student.status}</p>
         </Card>
       </div>
+
+      <Card title="Historial académico" subtitle="Años escolares cursados, resultado y boleta de cada año">
+        <HistoryLoader studentId={id} />
+      </Card>
 
       <Card
         title="Representantes"
@@ -113,6 +124,14 @@ function StudentDetailPage() {
       )}
     </div>
   );
+}
+
+/** Carga y muestra el historial académico del alumno. */
+function HistoryLoader({ studentId }) {
+  const { data, loading, error } = useFetch(() => studentsApi.academicHistory(studentId), [studentId]);
+  if (loading) return <Spinner />;
+  if (error) return <Alert>{error}</Alert>;
+  return <AcademicHistory data={data} />;
 }
 
 /** Relaciones estándar alumno ↔ representante. Se guarda el texto tal cual (así se muestra en fichas y portal). */

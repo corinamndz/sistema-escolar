@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTenant } from '../../context/TenantContext';
 import Icon from '../ui/Icon';
-import { NAV_SECTIONS } from './navigation';
+import { NAV_SECTIONS, isNavItemVisible, navItemLabel } from './navigation';
 import { initials } from './initials';
 
 function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
@@ -14,7 +14,7 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
 
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => item.public || can(item.moduleCode, 'read')),
+    items: section.items.filter((item) => isNavItemVisible(item, { can, user })).map((item) => ({ ...item, label: navItemLabel(item, user) })),
   })).filter((section) => section.items.length > 0);
 
   const displayName = user?.fullName || user?.username;

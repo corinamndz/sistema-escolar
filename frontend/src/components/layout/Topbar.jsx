@@ -126,9 +126,11 @@ function Topbar({ onOpenMobileSidebar }) {
                   <div className="topbar__user-sub">{settings.name}</div>
                 </div>
               </div>
-              <Link to="/payments/mine" className="dropdown__item" role="menuitem">
-                <Icon name="receipt" size={17} /> Mis pagos
-              </Link>
+              {user?.guardianId && !user?.isRestrictedTeacher && (
+                <Link to="/payments/mine" className="dropdown__item" role="menuitem">
+                  <Icon name="receipt" size={17} /> Mis pagos
+                </Link>
+              )}
               {can('tenant_settings', 'read') && (
                 <Link to="/tenant/settings" className="dropdown__item" role="menuitem">
                   <Icon name="settings" size={17} /> Configuración del colegio

@@ -1,16 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import DataTable from '../../../components/ui/DataTable';
 import Badge from '../../../components/ui/Badge';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
-import academicsApi from '../../../api/endpoints/academics.api';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
-import RequirePermission from '../../../components/RequirePermission';
 import PageHeader from '../../../components/ui/PageHeader';
-import Card from '../../../components/ui/Card';
-import Table from '../../../components/ui/Table';
 import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Field from '../../../components/ui/Field';
@@ -18,9 +14,11 @@ import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
+import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
 import { LEVELS, LEVEL_CODES, LevelBadge, LevelRule } from '../../academics/levels';
 import { FORMATS, FormatPicker } from '../components/DetailedPlanner';
+import { TERM_OPTIONS, TermSelect, termLabel } from '../terms';
 
 /** Estado del plan según su ponderación: cerrado, listo para cerrar, incompleto o sin actividades. */
 export function planState(plan) {
@@ -50,20 +48,70 @@ function PlanWeight({ plan }) {
   );
 }
 
+const NO_TERM = 'none';
+
+/** Fechas "07/01 – 05/04" de un lapso, si están cargadas. */
+const termRange = (t) => (t?.start_date && t?.end_date ? `${formatShort(t.start_date)} – ${formatShort(t.end_date)}` : null);
+const formatShort = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+/**
+ * Planes de evaluación agrupados por lapso académico (Lapso I, II, III) del
+ * año escolar elegido. Cada bloque se puede contraer y muestra cuántos planes
+ * tiene y cuántos están cerrados o listos para cerrar.
+ */
 function EvaluationPlansPage() {
   const { can } = useAuth();
   const navigate = useNavigate();
-  const { data: periods, loading: loadingPeriods } = useFetch(() => academicsApi.listSchoolPeriods(), []);
+  const { data: periods, loading: loadingPeriods } = useFetch(() => evaluationPlansApi.listPeriodOptions(), []);
+  const { data: plans, loading: loadingPlans, error: plansError, refetch: refetchPlans } = useFetch(() => evaluationPlansApi.list(), []);
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
-
-  const { data: terms, loading: loadingTerms, refetch: refetchTerms } = useFetch(
+  const { data: terms, refetch: refetchTerms } = useFetch(
     () => (schoolPeriodId ? evaluationPlansApi.listTerms(schoolPeriodId) : Promise.resolve([])),
     [schoolPeriodId]
   );
-  const { data: plans, loading: loadingPlans, refetch: refetchPlans } = useFetch(() => evaluationPlansApi.list(), []);
 
-  const [showCreateTerm, setShowCreateTerm] = useState(false);
-  const [showCreatePlan, setShowCreatePlan] = useState(false);
+  const [query, setQuery] = useState('');
+  const [collapsed, setCollapsed] = useState(new Set());
+  const [editingTerm, setEditingTerm] = useState(null); // lapso cuyas fechas se editan
+  const [createFor, setCreateFor] = useState(null); // { termNumber } | {} → modal de nuevo plan
+
+  // Año por defecto: el más reciente que tenga planes (o el más reciente).
+  useEffect(() => {
+    if (schoolPeriodId || !periods?.length || !plans) return;
+    const sorted = [...periods].sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')));
+    const withPlans = sorted.find((p) => plans.some((pl) => pl.school_period_id === p.id));
+    setSchoolPeriodId((withPlans || sorted[0]).id);
+  }, [periods, plans, schoolPeriodId]);
+
+  const searchText = (p) => [p.subject, p.teacher_name, p.grade_name, p.section_names || p.section_name, p.term_name, termLabel(p.term_number)].join(' ');
+  const yearPlans = useMemo(() => (plans || []).filter((p) => p.school_period_id === schoolPeriodId), [plans, schoolPeriodId]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? yearPlans.filter((p) => searchText(p).toLowerCase().includes(q)) : yearPlans;
+  }, [yearPlans, query]);
+
+  // Los 3 lapsos siempre (aunque estén vacíos, para poder crear planes en ellos);
+  // un bloque extra si hubiera planes en un lapso sin número.
+  const groups = useMemo(() => {
+    const list = TERM_OPTIONS.map((t) => ({
+      key: String(t.number),
+      number: t.number,
+      label: t.label,
+      term: (terms || []).find((x) => Number(x.term_number) === t.number) || null,
+      plans: filtered.filter((p) => Number(p.term_number) === t.number),
+    }));
+    const other = filtered.filter((p) => !TERM_OPTIONS.some((t) => t.number === Number(p.term_number)));
+    if (other.length) list.push({ key: NO_TERM, number: null, label: 'Otros lapsos', term: null, plans: other });
+    return query ? list.filter((g) => g.plans.length) : list;
+  }, [filtered, terms, query]);
+
+  const toggle = (key) =>
+    setCollapsed((c) => {
+      const next = new Set(c);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const planColumns = [
     {
@@ -95,94 +143,157 @@ function EvaluationPlansPage() {
       ),
       sortValue: (p) => `${p.grade_name} ${p.section_name}`,
     },
-    { key: 'term_name', header: 'Lapso' },
     { key: 'total_weight', header: 'Ponderación', render: (p) => <PlanWeight plan={p} />, sortValue: (p) => Number(p.total_weight) },
   ];
+  const rowActions = [
+    { key: 'activities', icon: 'clipboard', label: 'Gestionar actividades y porcentajes', tone: 'edit', onClick: (p) => navigate(`/evaluation-plans/${p.id}`) },
+    { key: 'grades', icon: 'graduation', label: 'Ver calificaciones', tone: 'view', onClick: (p) => navigate(`/grading/plans/${p.id}`) },
+  ];
+  const canCreate = can('evaluation_plans', 'create');
 
   return (
     <div>
-      <PageHeader title="Planes de evaluación" subtitle="Lapsos, planes y actividades por sección" />
+      <PageHeader title="Planes de evaluación" subtitle="Planes y actividades de cada sección, organizados por lapso académico" />
 
-      <div>
-        <Card
-          title="Lapsos"
-          actions={
-            <RequirePermission module="evaluation_plans" action="create">
-              <Button size="sm" onClick={() => setShowCreateTerm(true)} disabled={!schoolPeriodId}>
-                + Nuevo lapso
+      <div className="card data-table student-groups__toolbar">
+        <div className="data-table__header">
+          <div>
+            <h3 className="card__title">
+              Planes por lapso
+              {!loadingPlans && <span className="data-table__count">{yearPlans.length}</span>}
+            </h3>
+            <p className="card__subtitle">Abre un plan para cargar sus actividades y porcentajes. Debe sumar exactamente 100% para poder cerrarlo.</p>
+          </div>
+          {canCreate && (
+            <div className="data-table__header-actions">
+              <Button icon="plus" onClick={() => setCreateFor({})}>
+                Nuevo plan
               </Button>
-            </RequirePermission>
-          }
-        >
-          <div className="form-field" style={{ marginBottom: 12 }}>
-            <label>Año escolar</label>
-            <Select value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)} disabled={loadingPeriods}>
-              <option value="">Selecciona un año escolar…</option>
-              {periods?.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+            </div>
+          )}
+        </div>
+        <div className="data-table__toolbar">
+          <div className="input-group data-table__search">
+            <Icon name="search" size={17} className="input-group__icon" />
+            <input
+              type="search"
+              className="input"
+              placeholder="Buscar asignatura, docente o sección…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Buscar planes"
+            />
+            {query && (
+              <button type="button" className="data-table__clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda">
+                <Icon name="x" size={15} />
+              </button>
+            )}
+          </div>
+          <div className="data-table__filters">
+            <Select value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)} disabled={loadingPeriods} aria-label="Año escolar">
+              {(periods || []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  Año {p.name}
+                </option>
               ))}
             </Select>
+            <Button variant="ghost" size="sm" icon="chevronDown" onClick={() => setCollapsed(new Set())} disabled={Boolean(query)}>
+              Expandir todo
+            </Button>
+            <Button variant="ghost" size="sm" icon="chevronRight" onClick={() => setCollapsed(new Set(groups.map((g) => g.key)))} disabled={Boolean(query)}>
+              Contraer todo
+            </Button>
           </div>
-
-          {schoolPeriodId ? (
-            loadingTerms ? <Spinner /> : (
-              <ul style={{ paddingLeft: 18 }}>
-                {(terms || []).map((t) => (
-                  <li key={t.id}>{t.name}</li>
-                ))}
-                {terms?.length === 0 && <p className="text-muted">Sin lapsos para este año escolar.</p>}
-              </ul>
-            )
-          ) : (
-            <p className="text-muted">Elige un año escolar para ver o crear sus lapsos.</p>
-          )}
-        </Card>
-
+        </div>
+        <Alert>{plansError}</Alert>
       </div>
 
-      <div style={{ marginTop: 20 }}>
-        <DataTable
-          title="Planes de evaluación"
-          description="Abre un plan para cargar sus actividades y porcentajes. Debe sumar exactamente 100% para poder cerrarlo."
-          columns={planColumns}
-          rows={plans}
-          loading={loadingPlans}
-          searchPlaceholder="Buscar asignatura, docente, sección o lapso…"
-          getSearchText={(p) => [p.subject, p.teacher_name, p.grade_name, p.section_names || p.section_name, p.term_name].join(' ')}
-          emptyMessage="Aún no hay planes de evaluación."
-          createLabel="Nuevo plan"
-          onCreate={() => setShowCreatePlan(true)}
-          canCreate={can('evaluation_plans', 'create')}
-          rowActions={[
-            {
-              key: 'activities',
-              icon: 'clipboard',
-              label: 'Gestionar actividades y porcentajes',
-              tone: 'edit',
-              onClick: (p) => navigate(`/evaluation-plans/${p.id}`),
-            },
-            { key: 'grades', icon: 'graduation', label: 'Ver calificaciones', tone: 'view', onClick: (p) => navigate(`/grading/plans/${p.id}`) },
-          ]}
-        />
-      </div>
+      {loadingPlans ? (
+        <Spinner />
+      ) : query && groups.length === 0 ? (
+        <div className="card empty-state">
+          <div className="empty-state__icon">
+            <Icon name="search" size={24} />
+          </div>
+          <div className="empty-state__title">Sin resultados</div>
+          <div className="text-sm">Ningún plan coincide con “{query}”.</div>
+        </div>
+      ) : (
+        <div className="student-groups">
+          {groups.map((g) => {
+            const open = Boolean(query) || !collapsed.has(g.key);
+            const bodyId = `term-group-${g.key}`;
+            const closed = g.plans.filter((p) => p.status === 'closed').length;
+            const ready = g.plans.filter((p) => p.status !== 'closed' && Number(p.total_weight) === 100).length;
+            const range = termRange(g.term);
+            return (
+              <section key={g.key} className={`student-group term-group ${open ? 'is-open' : ''} ${g.plans.length ? '' : 'student-group--none'}`}>
+                <div className="student-group__header">
+                  <button type="button" className="student-group__toggle" onClick={() => toggle(g.key)} aria-expanded={open} aria-controls={bodyId} disabled={Boolean(query)}>
+                    <Icon name="chevronDown" size={18} className="student-group__chevron" />
+                    <span className="student-group__title">{g.label}</span>
+                    {g.term && g.term.name !== `Lapso ${g.number}` && <span className="text-sm text-muted">{g.term.name}</span>}
+                    <span className="student-group__meta">
+                      {range || 'Sin fechas registradas'}
+                      {g.plans.length > 0 && ` · ${closed} cerrado${closed === 1 ? '' : 's'} · ${ready} listo${ready === 1 ? '' : 's'} para cerrar`}
+                    </span>
+                  </button>
+                  <div className="student-group__side">
+                    <span className="student-group__count">
+                      {g.plans.length} plan{g.plans.length === 1 ? '' : 'es'}
+                    </span>
+                    {canCreate && g.term && (
+                      <Button size="sm" variant="ghost" icon="calendar" onClick={() => setEditingTerm(g.term)} title={`Fechas del ${g.label}`}>
+                        Fechas
+                      </Button>
+                    )}
+                    {canCreate && g.number && (
+                      <Button size="sm" variant="secondary" icon="plus" onClick={() => setCreateFor({ termNumber: g.number })}>
+                        Plan
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {open && (
+                  <div id={bodyId} className="student-group__body">
+                    {g.plans.length === 0 ? (
+                      <p className="text-muted term-group__empty">Aún no hay planes en el {g.label}.</p>
+                    ) : (
+                      <DataTable bare searchable={false} paginated={false} columns={planColumns} rows={g.plans} rowActions={rowActions} emptyMessage="Sin planes." />
+                    )}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
 
-      {showCreateTerm && (
+      {editingTerm && (
         <CreateTermModal
           schoolPeriodId={schoolPeriodId}
-          onClose={() => setShowCreateTerm(false)}
+          initial={editingTerm}
+          onClose={() => setEditingTerm(null)}
           onCreated={refetchTerms}
         />
       )}
 
-      {showCreatePlan && (
-        <CreatePlanModal onClose={() => setShowCreatePlan(false)} onCreated={refetchPlans} />
+      {createFor && (
+        <CreatePlanModal initialTermNumber={createFor.termNumber} onClose={() => setCreateFor(null)} onCreated={refetchPlans} />
       )}
     </div>
   );
 }
 
-function CreateTermModal({ schoolPeriodId, onClose, onCreated }) {
-  const [form, setForm] = useState({ name: '', startDate: '', endDate: '' });
+/** Fechas de un lapso del año (los 3 lapsos se crean con el año escolar). */
+function CreateTermModal({ schoolPeriodId, initial, onClose, onCreated }) {
+  const day = (d) => (d ? String(d).slice(0, 10) : '');
+  const [form, setForm] = useState({
+    name: initial?.name || '',
+    startDate: day(initial?.start_date),
+    endDate: day(initial?.end_date),
+    termNumber: initial?.term_number || undefined,
+  });
   const { run, loading, error, fieldErrors } = useMutation(evaluationPlansApi.createTerm);
 
   const handleSubmit = async (e) => {
@@ -197,11 +308,11 @@ function CreateTermModal({ schoolPeriodId, onClose, onCreated }) {
   };
 
   return (
-    <Modal title="Nuevo lapso" onClose={onClose}>
+    <Modal title={initial ? `Fechas del ${termLabel(initial.term_number, initial.name)}` : 'Nuevo lapso'} onClose={onClose}>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
         <Field label="Nombre" error={fieldErrors.name}>
-          <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Lapso 1" required />
+          <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Lapso 1" required disabled={Boolean(initial)} />
         </Field>
         <div style={{ height: 12 }} />
         <div className="form-grid">
@@ -217,7 +328,7 @@ function CreateTermModal({ schoolPeriodId, onClose, onCreated }) {
             Cancelar
           </Button>
           <Button type="submit" loading={loading}>
-            Crear
+            {initial ? 'Guardar fechas' : 'Crear'}
           </Button>
         </div>
       </form>
@@ -230,8 +341,8 @@ function CreateTermModal({ schoolPeriodId, onClose, onCreated }) {
  *  - Secundaria: se elige una materia con profesor asignado; el docente se completa solo.
  *  - Inicial / Primaria: se elige entre los docentes de la sección y el área es texto libre.
  */
-function CreatePlanModal({ onClose, onCreated }) {
-  const { data: sections, loading: loadingSections } = useFetch(() => academicsApi.listSections(), []);
+function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
+  const { data: sections, loading: loadingSections } = useFetch(() => evaluationPlansApi.listSectionOptions(), []);
   const [sectionId, setSectionId] = useState('');
   const section = sections?.find((s) => s.id === sectionId);
   const { data: terms, loading: loadingTerms } = useFetch(
@@ -239,11 +350,11 @@ function CreatePlanModal({ onClose, onCreated }) {
     [sectionId, sections]
   );
   const { data: assignment, loading: loadingAssignment } = useFetch(
-    () => (sectionId ? academicsApi.getSectionTeachers(sectionId) : Promise.resolve(null)),
+    () => (sectionId ? evaluationPlansApi.getSectionAssignment(sectionId) : Promise.resolve(null)),
     [sectionId]
   );
 
-  const [form, setForm] = useState({ termId: '', teacherId: '', subject: '', subjectId: '' });
+  const [form, setForm] = useState({ termNumber: initialTermNumber || '', teacherId: '', subject: '', subjectId: '' });
   const [format, setFormat] = useState('simple');
   // Otras secciones del mismo grado y año a las que también se aplica el plan.
   const [extraSections, setExtraSections] = useState([]);
@@ -278,7 +389,8 @@ function CreatePlanModal({ onClose, onCreated }) {
   const changeSection = (e) => {
     setSectionId(e.target.value);
     setExtraSections([]);
-    setForm({ termId: '', teacherId: '', subject: '', subjectId: '' });
+    // El lapso elegido se conserva al cambiar de sección.
+    setForm((f) => ({ termNumber: f.termNumber, teacherId: '', subject: '', subjectId: '' }));
   };
 
   // Primaria con un único docente: se preselecciona.
@@ -288,13 +400,13 @@ function CreatePlanModal({ onClose, onCreated }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const common = { sectionIds: [sectionId, ...extraSections], termId: form.termId, format };
+    const common = { sectionIds: [sectionId, ...extraSections], termNumber: Number(form.termNumber), format };
     const body = bySubjects
       ? { ...common, subjectId: form.subjectId }
       : { ...common, teacherId: form.teacherId, subject: form.subject };
     try {
       const plan = await run(body);
-      toast.success('Plan de evaluación creado', `${plan.subject} · ${section.grade_name} ${section.name}`);
+      toast.success('Plan de evaluación creado', `${plan.subject} · ${section.grade_name} ${section.name} · ${termLabel(form.termNumber)}`);
       onCreated();
       onClose();
     } catch {
@@ -329,6 +441,16 @@ function CreatePlanModal({ onClose, onCreated }) {
                   ) : null;
                 })}
               </Select>
+            </Field>
+
+            <Field
+              label="Lapso académico"
+              error={fieldErrors.termNumber || fieldErrors.termId}
+              full
+              required
+              hint="Todas las actividades de este plan se califican en el lapso elegido. Para otro lapso, crea otro plan de la misma materia."
+            >
+              <TermSelect value={form.termNumber} onChange={(termNumber) => setForm((f) => ({ ...f, termNumber }))} terms={terms} disabled={loadingTerms} required />
             </Field>
 
             {siblings.length > 0 && (
@@ -375,17 +497,6 @@ function CreatePlanModal({ onClose, onCreated }) {
 
             {assignment && !blocker && (
               <>
-                <Field label="Lapso" error={fieldErrors.termId} required>
-                  <Select value={form.termId} onChange={set('termId')} disabled={loadingTerms} required>
-                    <option value="">{terms?.length === 0 ? 'Sin lapsos en este año escolar' : 'Selecciona…'}</option>
-                    {(terms || []).map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
                 {bySubjects ? (
                   <>
                     <Field
@@ -439,7 +550,7 @@ function CreatePlanModal({ onClose, onCreated }) {
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" loading={loading} disabled={!assignment || Boolean(blocker)}>
+            <Button type="submit" loading={loading} disabled={!assignment || Boolean(blocker) || !form.termNumber}>
               Crear plan
             </Button>
           </div>

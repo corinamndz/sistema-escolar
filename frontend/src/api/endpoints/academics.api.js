@@ -10,6 +10,19 @@ const academicsApi = {
 
   listSchoolPeriods: () => get('/academics/school-periods'),
   createSchoolPeriod: (data) => post('/academics/school-periods', data),
+  /** Finaliza el año (exige que no queden alumnos cursando) / lo reabre para corregir. */
+  closeSchoolPeriod: (id) => post(`/academics/school-periods/${id}/close`),
+  reopenSchoolPeriod: (id) => post(`/academics/school-periods/${id}/reopen`),
+  /** Normativa del año: nota mínima, reprobadas permitidas, promedio de lapsos (aritmético/ponderado), redondeo. */
+  getEvaluationRules: (id) => get(`/academics/school-periods/${id}/evaluation-rules`),
+  updateEvaluationRules: (id, data) => put(`/academics/school-periods/${id}/evaluation-rules`, data),
+
+  // ---- Promoción de alumnos ----
+  /** { fromPeriodId, toPeriodId, gradeId?, maxFailed? } → alumnos con notas, promedio y sugerencia. */
+  promotionPreview: (params) => get('/academics/promotion/preview', params),
+  /** { fromPeriodId, toPeriodId, decisions: [{ enrollmentId, action, targetSectionId?, createSectionName?, notes? }] } */
+  executePromotion: (data) => post('/academics/promotion', data),
+  undoPromotion: (enrollmentId) => post(`/academics/promotion/${enrollmentId}/undo`),
 
   listClassrooms: () => get('/academics/classrooms'),
   createClassroom: (data) => post('/academics/classrooms', data),

@@ -19,6 +19,7 @@ import Icon from '../../../components/ui/Icon';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { useToast } from '../../../components/ui/Toast';
 import { getErrorMessage } from '../../../api/axiosClient';
+import { openReceipt } from '../components/ReceiptButton';
 import { LEVELS, LEVEL_CODES } from '../../academics/levels';
 import { ConversionBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatAmounts, formatDate, formatMoney } from '../paymentStatus';
 import { ExchangeRatePanel } from '../components/ExchangeRatePanel';
@@ -176,7 +177,7 @@ function PaymentsPage() {
       label: 'Ver comprobante',
       tone: 'view',
       show: (p) => Boolean(p.receipt_url),
-      onClick: (p) => window.open(p.receipt_url, '_blank', 'noopener'),
+      onClick: (p) => openReceipt(p.id).catch((err) => toast.error('No se pudo abrir el recibo', err.message)),
     },
     {
       key: 'cancel',
@@ -350,8 +351,7 @@ function PaymentsPage() {
                   try {
                     const updated = await paymentsApi.regenerateReceipt(viewing.id);
                     toast.success('Comprobante regenerado', 'Se abrió con el diseño y los datos actuales.');
-                    // Evita la versión anterior en caché del navegador.
-                    window.open(`${updated.receipt_url}?v=${Date.now()}`, '_blank', 'noopener');
+                    await openReceipt(updated.id);
                     reload();
                   } catch (err) {
                     toast.error('No se pudo regenerar', getErrorMessage(err));

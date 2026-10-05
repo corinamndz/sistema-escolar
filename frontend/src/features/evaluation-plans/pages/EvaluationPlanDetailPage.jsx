@@ -20,6 +20,7 @@ import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { useToast } from '../../../components/ui/Toast';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
+import { TermBadge, termLabel } from '../terms';
 import {
   ContentRefsEditor,
   CriteriaEditor,
@@ -166,7 +167,7 @@ function EvaluationPlanDetailPage() {
         title={plan.subject}
         subtitle={
           <span className="page-header__meta">
-            {FORMATS[plan.format]?.label || 'Plan de evaluación'} · {plan.grade_name} {plan.sections.map((sec) => sec.name).join(', ')} · {plan.term_name}
+            {FORMATS[plan.format]?.label || 'Plan de evaluación'} · {plan.grade_name} {plan.sections.map((sec) => sec.name).join(', ')} · <TermBadge number={plan.term_number} name={plan.term_name} />
             {plan.term_start && plan.term_end && ` (${formatDay(plan.term_start)} – ${formatDay(plan.term_end)})`}
             {closed ? <Badge variant="success">Cerrado</Badge> : <Badge variant="info">Abierto</Badge>}
           </span>
@@ -183,12 +184,12 @@ function EvaluationPlanDetailPage() {
         }
       />
 
-      <Card title="Configuración del plan" subtitle="Tipo de formato y secciones a las que se aplica">
+      <Card title="Configuración del plan" subtitle="Lapso académico, tipo de formato y secciones a las que se aplica">
         <PlanSettings plan={plan} canEdit={can('evaluation_plans', 'update')} onChanged={refetch} />
       </Card>
 
       <Card
-        title="Total acumulado del lapso"
+        title={`Total acumulado del ${termLabel(plan.term_number, plan.term_name)}`}
         subtitle="El plan debe sumar exactamente 100% de la nota para poder cerrarse"
         actions={
           <RequirePermission module="evaluation_plans" action="update">
@@ -250,7 +251,7 @@ function EvaluationPlanDetailPage() {
       </Card>
 
       <Card
-        title="Actividades de evaluación"
+        title={`Actividades de evaluación · ${termLabel(plan.term_number, plan.term_name)}`}
         actions={
           <RequirePermission module="evaluation_plans" action="create">
             {!closed && (
@@ -389,6 +390,13 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
   return (
     <Modal title={isEdit ? 'Editar actividad' : 'Nueva actividad'} onClose={onClose} size={detailed ? 'lg' : undefined}>
       <Alert>{localError || error}</Alert>
+      <div className="activity-term">
+        <span className="student-card__label">Lapso académico</span>
+        <TermBadge number={plan.term_number} name={plan.term_name} />
+        <span className="text-sm text-muted">
+          {plan.subject} · la nota de esta actividad cuenta para el {termLabel(plan.term_number, plan.term_name)}
+        </span>
+      </div>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <Field label={detailed ? 'Actividad o instrumento' : 'Título'} error={fieldErrors.title} full>

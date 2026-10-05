@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import DataTable from '../../../components/ui/DataTable';
 import Icon from '../../../components/ui/Icon';
 import { LEVELS, LevelBadge } from '../../academics/levels';
+import { useAuth } from '../../../context/AuthContext';
 
 const STORAGE_KEY = 'students.collapsedGroups';
 const NO_SECTION = 'none';
@@ -69,6 +70,9 @@ export function groupStudents(rows) {
  * búsqueda activa se muestran todos abiertos para no esconder resultados.
  */
 function StudentGroups({ rows, columns, searching, showCapacity, onView, onEdit, canEdit, collapseSignal }) {
+  // El docente no accede al detalle de secciones (módulo de Grados y secciones).
+  const { user } = useAuth();
+  const canOpenSection = !user?.isRestrictedTeacher;
   const groups = useMemo(() => groupStudents(rows), [rows]);
   const [collapsed, setCollapsed] = useState(readCollapsed);
 
@@ -139,7 +143,7 @@ function StudentGroups({ rows, columns, searching, showCapacity, onView, onEdit,
                   <span className="student-group__count">
                     {count} {count === 1 ? 'alumno' : 'alumnos'}
                   </span>
-                  {!isNone && (
+                  {!isNone && canOpenSection && (
                     <Link to={`/academics/sections/${g.sectionId}`} className="student-group__link" title="Abrir la sección">
                       <Icon name="arrowRight" size={16} />
                       <span className="sr-only">Abrir la sección {g.gradeName} {g.sectionName}</span>

@@ -14,6 +14,7 @@ import StudentsPage from '../features/students/pages/StudentsPage';
 import StudentDetailPage from '../features/students/pages/StudentDetailPage';
 import GuardiansPage from '../features/students/pages/GuardiansPage';
 import AcademicsPage from '../features/academics/pages/AcademicsPage';
+import PromotionPage from '../features/academics/pages/PromotionPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
 import EvaluationPlansPage from '../features/evaluation-plans/pages/EvaluationPlansPage';
 import EvaluationPlanDetailPage from '../features/evaluation-plans/pages/EvaluationPlanDetailPage';
@@ -56,9 +57,14 @@ function App() {
               <Route path="guardians" element={<GuardiansPage />} />
             </Route>
 
-            <Route element={<PermissionRoute module="academics" />}>
+            <Route element={<PermissionRoute module="academics" blockTeacher />}>
               <Route path="academics" element={<AcademicsPage />} />
               <Route path="academics/sections/:id" element={<SectionDetailPage />} />
+            </Route>
+
+            {/* Cierre y promoción: módulo propio, vedado a los docentes. */}
+            <Route element={<PermissionRoute module="promotion" blockTeacher />}>
+              <Route path="academics/promotion" element={<PromotionPage />} />
             </Route>
 
             <Route element={<PermissionRoute module="evaluation_plans" />}>
@@ -70,13 +76,15 @@ function App() {
               <Route path="grading/plans/:id" element={<GradebookPage />} />
             </Route>
 
-            <Route element={<PermissionRoute module="payments" />}>
+            <Route element={<PermissionRoute module="payments" blockTeacher />}>
               <Route path="payments" element={<PaymentsPage />} />
               <Route path="payments/currencies" element={<CurrenciesPage />} />
             </Route>
 
             {/* Vista de padres: cualquier usuario autenticado con hijos asociados, sin permiso administrativo */}
-            <Route path="payments/mine" element={<MyPaymentsPage />} />
+            <Route element={<PermissionRoute guardianOnly blockTeacher />}>
+              <Route path="payments/mine" element={<MyPaymentsPage />} />
+            </Route>
             {/* Portal de padres: detalle y calificaciones de un representado (el backend valida el vínculo) */}
             <Route path="portal/students/:studentId" element={<PortalStudentPage />} />
 

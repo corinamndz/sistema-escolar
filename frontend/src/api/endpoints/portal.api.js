@@ -10,6 +10,8 @@ const portalApi = {
       return r.data;
     }),
   /** Calificaciones acumuladas de un alumno del representante (404 si no es su representado). */
+  /** Historial académico de un alumno del representante. */
+  getStudentHistory: (studentId) => axiosClient.get(`/portal/students/${studentId}/history`).then((r) => r.data),
   getStudentGrades: (studentId, params) =>
     axiosClient.get(`/portal/students/${studentId}/grades`, { params }).then((r) => r.data),
 };

@@ -1,8 +1,10 @@
 /**
  * Menú principal agrupado por secciones. `moduleCode` se valida contra los
  * permisos del usuario (`can(moduleCode, 'read')`); `public: true` lo muestra
- * a cualquier usuario autenticado. El Topbar usa esta misma lista para el
- * título de la página actual.
+ * a cualquier usuario autenticado; `guardianOnly` solo a representantes;
+ * `blockTeacher` lo oculta a los docentes restringidos a su carga (el backend
+ * igual responde 403). El Topbar usa esta misma lista para el título de la
+ * página actual.
  */
 const NAV_SECTIONS = [
   {
@@ -12,7 +14,7 @@ const NAV_SECTIONS = [
   {
     label: 'Comunidad escolar',
     items: [
-      { moduleCode: 'students', label: 'Alumnos', icon: 'graduation', path: '/students' },
+      { moduleCode: 'students', label: 'Alumnos', teacherLabel: 'Mis alumnos', icon: 'graduation', path: '/students' },
       { moduleCode: 'guardians', label: 'Representantes', icon: 'users', path: '/guardians' },
       { moduleCode: 'staff', label: 'Personal', icon: 'briefcase', path: '/staff' },
     ],
@@ -20,17 +22,18 @@ const NAV_SECTIONS = [
   {
     label: 'Académico',
     items: [
-      { moduleCode: 'academics', label: 'Grados y secciones', icon: 'school', path: '/academics' },
+      { moduleCode: 'academics', label: 'Grados y secciones', icon: 'school', path: '/academics', blockTeacher: true },
       { moduleCode: 'evaluation_plans', label: 'Planes de evaluación', icon: 'clipboard', path: '/evaluation-plans' },
+      { moduleCode: 'promotion', label: 'Cierre y promoción', icon: 'graduation', path: '/academics/promotion', blockTeacher: true },
     ],
   },
   {
     label: 'Finanzas',
     items: [
-      { moduleCode: 'payments', label: 'Pagos', icon: 'card', path: '/payments' },
-      { moduleCode: 'payments', label: 'Monedas y tasas', icon: 'trendingUp', path: '/payments/currencies' },
-      // Vista de padres: visible para cualquier usuario autenticado, sin depender de permisos administrativos
-      { moduleCode: 'my_payments', label: 'Mis pagos', icon: 'receipt', path: '/payments/mine', public: true },
+      { moduleCode: 'payments', label: 'Pagos', icon: 'card', path: '/payments', blockTeacher: true },
+      { moduleCode: 'payments', label: 'Monedas y tasas', icon: 'trendingUp', path: '/payments/currencies', blockTeacher: true },
+      // Vista de padres: solo para cuentas de representante (no depende de permisos administrativos).
+      { moduleCode: 'my_payments', label: 'Mis pagos', icon: 'receipt', path: '/payments/mine', guardianOnly: true, blockTeacher: true },
     ],
   },
   {
@@ -66,4 +69,16 @@ function findRouteMeta(pathname) {
   return best;
 }
 
-export { NAV_SECTIONS, findRouteMeta };
+/** Nombre del ítem para el usuario (el docente ve "Mis alumnos"). */
+function navItemLabel(item, user) {
+  return (user?.isRestrictedTeacher && item.teacherLabel) || item.label;
+}
+
+/** ¿Se muestra este ítem del menú al usuario? */
+function isNavItemVisible(item, { can, user }) {
+  if (item.blockTeacher && user?.isRestrictedTeacher) return false;
+  if (item.guardianOnly) return Boolean(user?.guardianId);
+  return Boolean(item.public) || can(item.moduleCode, 'read');
+}
+
+export { NAV_SECTIONS, findRouteMeta, isNavItemVisible, navItemLabel };

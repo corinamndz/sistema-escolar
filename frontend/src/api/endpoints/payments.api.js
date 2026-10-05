@@ -39,6 +39,8 @@ const paymentsApi = {
   report: (id, data, proofFile) => postWithProof(`/payments/${id}/report`, data, proofFile),
   /** Comprobante adjunto (privado): se descarga con la sesión del usuario como Blob. */
   getProofBlob: (id) => axiosClient.get(`/payments/${id}/proof`, { responseType: 'blob' }).then((r) => r.data),
+  /** Recibo PDF (privado): se descarga con la sesión del usuario como Blob. */
+  getReceiptBlob: (id) => axiosClient.get(`/payments/${id}/receipt`, { responseType: 'blob' }).then((r) => r.data),
 
   listFees: (schoolPeriodId) => get('/payments/tuition/fees', { schoolPeriodId }),
   upsertFee: (data) => axiosClient.put('/payments/tuition/fees', data).then((r) => r.data),

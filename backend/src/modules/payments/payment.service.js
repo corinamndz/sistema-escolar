@@ -84,7 +84,8 @@ async function generateAndStoreReceipt(trx, tenantId, paymentId) {
   const buffer = await generateReceiptPdf(data);
   const receiptFilename = `${paymentId}.pdf`;
   fs.writeFileSync(path.join(RECEIPTS_DIR, receiptFilename), buffer);
-  return { buffer, receiptUrl: `/storage/receipts/${receiptFilename}`, receiptFilename, data };
+  // Ya no es un archivo público: se descarga por GET /api/payments/:id/receipt (con sesión).
+  return { buffer, receiptUrl: `/api/payments/${paymentId}/receipt`, receiptFilename, data };
 }
 
 /** Vuelve a generar el comprobante de un pago ya confirmado (p. ej. con el diseño o logo nuevos). */
@@ -517,9 +518,29 @@ async function getProof(trx, tenantId, userId, paymentId) {
   return { absolutePath, mime: payment.proof_mime, name: payment.proof_original_name || 'comprobante' };
 }
 
+/**
+ * Recibo PDF de un pago: PRIVADO. Lo ve la familia dueña del pago o quien
+ * puede leer pagos (los recibos ya no se sirven como archivos públicos).
+ */
+async function getReceipt(trx, tenantId, userId, paymentId) {
+  const payment = await trx('payments').where({ id: paymentId, tenant_id: tenantId }).first();
+  if (!payment || !payment.receipt_url) throw ApiError.notFound('Recibo no encontrado.');
+
+  const perms = await getEffectivePermissions(trx, tenantId, userId);
+  if (!perms.payments?.can_read) {
+    const guardian = await trx('guardians').where({ tenant_id: tenantId, user_id: userId }).first();
+    if (!guardian || guardian.id !== payment.guardian_id) throw ApiError.notFound('Recibo no encontrado.');
+  }
+
+  const absolutePath = path.join(RECEIPTS_DIR, `${payment.id}.pdf`);
+  if (!fs.existsSync(absolutePath)) throw ApiError.notFound('El archivo del recibo no existe: vuelve a generarlo.');
+  return { absolutePath, name: `recibo-${payment.id.slice(0, 8)}.pdf` };
+}
+
 module.exports = {
   regenerateReceipt,
   getProof,
+  getReceipt,
   DISPLAY_STATUS_SQL,
   quotePayment,
   listPayments,

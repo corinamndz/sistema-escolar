@@ -13,8 +13,8 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Comprobantes de pago en PDF, servidos como archivos estáticos.
-app.use('/storage/receipts', express.static(path.join(__dirname, '..', 'storage', 'receipts')));
+// Los recibos PDF ya NO se sirven como archivos públicos: tienen datos de la
+// familia y del pago. Se descargan con sesión por GET /api/payments/:id/receipt.
 
 // Logos de los colegios (públicos, con nombre UUID no adivinable).
 // Helmet pone `Cross-Origin-Resource-Policy: same-origin` por defecto, lo que

@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const service = require('./academic.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
+const teacherScope = require('../access/teacherScope');
 
 // ---- Periodos escolares ----
 const listSchoolPeriods = asyncHandler(async (req, res) => {
@@ -52,7 +53,10 @@ const sectionSchema = z.object({
 
 const listSections = asyncHandler(async (req, res) => {
   const { schoolPeriodId, gradeId, levelCode } = req.query;
-  res.status(200).json(await service.listSections(req.db, req.tenantId, { schoolPeriodId, gradeId, levelCode }));
+  const rows = await service.listSections(req.db, req.tenantId, { schoolPeriodId, gradeId, levelCode });
+  // Docente: solo las secciones de su carga.
+  const scope = await teacherScope.getTeacherScope(req);
+  res.status(200).json(scope ? rows.filter((s) => teacherScope.coversSection(scope, s.id)) : rows);
 });
 const getSection = asyncHandler(async (req, res) => {
   res.status(200).json(await service.getSectionById(req.db, req.tenantId, req.params.id));

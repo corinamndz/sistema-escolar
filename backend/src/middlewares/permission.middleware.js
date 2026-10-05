@@ -3,6 +3,9 @@ const cache = require('../utils/cache');
 
 const CRUD_ACTIONS = ['create', 'read', 'update', 'delete'];
 
+/** Rol del portal de padres. */
+const GUARDIAN_ROLE = 'Representante';
+
 /**
  * Combina los permisos de TODOS los roles del usuario (OR lógico por
  * permiso: si cualquiera de sus roles puede editar, puede editar) y los
@@ -18,9 +21,15 @@ async function getEffectivePermissions(db, tenantId, userId) {
 
   const rows = await db('role_permissions as rp')
     .join('user_roles as ur', 'ur.role_id', 'rp.role_id')
+    .join('roles as r', 'r.id', 'rp.role_id')
     .join('modules as m', 'm.id', 'rp.module_id')
     .where('ur.user_id', userId)
     .andWhere('rp.tenant_id', tenantId)
+    // El rol Representante solo aporta el panel de inicio: el portal de padres
+    // (/portal/*, /payments/mine…) filtra por la familia y no usa permisos de
+    // módulo. Un permiso administrativo (pagos, calificaciones…) le dejaría ver
+    // los datos de TODO el colegio, aunque esté cargado en la base por error.
+    .andWhere((q) => q.whereNot('r.name', GUARDIAN_ROLE).orWhere('m.code', 'dashboard'))
     .select(
       'm.code as module_code',
       'rp.can_create',
@@ -93,4 +102,4 @@ function requirePermission(moduleCode, action) {
   };
 }
 
-module.exports = { requirePermission, getEffectivePermissions, invalidatePermissionsCache };
+module.exports = { GUARDIAN_ROLE, requirePermission, getEffectivePermissions, invalidatePermissionsCache };

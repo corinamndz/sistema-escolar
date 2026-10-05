@@ -1,5 +1,9 @@
 const { ApiError } = require('../../utils/ApiError');
-const { invalidatePermissionsCache } = require('../../middlewares/permission.middleware');
+const { invalidatePermissionsCache, GUARDIAN_ROLE } = require('../../middlewares/permission.middleware');
+const { TEACHER_ROLE } = require('../access/teacherScope');
+
+/** Módulos que el rol Docente no puede recibir. */
+const TEACHER_FORBIDDEN_MODULES = ['payments', 'promotion'];
 
 async function listRoles(trx, tenantId) {
   return trx('roles').where({ tenant_id: tenantId }).orderBy('name');
@@ -71,6 +75,19 @@ async function setRolePermissions(trx, tenantId, roleId, permissions) {
   for (const perm of permissions) {
     const moduleRow = await trx('modules').where({ code: perm.moduleCode }).first();
     if (!moduleRow) throw ApiError.badRequest(`Módulo desconocido: ${perm.moduleCode}`);
+    // El rol Docente nunca accede a pagos ni a cierre y promoción (además el backend los veta con 403).
+    const grants = perm.canCreate || perm.canRead || perm.canUpdate || perm.canDelete || Object.values(perm.extraActions || {}).some(Boolean);
+    if (role.name === TEACHER_ROLE && TEACHER_FORBIDDEN_MODULES.includes(perm.moduleCode) && grants) {
+      throw ApiError.unprocessable(`El rol ${TEACHER_ROLE} no puede tener acceso a "${moduleRow.label}".`, [{ path: perm.moduleCode, message: 'Módulo vedado a docentes.' }]);
+    }
+    // El representante ve los pagos y notas de SUS hijos desde el portal; un
+    // permiso administrativo le abriría los de todo el colegio.
+    if (role.name === GUARDIAN_ROLE && perm.moduleCode !== 'dashboard' && grants) {
+      throw ApiError.unprocessable(
+        `El rol ${GUARDIAN_ROLE} solo usa el portal de padres (pagos y calificaciones de sus hijos): no puede tener acceso a "${moduleRow.label}".`,
+        [{ path: perm.moduleCode, message: 'Módulo administrativo.' }]
+      );
+    }
 
     const existing = await trx('role_permissions')
       .where({ tenant_id: tenantId, role_id: roleId, module_id: moduleRow.id })

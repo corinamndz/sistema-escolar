@@ -9,5 +9,6 @@ router.use(authMiddleware, tenantMiddleware);
 
 router.get('/me', controller.getMyPortal);
 router.get('/students/:studentId/grades', controller.getStudentGrades);
+router.get('/students/:studentId/history', controller.getStudentHistory);
 
 module.exports = router;

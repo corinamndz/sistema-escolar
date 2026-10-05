@@ -4,6 +4,20 @@ const { getImporter } = require('./import.service');
 const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 const { requirePermission } = require('../../middlewares/permission.middleware');
+const scope = require('../access/teacherScope');
+
+/** Calificaciones: el plan (planId en la URL o en el formulario) debe ser de la carga del docente. */
+async function requireOwnPlan(req, res, next) {
+  try {
+    if (req.params.type === 'scores') {
+      const planId = req.query.planId || req.body?.planId;
+      if (planId) await scope.assertPlanAccess(req, planId);
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
 const { importUpload } = require('../../middlewares/upload.middleware');
 
 router.use(authMiddleware, tenantMiddleware);
@@ -24,9 +38,9 @@ function requireImportPermission(req, res, next) {
   return requirePermission(...importer.permission)(req, res, next);
 }
 
-router.get('/:type/template', requireImportPermission, controller.downloadTemplate);
+router.get('/:type/template', requireImportPermission, requireOwnPlan, controller.downloadTemplate);
 // El permiso se revisa ANTES de recibir el archivo.
-router.post('/:type/validate', requireImportPermission, importUpload, controller.validate);
-router.post('/:type', requireImportPermission, importUpload, controller.importFile);
+router.post('/:type/validate', requireImportPermission, importUpload, requireOwnPlan, controller.validate);
+router.post('/:type', requireImportPermission, importUpload, requireOwnPlan, controller.importFile);
 
 module.exports = router;

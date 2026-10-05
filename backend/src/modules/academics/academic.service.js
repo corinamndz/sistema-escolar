@@ -7,10 +7,14 @@ async function listSchoolPeriods(trx, tenantId) {
   return trx('school_periods').where({ tenant_id: tenantId }).orderBy('start_date', 'desc');
 }
 
+/** Todo año escolar nace con sus 3 lapsos (Lapso 1, 2 y 3; las fechas se completan después). */
 async function createSchoolPeriod(trx, tenantId, { name, startDate, endDate }) {
   const [period] = await trx('school_periods')
     .insert({ tenant_id: tenantId, name, start_date: startDate, end_date: endDate })
     .returning('*');
+  for (const n of [1, 2, 3]) {
+    await trx('terms').insert({ tenant_id: tenantId, school_period_id: period.id, name: `Lapso ${n}`, term_number: n });
+  }
   return period;
 }
 

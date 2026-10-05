@@ -1,6 +1,8 @@
 const { z } = require('zod');
 const service = require('./evaluationPlan.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
+const teacherScope = require('../access/teacherScope');
+const { ApiError } = require('../../utils/ApiError');
 
 // ---- Lapsos ----
 const listTerms = asyncHandler(async (req, res) => {
@@ -12,6 +14,7 @@ const createTerm = asyncHandler(async (req, res) => {
     name: z.string().min(1),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
+    termNumber: z.coerce.number().int().min(1).max(3).optional(),
   });
   res.status(201).json(await service.createTerm(req.db, req.tenantId, schema.parse(req.body)));
 });
@@ -19,7 +22,14 @@ const createTerm = asyncHandler(async (req, res) => {
 // ---- Planes ----
 const listPlans = asyncHandler(async (req, res) => {
   const { sectionId, termId, teacherId } = req.query;
-  res.status(200).json(await service.listPlans(req.db, req.tenantId, { sectionId, termId, teacherId }));
+  const termNumber = req.query.termNumber ? z.coerce.number().int().min(1).max(3).parse(req.query.termNumber) : undefined;
+  const rows = await service.listPlans(req.db, req.tenantId, { sectionId, termId, termNumber, teacherId });
+  // Docente: solo los planes de materias y secciones de su carga.
+  const scope = await teacherScope.getTeacherScope(req);
+  if (!scope || rows.length === 0) return res.status(200).json(rows);
+  const links = await req.db('evaluation_plan_sections').whereIn('plan_id', rows.map((p) => p.id)).select('plan_id', 'section_id');
+  const sectionsOf = (id) => links.filter((l) => l.plan_id === id).map((l) => l.section_id);
+  return res.status(200).json(rows.filter((p) => teacherScope.coversPlan(scope, p, sectionsOf(p.id))));
 });
 const getPlan = asyncHandler(async (req, res) => {
   res.status(200).json(await service.getPlanWithActivities(req.db, req.tenantId, req.params.id));
@@ -29,15 +39,37 @@ const createPlan = asyncHandler(async (req, res) => {
     // Una sección (sectionId) o varias del mismo grado (sectionIds): el plan se aplica a todas.
     sectionId: z.string().uuid().optional(),
     sectionIds: z.array(z.string().uuid()).min(1).max(20).optional(),
-    termId: z.string().uuid(),
+    // Lapso académico: termNumber 1 | 2 | 3 (Lapso I, II, III) o, por compatibilidad, termId.
+    termNumber: z.coerce.number({ invalid_type_error: 'Elige el lapso.' }).int().min(1, 'Elige el lapso.').max(3, 'Elige el lapso.').optional(),
+    termId: z.string().uuid().optional(),
     format: z.enum(['simple', 'detailed']).default('simple'),
     // Secundaria: subjectId (el profesor se toma de la asignación). Inicial/Primaria: subject + teacherId.
     teacherId: z.string().uuid().optional(),
     subject: z.string().trim().min(1).optional(),
     subjectId: z.string().uuid().optional(),
   });
-  res.status(201).json(await service.createPlan(req.db, req.tenantId, schema.parse(req.body)));
+  const data = schema.parse(req.body);
+  await assertCanCreatePlan(req, data);
+  res.status(201).json(await service.createPlan(req.db, req.tenantId, data));
 });
+
+/**
+ * Docente: solo puede crear planes de SU carga. Por materia (subjectId), la
+ * materia debe ser suya en cada sección; de aula (texto libre), debe ser
+ * docente de aula de cada sección y el plan queda a su nombre.
+ */
+async function assertCanCreatePlan(req, data) {
+  const scope = await teacherScope.getTeacherScope(req);
+  if (!scope) return;
+  const sectionIds = data.sectionIds?.length ? data.sectionIds : [data.sectionId].filter(Boolean);
+  const outside = sectionIds.find((id) => !teacherScope.coversSubject(scope, id, data.subjectId || null));
+  if (outside) {
+    throw ApiError.forbidden('Solo puedes crear planes de las materias y secciones de tu carga docente.', [{ path: 'sectionIds', message: 'Fuera de tu carga.' }]);
+  }
+  if (!data.subjectId && data.teacherId && data.teacherId !== scope.staffId) {
+    throw ApiError.forbidden('Solo puedes crear planes a tu nombre.', [{ path: 'teacherId', message: 'Debe ser tu usuario.' }]);
+  }
+}
 
 /** Cambia el formato o las secciones del plan. */
 const updatePlan = asyncHandler(async (req, res) => {
@@ -45,8 +77,17 @@ const updatePlan = asyncHandler(async (req, res) => {
     .object({
       format: z.enum(['simple', 'detailed']).optional(),
       sectionIds: z.array(z.string().uuid()).min(1).max(20).optional(),
+      termNumber: z.coerce.number().int().min(1).max(3).optional(),
+      termId: z.string().uuid().optional(),
     })
     .parse(req.body);
+  const scope = await teacherScope.getTeacherScope(req);
+  if (scope && data.sectionIds) {
+    const plan = await req.db('evaluation_plans').where({ id: req.params.planId, tenant_id: req.tenantId }).select('subject_id').first();
+    if (plan && data.sectionIds.some((id) => !teacherScope.coversSubject(scope, id, plan.subject_id))) {
+      throw ApiError.forbidden('Solo puedes aplicar el plan a secciones de tu carga docente.', [{ path: 'sectionIds', message: 'Fuera de tu carga.' }]);
+    }
+  }
   res.status(200).json(await service.updatePlan(req.db, req.tenantId, req.params.planId, data));
 });
 

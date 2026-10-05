@@ -16,6 +16,8 @@ const MODULES = [
   { code: 'evaluation_plans', label: 'Planes de evaluación', sortOrder: 7, extraActions: [] },
   { code: 'grading', label: 'Calificaciones', sortOrder: 8, extraActions: ['view_all_sections'] },
   { code: 'payments', label: 'Pagos', sortOrder: 9, extraActions: ['approve_payment', 'export'] },
+  // Cierre de año escolar y promoción de alumnos (separado de 'academics' para no dárselo a los docentes).
+  { code: 'promotion', label: 'Cierre y promoción', sortOrder: 10, extraActions: [] },
 ];
 
 const MODULE_CODES = MODULES.map((m) => m.code);

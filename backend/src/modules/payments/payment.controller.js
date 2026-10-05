@@ -84,6 +84,17 @@ const downloadProof = asyncHandler(async (req, res) => {
   res.sendFile(absolutePath);
 });
 
+/** Descarga PRIVADA del recibo PDF (la familia dueña del pago o quien lee pagos). */
+const downloadReceipt = asyncHandler(async (req, res) => {
+  const { absolutePath, name } = await service.getReceipt(req.db, req.tenantId, req.user.id, req.params.id);
+  res.set({
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `inline; filename="${name}"`,
+    'Cache-Control': 'private, no-store',
+  });
+  res.sendFile(absolutePath);
+});
+
 const cancel = asyncHandler(async (req, res) => {
   res.status(200).json(await service.cancelPayment(req.db, req.tenantId, req.params.id));
 });
@@ -277,6 +288,7 @@ module.exports = {
   quote,
   regenerateReceipt,
   downloadProof,
+  downloadReceipt,
   currentRate,
   listRates,
   upsertRate,

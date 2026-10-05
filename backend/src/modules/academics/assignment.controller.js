@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const service = require('./assignment.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
+const teacherScope = require('../access/teacherScope');
 
 const uuidOrNull = z.string().uuid().nullable();
 
@@ -71,7 +72,10 @@ const setSectionAssignments = asyncHandler(async (req, res) => {
 // ---- Carga docente ----
 const listTeachingLoad = asyncHandler(async (req, res) => {
   const schoolPeriodId = z.string().uuid().optional().parse(req.query.schoolPeriodId || undefined);
-  res.status(200).json(await service.listTeachingLoad(req.db, req.tenantId, { schoolPeriodId }));
+  const rows = await service.listTeachingLoad(req.db, req.tenantId, { schoolPeriodId });
+  // Docente: solo su propia carga.
+  const scope = await teacherScope.getTeacherScope(req);
+  res.status(200).json(scope ? rows.filter((t) => t.id === scope.staffId) : rows);
 });
 
 module.exports = {

@@ -70,7 +70,7 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
     .join('sections as sec', 'sec.id', 'e.section_id')
     .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
     .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId })
-    .distinct('sp.id', 'sp.name', 'sp.start_date', 'sp.is_active')
+    .distinct('sp.id', 'sp.name', 'sp.start_date', 'sp.is_active', 'sp.passing_grade')
     .orderByRaw('sp.is_active DESC, sp.start_date DESC NULLS LAST');
 
   const base = { student, scale: GRADE_SCALE, passing_grade: PASSING_GRADE, periods, school_period: null, terms: [], subjects: [] };
@@ -107,7 +107,7 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
           't.start_date as term_start',
           trx.raw("st.first_name || ' ' || st.last_name AS teacher_name")
         )
-        .orderByRaw('t.start_date NULLS LAST, t.name, ep.subject')
+        .orderByRaw('t.term_number NULLS LAST, t.start_date NULLS LAST, t.name, ep.subject')
     : [];
   const isActiveSection = (id) => sections.some((sec) => sec.id === id && sec.enrollment_status === 'active');
   const plans = [];
@@ -207,7 +207,10 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
 
   const terms = [...new Map(plans.map((p) => [p.term_id, { id: p.term_id, name: p.term_name }])).values()];
 
-  return { ...base, school_period: { id: period.id, name: period.name }, sections, terms, subjects };
+  // Nota mínima: la de la normativa del año escolar consultado (migración 014).
+  const passingGrade = period.passing_grade === undefined || period.passing_grade === null ? PASSING_GRADE : Number(period.passing_grade);
+  return { ...base, passing_grade: passingGrade, school_period: { id: period.id, name: period.name }, sections, terms, subjects };
 }
 
-module.exports = { getStudentGrades, GRADE_SCALE, PASSING_GRADE };
+module.exports = {
+  assertGuardianOfStudent, getStudentGrades, GRADE_SCALE, PASSING_GRADE };

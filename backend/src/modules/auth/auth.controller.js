@@ -2,6 +2,7 @@ const { z } = require('zod');
 const authService = require('./auth.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
+const { getTeacherScope } = require('../access/teacherScope');
 
 const loginSchema = z.object({
   tenantSlug: z.string().min(1, 'tenantSlug es requerido.'),
@@ -25,7 +26,10 @@ const refresh = asyncHandler(async (req, res) => {
 const me = asyncHandler(async (req, res) => {
   const user = await authService.getMe(req.db, req.tenantId, req.user.id);
   const permissions = await getEffectivePermissions(req.db, req.tenantId, req.user.id);
-  res.status(200).json({ ...user, permissions });
+  req.permissions = permissions;
+  // Docente restringido a su carga: el frontend oculta pagos y cierre/promoción (el backend igual responde 403).
+  const scope = await getTeacherScope(req);
+  res.status(200).json({ ...user, permissions, isRestrictedTeacher: Boolean(scope) });
 });
 
 const changePassword = asyncHandler(async (req, res) => {

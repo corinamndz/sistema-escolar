@@ -1,6 +1,8 @@
 const { z } = require('zod');
 const service = require('./student.service');
+const academicRecord = require('../academics/academicRecord.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
+const teacherScope = require('../access/teacherScope');
 
 const studentSchema = z.object({
   firstName: z.string().min(1),
@@ -56,7 +58,8 @@ const linkSchema = z.object({
 // ---- Alumnos ----
 
 const listStudents = asyncHandler(async (req, res) => {
-  const rows = await service.listStudents(req.db, req.tenantId, { status: req.query.status });
+  const scope = await teacherScope.getTeacherScope(req);
+  const rows = await service.listStudents(req.db, req.tenantId, { status: req.query.status, scope });
   res.status(200).json(rows);
 });
 
@@ -75,6 +78,27 @@ const updateStudent = asyncHandler(async (req, res) => {
   const data = studentSchema.partial().extend({ status: z.enum(['active', 'inactive', 'graduated', 'withdrawn']).optional() }).parse(req.body);
   const row = await service.updateStudent(req.db, req.tenantId, req.params.id, data);
   res.status(200).json(row);
+});
+
+/** GET /students/:id/academic-history — años cursados con grado, resultado y notas por materia. */
+const getAcademicHistory = asyncHandler(async (req, res) => {
+  const history = await academicRecord.getStudentHistory(req.db, req.tenantId, req.params.id);
+  // Docente: solo los años cursados en secciones de su carga y, de cada año,
+  // solo las materias que dicta (no ve las notas de otros profesores).
+  const scope = await teacherScope.getTeacherScope(req);
+  if (scope) {
+    history.years = history.years
+      .filter((y) => teacherScope.coversSection(scope, y.section_id))
+      .map((y) => ({
+        ...y,
+        subjects: y.subjects.filter((s) => teacherScope.coversSubject(scope, y.section_id, s.subject_id || null)),
+        // El promedio general y las reprobadas mezclan materias de otros docentes.
+        final_average: null,
+        failed_subjects: null,
+        restricted: true,
+      }));
+  }
+  res.status(200).json(history);
 });
 
 // ---- Representantes ----
@@ -121,6 +145,7 @@ const unlinkGuardian = asyncHandler(async (req, res) => {
 
 module.exports = {
   listStudents,
+  getAcademicHistory,
   getStudent,
   createStudent,
   updateStudent,

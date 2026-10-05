@@ -3,9 +3,11 @@ const controller = require('./payment.controller');
 const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 const { requirePermission } = require('../../middlewares/permission.middleware');
+const { denyTeachers } = require('../access/teacherScope');
 const { proofUpload } = require('../../middlewares/upload.middleware');
 
-router.use(authMiddleware, tenantMiddleware);
+// Los docentes no acceden a NINGUNA ruta de pagos (ni la administración ni "Mis pagos"): 403.
+router.use(authMiddleware, tenantMiddleware, denyTeachers);
 
 // ---- Vista de padres ----
 // Sin permiso administrativo de "payments": el servicio filtra por el
@@ -14,6 +16,8 @@ router.get('/mine', controller.listMine);
 router.post('/:id/report', proofUpload, controller.report);
 // Comprobante adjunto: privado; el servicio valida si quien lo pide es la familia o quien revisa pagos.
 router.get('/:id/proof', controller.downloadProof);
+// Recibo PDF: privado, misma regla (la familia dueña del pago o quien lee pagos).
+router.get('/:id/receipt', controller.downloadReceipt);
 // Cotización en otra moneda: el servicio valida si es la familia dueña o alguien que puede leer pagos.
 router.get('/:id/quote', controller.quote);
 

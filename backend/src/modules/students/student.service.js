@@ -1,6 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const { applyPortalAccess, getPortalAccess, deactivatePortalUser } = require('./portalAccess.service');
 const tuition = require('../payments/tuition.service');
+const teacherScope = require('../access/teacherScope');
 
 // ---------- Alumnos ----------
 
@@ -10,7 +11,7 @@ const tuition = require('../payments/tuition.service');
  * activas en más de un año, se toma la del año activo más reciente. Los
  * campos de inscripción vienen en null si no está inscrito.
  */
-async function listStudents(trx, tenantId, { status } = {}) {
+async function listStudents(trx, tenantId, { status, scope = null } = {}) {
   const query = trx('students as s')
     .joinRaw(
       `LEFT JOIN LATERAL (
@@ -32,6 +33,8 @@ async function listStudents(trx, tenantId, { status } = {}) {
     .select('s.*', 'cur.*')
     .orderBy(['s.last_name', 's.first_name']);
   if (status) query.andWhere('s.status', status);
+  // Docente: solo alumnos con inscripción vigente en una sección de su carga.
+  teacherScope.restrictStudents(query, scope, 's.id');
   return query;
 }
 

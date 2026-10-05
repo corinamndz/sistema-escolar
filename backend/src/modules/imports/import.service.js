@@ -83,11 +83,13 @@ async function runImport(trx, tenantId, type, { buffer, originalName, params = {
   const state = {};
   const results = rows.map(({ rowNumber, values }) => {
     state.row = rowNumber;
-    const { data, errors, label, skip } = importer.validate(values, ctx, state);
+    const { data, errors, label, skip, notes } = importer.validate(values, ctx, state);
     return {
       row: rowNumber,
       label,
       status: errors.length ? 'invalid' : skip ? 'skipped' : 'valid',
+      // Lo que hará la importación con esta fila (se ve en la vista previa).
+      notes: errors.length ? [] : notes || [],
       errors: errors.map((e) => ({ ...e, columnLabel: headerOf[e.column] || null })),
       data,
     };

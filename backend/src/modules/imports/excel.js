@@ -11,6 +11,9 @@ const { ApiError } = require('../../utils/ApiError');
  * - `header` es el texto de la fila 1; al leer se compara normalizado
  *   (sin acentos, mayúsculas ni "*"), así que "Cédula" y "cedula *" coinciden.
  * - `options` agrega una lista desplegable (validación de datos de Excel).
+ *   Con `strict: true` Excel/Google Sheets RECHAZAN valores fuera de la lista;
+ *   sin `strict` solo advierten (para listas que son sugerencias, ej. "Relación").
+ *   Igual el backend vuelve a validar al importar: pegar celdas salta la validación.
  * - `text` fuerza formato Texto en la columna: evita que Excel convierta
  *   teléfonos ("0414…") o cédulas en números y se coma los ceros iniciales.
  */
@@ -59,7 +62,11 @@ function plainValue(value) {
  *   Hoja "Instrucciones" qué va en cada columna y filas de ejemplo.
  *   Hoja "Listas"        (oculta) valores de las listas desplegables.
  */
-async function buildTemplate({ title, columns, instructions = [], examples = [], prefill = [], hiddenKeys = [] }) {
+/**
+ * `guideTables`: tablas de referencia que se agregan a la hoja Instrucciones,
+ * [{ title, headers: [...], rows: [[...], ...] }] (ej. grados y secciones válidos).
+ */
+async function buildTemplate({ title, columns, instructions = [], examples = [], prefill = [], hiddenKeys = [], guideTables = [] }) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sistema escolar';
   wb.created = new Date();
@@ -107,9 +114,12 @@ async function buildTemplate({ title, columns, instructions = [], examples = [],
       allowBlank: !c.required,
       formulae: [range],
       showErrorMessage: true,
-      errorStyle: 'warning',
+      errorStyle: c.strict ? 'stop' : 'warning',
       errorTitle: c.header,
-      error: 'Elige un valor de la lista.',
+      error: c.strict ? 'Elige un valor de la lista: solo se aceptan los registrados en el sistema.' : 'Elige un valor de la lista.',
+      showInputMessage: Boolean(c.strict),
+      promptTitle: c.header,
+      prompt: c.strict ? 'Haz clic en la flecha y elige de la lista.' : undefined,
     });
   });
 
@@ -148,6 +158,16 @@ async function buildTemplate({ title, columns, instructions = [], examples = [],
       if (i > 2) guide.getColumn(i + 1).width = Math.max(14, c.header.length + 4);
     });
   }
+
+  // Tablas de referencia (ej. combinaciones válidas de grado y sección).
+  guideTables.forEach((t) => {
+    guide.addRow([]);
+    guide.addRow([t.title]).font = { bold: true };
+    const head = guide.addRow(t.headers);
+    head.font = { bold: true, color: { argb: 'FF1F2937' } };
+    head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
+    t.rows.forEach((row) => guide.addRow(row));
+  });
 
   wb.views = [{ activeTab: 0 }];
   return Buffer.from(await wb.xlsx.writeBuffer());

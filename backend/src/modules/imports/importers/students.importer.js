@@ -5,11 +5,19 @@ const academicService = require('../../academics/academic.service');
 
 const RELATIONSHIPS = ['Madre', 'Padre', 'Representante Legal', 'Tutor / Familiar', 'Otro'];
 const sectionKey = (grade, section) => `${normalizeHeader(grade)}|${normalizeHeader(section)}`;
+// Nombres de sección que se ofrecen aunque todavía no existan (carga inicial).
+const DEFAULT_SECTION_NAMES = ['A', 'B', 'C', 'D', 'E'];
+const NEW_SECTION_CAPACITY = 30;
 
 /**
  * Alumnos, opcionalmente vinculados a un representante YA registrado (por
  * cédula) e inscritos en una sección del año escolar activo. Al inscribir se
  * generan sus mensualidades igual que en la inscripción manual.
+ *
+ * Grado y Sección salen de la ESTRUCTURA ACADÉMICA (tabla de grados), no de la
+ * matrícula: aparecen todos los grados creados, tengan o no secciones o alumnos.
+ * Si el grado aún no tiene esa sección en el año activo, se crea al importar
+ * (cupo 30), solo si quien importa puede crear estructura académica.
  */
 module.exports = {
   type: 'students',
@@ -18,7 +26,7 @@ module.exports = {
   permission: ['students', 'create'],
   fileName: 'plantilla-alumnos.xlsx',
 
-  async prepare(trx, tenantId) {
+  async prepare(trx, tenantId, params, actor = {}) {
     const today = (await trx.raw("SELECT to_char(current_date, 'YYYY-MM-DD') AS d")).rows[0].d;
 
     const existingIds = await trx('students')
@@ -35,8 +43,10 @@ module.exports = {
 
     const sections = await trx('sections as sec')
       .join('grades as g', 'g.id', 'sec.grade_id')
+      .join('education_levels as el', 'el.code', 'g.level_code')
       .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
       .where({ 'sec.tenant_id': tenantId, 'sp.is_active': true })
+      .orderBy(['el.sort_order', 'g.sort_order', 'g.name', 'sec.name'])
       .select(
         'sec.id',
         'sec.name',
@@ -51,13 +61,31 @@ module.exports = {
       sectionsByKey.set(k, [...(sectionsByKey.get(k) || []), s]);
     });
 
-    const gradeNames = [...new Set(sections.map((s) => s.grade_name))];
-    const sectionHint = sections.length
-      ? `Secciones del año activo: ${sections
-          .slice(0, 12)
-          .map((s) => `${s.grade_name} ${s.name}`)
-          .join(', ')}${sections.length > 12 ? '…' : ''}.`
-      : 'Todavía no hay secciones en el año escolar activo: deja Grado y Sección vacíos e inscribe después.';
+    // Tabla maestra de grados: TODOS los del colegio, en orden académico, tengan o
+    // no secciones o alumnos (para poder hacer la carga inicial de cualquier grado).
+    const grades = await trx('grades as g')
+      .join('education_levels as el', 'el.code', 'g.level_code')
+      .where('g.tenant_id', tenantId)
+      .select('g.id', 'g.name', 'el.name as level_name')
+      .orderBy(['el.sort_order', 'g.sort_order', 'g.name']);
+    const activePeriods = await trx('school_periods').where({ tenant_id: tenantId, is_active: true }).select('id', 'name');
+
+    // Listas desplegables:
+    //   Grado   → todos los grados de la estructura académica.
+    //   Sección → nombres de sección existentes en el año activo + A…E (para grados
+    //             que aún no tienen secciones). La combinación grado + sección se
+    //             valida al importar (Google Sheets no admite listas dependientes con
+    //             INDIRECT, así que no se filtra la sección por grado).
+    const gradeNames = grades.map((g) => g.name);
+    const sectionNames = [...new Set([...sections.map((s) => s.name), ...DEFAULT_SECTION_NAMES])].sort((a, b) =>
+      a.localeCompare(b, 'es', { numeric: true })
+    );
+    const canCreateSections = Boolean(actor.permissions?.academics?.can_create);
+    const sectionsByGrade = new Map();
+    sections.forEach((s) => sectionsByGrade.set(normalizeHeader(s.grade_name), [...(sectionsByGrade.get(normalizeHeader(s.grade_name)) || []), s]));
+    const sectionHint = canCreateSections
+      ? 'Si el grado aún no tiene esa sección en el año activo, se crea al importar.'
+      : 'La sección debe existir en el año escolar activo (ver hoja Instrucciones).';
 
     const columns = [
       { key: 'firstName', header: 'Nombres', required: true, width: 20, note: 'Nombres del alumno. Máx. 100 caracteres.' },
@@ -74,10 +102,18 @@ module.exports = {
         key: 'grade',
         header: 'Grado',
         options: gradeNames.length ? gradeNames : undefined,
+        strict: true,
         width: 18,
-        note: `Opcional: para inscribir al alumno. Escribe el grado tal como está en el sistema (ej. "1er grado"). Va junto con Sección. ${sectionHint}`,
+        note: `Opcional: para inscribir al alumno. Elige el grado de la lista (todos los grados del colegio). Va junto con Sección. ${sectionHint}`,
       },
-      { key: 'section', header: 'Sección', text: true, note: 'Opcional: letra o nombre de la sección (ej. "A"). Va junto con Grado.' },
+      {
+        key: 'section',
+        header: 'Sección',
+        text: true,
+        options: sectionNames.length ? sectionNames : undefined,
+        strict: true,
+        note: `Opcional: elige la sección de la lista (ej. "A"). Va junto con Grado. ${sectionHint}`,
+      },
       {
         key: 'guardianNationalId',
         header: 'Cédula del representante',
@@ -107,8 +143,27 @@ module.exports = {
       existingIds: new Set(existingIds.map((r) => r.k)),
       guardiansByKey,
       sectionsByKey,
+      gradeNames,
+      sectionsByGrade,
+      gradesByName: new Map(grades.map((g) => [normalizeHeader(g.name), g])),
+      sectionNames,
+      activePeriods,
+      canCreateSections,
       template: {
         title: 'Plantilla de carga masiva de alumnos',
+        // Todos los grados: con sus secciones del año activo (y cupos libres) o
+        // indicando que la sección se crea al importar.
+        guideTables: [
+          {
+            title: `Grados y secciones (año escolar ${activePeriods.map((p) => p.name).join(', ') || 'sin año activo'})`,
+            headers: ['Grado', 'Sección', 'Cupos libres'],
+            rows: grades.flatMap((g) => {
+              const own = sectionsByGrade.get(normalizeHeader(g.name)) || [];
+              if (own.length) return own.map((s) => [g.name, s.name, Math.max(0, s.max_students - s.enrolled)]);
+              return [[g.name, canCreateSections ? 'Sin secciones aún: se crea al importar' : 'Sin secciones: créala en Estructura académica', '—']];
+            }),
+          },
+        ],
         instructions: [
           'Si indicas Grado y Sección, el alumno queda inscrito en esa sección del año escolar activo y se generan sus mensualidades.',
           'Los representantes no se crean desde este archivo: regístralos primero y aquí solo escribe su cédula.',
@@ -132,6 +187,7 @@ module.exports = {
   },
 
   validate(v, ctx, state) {
+    const notes = []; // lo que hará la importación con esta fila (vista previa)
     const { data, errors } = f.collect({
       firstName: [f.text, v.firstName, { max: 100, required: true, label: 'Nombres' }],
       lastName: [f.text, v.lastName, { max: 100, required: true, label: 'Apellidos' }],
@@ -186,12 +242,57 @@ module.exports = {
       errors.push({ column: data.grade ? 'section' : 'grade', message: 'Para inscribir indica Grado y Sección juntos (o deja ambos vacíos).' });
     } else if (data.grade) {
       const found = ctx.sectionsByKey.get(sectionKey(data.grade, data.section)) || [];
-      if (found.length === 0) {
+      const gradeSections = ctx.sectionsByGrade.get(normalizeHeader(data.grade)) || [];
+      const gradeRef = ctx.gradesByName.get(normalizeHeader(data.grade));
+      if (!gradeRef) {
         errors.push({
-          column: 'section',
-          reason: 'sección inexistente',
-          message: `No existe la sección "${data.grade} ${data.section}" en el año escolar activo.`,
+          column: 'grade',
+          reason: 'grado inexistente',
+          message: `No existe el grado "${data.grade}" en la estructura académica. Grados disponibles: ${ctx.gradeNames.join(', ') || 'ninguno'}.`,
         });
+      } else if (found.length === 0) {
+        // El grado existe pero no tiene esa sección en el año activo: se crea al importar.
+        const existing = gradeSections.length ? ` Secciones actuales de ${gradeRef.name}: ${gradeSections.map((x) => x.name).join(', ')}.` : '';
+        if (ctx.activePeriods.length !== 1) {
+          errors.push({
+            column: 'section',
+            reason: 'sin año escolar activo',
+            message: ctx.activePeriods.length
+              ? `La sección "${gradeRef.name} ${data.section}" no existe y hay más de un año escolar activo: créala en Estructura académica.`
+              : `La sección "${gradeRef.name} ${data.section}" no existe y no hay un año escolar activo donde crearla.`,
+          });
+        } else if (!ctx.sectionNames.some((n) => normalizeHeader(n) === normalizeHeader(data.section))) {
+          // Solo se crean secciones con los nombres que ofrece la lista (A…E o los ya usados):
+          // así un error de tipeo pegado en la celda no crea una sección basura.
+          errors.push({
+            column: 'section',
+            reason: 'sección inexistente',
+            message: `No existe la sección "${gradeRef.name} ${data.section}".${existing} Al importar solo se crean secciones con los nombres de la lista: ${ctx.sectionNames.join(', ')}.`,
+          });
+        } else if (!ctx.canCreateSections) {
+          errors.push({
+            column: 'section',
+            reason: 'sección inexistente',
+            message: `No existe la sección "${gradeRef.name} ${data.section}" en el año escolar activo.${existing} Créala en Estructura académica (no tienes permiso para crear secciones).`,
+          });
+        } else {
+          const key = sectionKey(gradeRef.name, data.section);
+          state.newSections ||= new Map();
+          const used = state.newSections.get(key) || 0;
+          if (used >= NEW_SECTION_CAPACITY) {
+            errors.push({
+              column: 'section',
+              reason: 'sección sin cupo',
+              message: `La sección nueva ${gradeRef.name} ${data.section} tendría más de ${NEW_SECTION_CAPACITY} alumnos: créala con más cupo en Estructura académica.`,
+            });
+          } else {
+            state.newSections.set(key, used + 1);
+            // Mismo nombre que la lista si coincide (ej. "a" → "A").
+            const name = DEFAULT_SECTION_NAMES.find((n) => normalizeHeader(n) === normalizeHeader(data.section)) || data.section;
+            data.newSection = { gradeId: gradeRef.id, gradeName: gradeRef.name, name, schoolPeriodId: ctx.activePeriods[0].id };
+            notes.push(`Se creará la sección ${gradeRef.name} ${name} (${ctx.activePeriods[0].name})${used ? '' : `, cupo ${NEW_SECTION_CAPACITY}`}`);
+          }
+        }
       } else if (found.length > 1) {
         errors.push({
           column: 'section',
@@ -219,7 +320,7 @@ module.exports = {
       }
     }
 
-    return { data, errors, label };
+    return { data, errors, label, notes };
   },
 
   async insert(trx, tenantId, data) {
@@ -237,6 +338,24 @@ module.exports = {
         relationship: data.relationship,
         isPrimary: data.isPrimary,
       });
+    }
+    if (data.newSection) {
+      // Otra fila de este archivo puede haberla creado ya: se busca primero (sin distinguir mayúsculas).
+      const ns = data.newSection;
+      let section = await trx('sections')
+        .where({ tenant_id: tenantId, grade_id: ns.gradeId, school_period_id: ns.schoolPeriodId })
+        .whereRaw('lower(name) = lower(?)', [ns.name])
+        .first();
+      if (!section) {
+        section = await academicService.createSection(trx, tenantId, {
+          gradeId: ns.gradeId,
+          schoolPeriodId: ns.schoolPeriodId,
+          name: ns.name,
+          maxStudents: NEW_SECTION_CAPACITY,
+        });
+        notes.push(`Sección ${ns.gradeName} ${ns.name} creada`);
+      }
+      data.sectionRef = { id: section.id, grade_name: ns.gradeName, name: section.name };
     }
     if (data.sectionRef) {
       const enrollment = await academicService.enrollStudent(trx, tenantId, { studentId: student.id, sectionId: data.sectionRef.id });

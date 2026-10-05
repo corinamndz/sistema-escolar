@@ -53,7 +53,8 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
             <div className="sidebar__section-label">{section.label}</div>
             {section.items.map((item) => (
               <NavLink
-                key={item.moduleCode}
+                // La ruta es única; el módulo no (Pagos y Monedas y tasas comparten "payments").
+                key={item.path}
                 to={item.path}
                 end={item.path === '/' || item.path === '/payments'}
                 className={({ isActive }) => `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`}

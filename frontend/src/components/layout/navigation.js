@@ -28,6 +28,7 @@ const NAV_SECTIONS = [
     label: 'Finanzas',
     items: [
       { moduleCode: 'payments', label: 'Pagos', icon: 'card', path: '/payments' },
+      { moduleCode: 'payments', label: 'Monedas y tasas', icon: 'trendingUp', path: '/payments/currencies' },
       // Vista de padres: visible para cualquier usuario autenticado, sin depender de permisos administrativos
       { moduleCode: 'my_payments', label: 'Mis pagos', icon: 'receipt', path: '/payments/mine', public: true },
     ],

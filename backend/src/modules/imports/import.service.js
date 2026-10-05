@@ -35,7 +35,7 @@ function rowErrorMessage(err) {
   const raw = err.message || '';
   if (err.code === '23514' && !err.constraint) return raw.slice(raw.lastIndexOf(' - ') + (raw.includes(' - ') ? 3 : 0));
   if (err.code === '23505') return 'Ya existe un registro con esos datos.';
-  if (err.code === '23503') return 'Hace referencia a un dato que no existe.';
+  if (err.code === '23503' || err.code === '23001') return 'El dato está en uso o hace referencia a un dato que no existe.';
   if (err.code === '23514') return 'Los datos no cumplen una regla de validación.';
   // eslint-disable-next-line no-console
   console.error('Error importando fila:', err);

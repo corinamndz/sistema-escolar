@@ -71,7 +71,8 @@ app.use((err, req, res, next) => {
   if (err.code === '23505') {
     return res.status(409).json({ error: { message: 'Ya existe un registro con esos datos.' } });
   }
-  if (err.code === '23503') {
+  // 23503 = foreign_key_violation; 23001 = restrict_violation (FK con ON DELETE RESTRICT).
+  if (err.code === '23503' || err.code === '23001') {
     return res.status(409).json({ error: { message: 'El registro está en uso o hace referencia a un dato inexistente.' } });
   }
 

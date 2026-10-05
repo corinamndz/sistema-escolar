@@ -85,16 +85,20 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
     .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId, 'sec.school_period_id': period.id })
     .select('sec.id', 'sec.name', 'g.name as grade_name', 'g.level_code', 'e.status as enrollment_status');
 
-  const plans = sections.length
+  // Planes de las secciones del alumno, incluidos los compartidos entre varias
+  // secciones (migración 012). Si un alumno pasó por dos secciones del mismo
+  // plan, el plan aparece una sola vez (con su sección vigente).
+  const planRows = sections.length
     ? await trx('evaluation_plans as ep')
+        .join('evaluation_plan_sections as eps', 'eps.plan_id', 'ep.id')
         .join('terms as t', 't.id', 'ep.term_id')
         .join('staff as st', 'st.id', 'ep.teacher_id')
         .leftJoin('subjects as sub', 'sub.id', 'ep.subject_id')
         .where('ep.tenant_id', tenantId)
-        .whereIn('ep.section_id', sections.map((s) => s.id))
+        .whereIn('eps.section_id', sections.map((s) => s.id))
         .select(
           'ep.id',
-          'ep.section_id',
+          'eps.section_id',
           'ep.subject',
           'ep.subject_id',
           'sub.code as subject_code',
@@ -105,6 +109,13 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
         )
         .orderByRaw('t.start_date NULLS LAST, t.name, ep.subject')
     : [];
+  const isActiveSection = (id) => sections.some((sec) => sec.id === id && sec.enrollment_status === 'active');
+  const plans = [];
+  planRows.forEach((row) => {
+    const i = plans.findIndex((p) => p.id === row.id);
+    if (i < 0) plans.push(row);
+    else if (!isActiveSection(plans[i].section_id) && isActiveSection(row.section_id)) plans[i] = row;
+  });
   const planIds = plans.map((p) => p.id);
 
   const activities = planIds.length

@@ -20,6 +20,7 @@ import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import { useToast } from '../../../components/ui/Toast';
 import { LEVELS, LEVEL_CODES, LevelBadge, LevelRule } from '../../academics/levels';
+import { FORMATS, FormatPicker } from '../components/DetailedPlanner';
 
 /** Estado del plan según su ponderación: cerrado, listo para cerrar, incompleto o sin actividades. */
 export function planState(plan) {
@@ -73,7 +74,10 @@ function EvaluationPlansPage() {
           <Link to={`/evaluation-plans/${p.id}`} className="cell-person__name">
             {p.subject}
           </Link>
-          <div className="cell-person__sub">{p.teacher_name}</div>
+          <div className="cell-person__sub">
+            {p.teacher_name}
+            {p.format === 'detailed' && <> · {FORMATS.detailed.label}</>}
+          </div>
         </div>
       ),
       sortValue: (p) => p.subject,
@@ -84,7 +88,7 @@ function EvaluationPlansPage() {
       render: (p) => (
         <div>
           <div>
-            {p.grade_name} · {p.section_name}
+            {p.grade_name} · {p.section_names && p.section_names.includes(',') ? `Secciones ${p.section_names}` : p.section_names || p.section_name}
           </div>
           <LevelBadge code={p.level_code} />
         </div>
@@ -144,7 +148,7 @@ function EvaluationPlansPage() {
           rows={plans}
           loading={loadingPlans}
           searchPlaceholder="Buscar asignatura, docente, sección o lapso…"
-          getSearchText={(p) => [p.subject, p.teacher_name, p.grade_name, p.section_name, p.term_name].join(' ')}
+          getSearchText={(p) => [p.subject, p.teacher_name, p.grade_name, p.section_names || p.section_name, p.term_name].join(' ')}
           emptyMessage="Aún no hay planes de evaluación."
           createLabel="Nuevo plan"
           onCreate={() => setShowCreatePlan(true)}
@@ -240,6 +244,10 @@ function CreatePlanModal({ onClose, onCreated }) {
   );
 
   const [form, setForm] = useState({ termId: '', teacherId: '', subject: '', subjectId: '' });
+  const [format, setFormat] = useState('simple');
+  // Otras secciones del mismo grado y año a las que también se aplica el plan.
+  const [extraSections, setExtraSections] = useState([]);
+  const siblings = section ? sections.filter((s) => s.id !== section.id && s.grade_id === section.grade_id && s.school_period_id === section.school_period_id) : [];
   const { run, loading, error, fieldErrors } = useMutation(evaluationPlansApi.create);
   const toast = useToast();
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -269,6 +277,7 @@ function CreatePlanModal({ onClose, onCreated }) {
 
   const changeSection = (e) => {
     setSectionId(e.target.value);
+    setExtraSections([]);
     setForm({ termId: '', teacherId: '', subject: '', subjectId: '' });
   };
 
@@ -279,9 +288,10 @@ function CreatePlanModal({ onClose, onCreated }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const common = { sectionIds: [sectionId, ...extraSections], termId: form.termId, format };
     const body = bySubjects
-      ? { sectionId, termId: form.termId, subjectId: form.subjectId }
-      : { sectionId, termId: form.termId, teacherId: form.teacherId, subject: form.subject };
+      ? { ...common, subjectId: form.subjectId }
+      : { ...common, teacherId: form.teacherId, subject: form.subject };
     try {
       const plan = await run(body);
       toast.success('Plan de evaluación creado', `${plan.subject} · ${section.grade_name} ${section.name}`);
@@ -300,6 +310,9 @@ function CreatePlanModal({ onClose, onCreated }) {
       ) : (
         <form onSubmit={handleSubmit}>
           <div className="form-grid">
+            <Field label="Tipo de formato" full>
+              <FormatPicker value={format} onChange={setFormat} />
+            </Field>
             <Field label="Sección" error={fieldErrors.sectionId} full required>
               <Select value={sectionId} onChange={changeSection} required>
                 <option value="">Selecciona…</option>
@@ -317,6 +330,30 @@ function CreatePlanModal({ onClose, onCreated }) {
                 })}
               </Select>
             </Field>
+
+            {siblings.length > 0 && (
+              <Field
+                label="Aplicar también a"
+                error={fieldErrors.sectionIds}
+                full
+                hint="El plan se redacta una vez para todas; cada sección tendrá su fecha de aplicación y sus notas. El docente debe ser el mismo."
+              >
+                <div className="chip-list">
+                  {siblings.map((s) => (
+                    <label key={s.id} className={`chip-toggle ${extraSections.includes(s.id) ? 'is-on' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={extraSections.includes(s.id)}
+                        onChange={(e) =>
+                          setExtraSections((list) => (e.target.checked ? [...list, s.id] : list.filter((x) => x !== s.id)))
+                        }
+                      />
+                      Sección {s.name}
+                    </label>
+                  ))}
+                </div>
+              </Field>
+            )}
 
             {sectionId && loadingAssignment && (
               <div className="form-field--full">

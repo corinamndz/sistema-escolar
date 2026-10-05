@@ -20,6 +20,7 @@ import EvaluationPlanDetailPage from '../features/evaluation-plans/pages/Evaluat
 import GradebookPage from '../features/grading/pages/GradebookPage';
 import PaymentsPage from '../features/payments/pages/PaymentsPage';
 import MyPaymentsPage from '../features/payments/pages/MyPaymentsPage';
+import CurrenciesPage from '../features/payments/pages/CurrenciesPage';
 import PortalStudentPage from '../features/portal/pages/PortalStudentPage';
 import NotFoundPage from '../features/dashboard/pages/NotFoundPage';
 
@@ -71,6 +72,7 @@ function App() {
 
             <Route element={<PermissionRoute module="payments" />}>
               <Route path="payments" element={<PaymentsPage />} />
+              <Route path="payments/currencies" element={<CurrenciesPage />} />
             </Route>
 
             {/* Vista de padres: cualquier usuario autenticado con hijos asociados, sin permiso administrativo */}

@@ -17,7 +17,8 @@ const STUDENT_STATUS = {
 };
 
 
-function StudentCard({ student }) {
+/** `refCurrency`: moneda en que el backend totalizó lo pendiente (portal.ref_currency). */
+function StudentCard({ student, refCurrency }) {
   const [statusLabel, statusVariant] = STUDENT_STATUS[student.status] || ['—', 'neutral'];
   const { payments } = student;
   const initials = `${student.first_name[0] || ''}${student.last_name[0] || ''}`.toUpperCase();
@@ -73,8 +74,8 @@ function StudentCard({ student }) {
               ? `${payments.overdue_count} vencido${payments.overdue_count === 1 ? '' : 's'}`
               : `${payments.pending_count} pendiente${payments.pending_count === 1 ? '' : 's'}`}{' '}
             · {formatAmounts(payments.pending_amounts)}
-            {payments.pending_ves !== null && payments.pending_ves !== undefined && (
-              <span className="cell-person__sub"> (≈ {formatMoney(payments.pending_ves, 'VES')})</span>
+            {payments.pending_ref !== null && payments.pending_ref !== undefined && refCurrency && refCurrency !== 'USD' && (
+              <span className="cell-person__sub"> (≈ {formatMoney(payments.pending_ref, refCurrency)})</span>
             )}
           </div>
         ) : (
@@ -168,8 +169,8 @@ function GuardianPanel() {
           icon="wallet"
           tone={totals.pending_count ? 'warning' : 'success'}
           hint={
-            totals.pending_count && totals.pending_ves !== null
-              ? `≈ ${formatMoney(totals.pending_ves, 'VES')} (tasa BCV del día)`
+            totals.pending_count && totals.pending_ref !== null && data.ref_currency !== 'USD'
+              ? `≈ ${formatMoney(totals.pending_ref, data.ref_currency)} (tasa del día)`
               : 'Suma de pagos pendientes'
           }
         />
@@ -199,7 +200,7 @@ function GuardianPanel() {
         ) : (
           <div className="student-cards">
             {students.map((s) => (
-              <StudentCard key={s.id} student={s} />
+              <StudentCard key={s.id} student={s} refCurrency={data.ref_currency} />
             ))}
           </div>
         )}

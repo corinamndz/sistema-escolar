@@ -1,100 +1,70 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import paymentsApi from '../../../api/endpoints/payments.api';
 import portalApi from '../../../api/endpoints/portal.api';
 import { BillingNotice } from '../../dashboard/components/GuardianPanel';
 import { useFetch } from '../../../hooks/useFetch';
 import PageHeader from '../../../components/ui/PageHeader';
-import Card from '../../../components/ui/Card';
-import Table from '../../../components/ui/Table';
-import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
-import { BsBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatAmounts, formatDate, formatMoney } from '../paymentStatus';
+import { formatAmounts, formatDate, formatMoney } from '../paymentStatus';
 import { RateBanner } from '../components/ExchangeRatePanel';
 import { PaymentFormModal } from '../components/PaymentForms';
-import { ProofButton } from '../components/ProofViewer';
-
-const DUE = ['pending', 'overdue', 'reported'];
-
-/** Total en Bs de las cuotas (null si alguna no tiene tasa: no se muestra un total parcial). */
-const vesTotal = (list) =>
-  list.some((p) => p.ves_amount === null) ? null : list.reduce((n, p) => n + Number(p.ves_amount), 0);
-
-/** Suma por moneda de una lista de pagos. */
-const totalsOf = (list) =>
-  Object.entries(list.reduce((acc, p) => ({ ...acc, [p.currency]: (acc[p.currency] || 0) + Number(p.amount) }), {})).map(
-    ([currency, total]) => ({ currency, total })
-  );
+import { StudentPaymentsSection, groupByStudent, refTotal, totalsOf } from '../components/StudentPaymentsSection';
+import { ViewCurrencySelect } from '../currency';
+import { useViewCurrency } from '../useViewCurrency';
 
 /**
- * Vista de padres: un representante ve solo los pagos a su nombre (el backend
- * resuelve esto por `guardians.user_id = req.user.id`, no por un filtro que el
- * frontend pueda manipular).
+ * Vista de padres: los pagos del representante agrupados por alumno. El
+ * backend resuelve qué pagos son suyos por `guardians.user_id = req.user.id`,
+ * no por un filtro que el frontend pueda manipular.
+ *
+ * Los montos en moneda local los calcula el backend con la tasa del día de la
+ * moneda elegida en "Ver montos en…" (columnas conv_*).
  */
 function MyPaymentsPage() {
-  const { data: rows, loading, error, refetch } = useFetch(() => paymentsApi.listMine(), []);
-  const { data: portal } = useFetch(() => portalApi.getMine(), []);
-  const billingIssues = portal?.billing_issues || [];
+  const { data: rates } = useFetch(() => paymentsApi.currentRate(), []);
+  // Moneda en que la familia quiere ver sus cuotas (se recuerda en el navegador).
+  const [viewCurrency, setViewCurrency] = useViewCurrency('myPayments.viewCurrency', rates);
+  const { data: rows, loading, error, refetch } = useFetch(
+    () => paymentsApi.listMine(viewCurrency ? { currency: viewCurrency } : undefined),
+    [viewCurrency]
+  );
+  // Alumnos del representante con grado/sección (y avisos de facturación).
+  const { data: portal, loading: loadingPortal } = useFetch(() => portalApi.getMine(), []);
   const [reporting, setReporting] = useState(null);
 
-  if (loading) return <Spinner label="Cargando tus pagos…" />;
+  const groups = useMemo(() => groupByStudent(rows || [], portal?.students || []), [rows, portal]);
 
-  const payments = rows || [];
-  const due = payments.filter((p) => DUE.includes(p.display_status));
-  const upcoming = payments.filter((p) => p.display_status === 'scheduled');
-  const history = payments.filter((p) => !DUE.includes(p.display_status) && p.display_status !== 'scheduled');
-  const overdue = due.filter((p) => p.display_status === 'overdue');
+  if ((loading && !rows) || (loadingPortal && !portal)) return <Spinner label="Cargando tus pagos…" />;
 
-  const historyColumns = [
-    { key: 'period_label', header: 'Concepto', render: (p) => <span className="cell-person__name">{p.period_label}</span> },
-    { key: 'student', header: 'Alumno', render: (p) => `${p.student_first_name} ${p.student_last_name}` },
-    {
-      key: 'amount',
-      header: 'Monto',
-      align: 'right',
-      render: (p) => (
-        <div className="amount-cell">
-          <span>{formatMoney(p.amount, p.currency)}</span>
-          <BsBreakdown payment={p} compact />
-        </div>
-      ),
-      sortValue: (p) => Number(p.amount),
-    },
-    { key: 'status', header: 'Estado', render: (p) => <PaymentStatusBadge payment={p} /> },
-    { key: 'paid_at', header: 'Fecha de pago', render: (p) => formatDate(p.paid_at), sortValue: (p) => p.paid_at },
-    {
-      key: 'receipt',
-      header: 'Comprobante',
-      render: (p) =>
-        p.receipt_url ? (
-          <a href={p.receipt_url} target="_blank" rel="noreferrer" className="link-icon">
-            <Icon name="receipt" size={15} /> Descargar PDF
-          </a>
-        ) : (
-          '—'
-        ),
-    },
-  ];
+  const billingIssues = portal?.billing_issues || [];
+  const due = groups.flatMap((g) => g.due);
+  const overdueCount = groups.reduce((n, g) => n + g.buckets.overdue.length, 0);
+  const nextUpcoming = groups
+    .flatMap((g) => g.buckets.upcoming)
+    .sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)))[0];
+  const dueRef = refTotal(due);
 
   return (
     <div>
-      <PageHeader title="Mis pagos" subtitle="Mensualidades y cobros de tus representados. Cada mes vence en sus primeros 5 días." />
+      <PageHeader
+        title="Mis pagos"
+        subtitle="Mensualidades y cobros de cada uno de tus representados. Cada mes vence en sus primeros 5 días."
+        actions={<ViewCurrencySelect value={viewCurrency} onChange={setViewCurrency} status={rates} />}
+      />
       <Alert>{error}</Alert>
 
-      <RateBanner exchange={portal?.exchange} />
+      <RateBanner exchange={rates} />
       {billingIssues.length > 0 && <BillingNotice issues={billingIssues} />}
 
-      <div
-        className={`pay-banner ${
-          overdue.length ? 'pay-banner--overdue' : due.length || billingIssues.length ? 'pay-banner--due' : 'pay-banner--ok'
-        }`}
-      >
-        <Icon name={overdue.length ? 'alertTriangle' : due.length ? 'wallet' : 'checkCircle'} size={22} />
+      {/* Resumen general de la familia */}
+      <div className={`pay-banner ${overdueCount ? 'pay-banner--overdue' : due.length || billingIssues.length ? 'pay-banner--due' : 'pay-banner--ok'}`}>
+        <Icon name={overdueCount ? 'alertTriangle' : due.length ? 'wallet' : 'checkCircle'} size={22} />
         <div>
           <strong>
-            {overdue.length
-              ? `Tienes ${overdue.length} pago${overdue.length === 1 ? '' : 's'} vencido${overdue.length === 1 ? '' : 's'}`
+            {overdueCount
+              ? `Tienes ${overdueCount} pago${overdueCount === 1 ? '' : 's'} vencido${overdueCount === 1 ? '' : 's'}`
               : due.length
                 ? `Tienes ${due.length} pago${due.length === 1 ? '' : 's'} pendiente${due.length === 1 ? '' : 's'}`
                 : billingIssues.length
@@ -102,90 +72,51 @@ function MyPaymentsPage() {
                   : 'Estás al día con tus pagos'}
           </strong>
           <div className="text-sm">
-            {due.length ? `Total por pagar: ${formatAmounts(totalsOf(due))}${vesTotal(due) ? ` · ${formatMoney(vesTotal(due), 'VES')} a la tasa de hoy` : ''}` : upcoming.length ? `Próxima mensualidad: ${upcoming[0].period_label}, vence el ${formatDate(upcoming[0].due_date)}.` : '¡Gracias!'}
+            {due.length
+              ? `Total por pagar: ${formatAmounts(totalsOf(due))}${dueRef && dueRef.currency !== 'USD' ? ` · ≈ ${formatMoney(dueRef.amount, dueRef.currency)} a la tasa de hoy` : ''}`
+              : nextUpcoming
+                ? `Próxima mensualidad: ${nextUpcoming.period_label}, vence el ${formatDate(nextUpcoming.due_date)}.`
+                : '¡Gracias!'}
           </div>
         </div>
       </div>
 
-      <Card title="Pagos pendientes" subtitle="Si ya pagaste, repórtalo para que administración lo confirme.">
-        {due.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state__icon">
-              <Icon name="checkCircle" size={24} />
-            </div>
-            <div className="empty-state__title">No tienes pagos pendientes</div>
-          </div>
-        ) : (
-          <div className="pay-cards">
-            {due.map((p) => (
-              <article key={p.id} className={`pay-card pay-card--${p.display_status}`}>
-                <div className="pay-card__head">
-                  <div>
-                    <div className="pay-card__concept">{p.period_label}</div>
-                    <div className="cell-person__sub">
-                      {p.student_first_name} {p.student_last_name}
-                    </div>
-                  </div>
-                  <PaymentStatusBadge payment={p} />
-                </div>
-                <div className="pay-card__amount">{formatMoney(p.amount, p.currency)}</div>
-                <BsBreakdown payment={p} />
-                <div className="pay-card__due">
-                  <span className="student-card__label">Fecha límite</span>
-                  <DueDate payment={p} />
-                </div>
-                {p.display_status === 'reported' ? (
-                  <div className="pay-card__reported">
-                    <Icon name="info" size={15} />
-                    <span>
-                      Reportado el {formatDate(p.reported_at)} ({REPORT_METHODS[p.report_method]}
-                      {p.report_reference ? ` · ref. ${p.report_reference}` : ''}). En revisión por administración.
-                    </span>
-                  </div>
-                ) : null}
-                {p.proof_path ? (
-                  <ProofButton payment={p} label="Ver mi comprobante" variant="ghost" />
-                ) : null}
-                <Button
-                  variant={p.display_status === 'reported' ? 'secondary' : 'primary'}
-                  icon="receipt"
-                  className="btn--block"
-                  onClick={() => setReporting(p)}
-                >
-                  {p.display_status === 'reported' ? 'Corregir reporte' : 'Reportar pago'}
-                </Button>
-              </article>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {upcoming.length > 0 && (
-        <Card title="Próximas mensualidades" subtitle="Se podrán pagar a partir del día 1 de cada mes.">
-          <ul className="upcoming-list">
-            {upcoming.map((p) => (
-              <li key={p.id}>
-                <span className="cell-person__name">{p.period_label}</span>
-                <span className="text-muted">
-                  {p.student_first_name} {p.student_last_name}
-                </span>
-                <span>
-                  {formatMoney(p.amount, p.currency)} <BsBreakdown payment={p} compact />
-                </span>
-                <span className="text-muted">Vence el {formatDate(p.due_date, false)}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
+      {/* Accesos rápidos a cada alumno (solo con más de uno) */}
+      {groups.length > 1 && (
+        <nav className="student-jump" aria-label="Ir a los pagos de cada alumno">
+          {groups.map((g) => (
+            <a
+              key={g.id}
+              href={`#alumno-${g.id}`}
+              className={`student-jump__item ${g.buckets.overdue.length ? 'is-overdue' : g.due.length ? 'is-due' : 'is-ok'}`}
+            >
+              <span className="student-jump__dot" aria-hidden="true" />
+              {g.name.split(' ')[0]}
+              <span className="text-muted">
+                {g.buckets.overdue.length ? `${g.buckets.overdue.length} vencido(s)` : g.due.length ? `${g.due.length} por pagar` : 'al día'}
+              </span>
+            </a>
+          ))}
+        </nav>
       )}
 
-      <Card title="Historial">
-        <Table columns={historyColumns} rows={history} emptyMessage="Todavía no hay pagos confirmados." />
-      </Card>
-
-      {reporting && (
-        <PaymentFormModal payment={reporting} mode="report" onClose={() => setReporting(null)} onDone={refetch} />
+      {groups.length === 0 ? (
+        <div className="card empty-state">
+          <div className="empty-state__icon">
+            <Icon name="users" size={24} />
+          </div>
+          <div className="empty-state__title">No tienes alumnos asociados</div>
+          <div className="text-sm">Si representas a un alumno del colegio, pide a administración que te asocie.</div>
+        </div>
+      ) : (
+        <div className="student-pay-list">
+          {groups.map((g) => (
+            <StudentPaymentsSection key={g.id} group={g} onReport={setReporting} />
+          ))}
+        </div>
       )}
+
+      {reporting && <PaymentFormModal payment={reporting} mode="report" onClose={() => setReporting(null)} onDone={refetch} />}
     </div>
   );
 }

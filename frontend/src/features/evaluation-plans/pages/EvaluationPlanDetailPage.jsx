@@ -19,6 +19,16 @@ import Icon from '../../../components/ui/Icon';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { useToast } from '../../../components/ui/Toast';
 import { getErrorMessage } from '../../../api/axiosClient';
+import { useAuth } from '../../../context/AuthContext';
+import {
+  ContentRefsEditor,
+  CriteriaEditor,
+  FORMATS,
+  PlanSettings,
+  PlannerTable,
+  detailedBody,
+  detailedFormFrom,
+} from '../components/DetailedPlanner';
 
 const CATEGORY_LABELS = {
   formative: 'Formativa',
@@ -43,6 +53,7 @@ function EvaluationPlanDetailPage() {
   const { run: deleteRun, error: deleteError } = useMutation((activityId) => evaluationPlansApi.deleteActivity(id, activityId));
   const confirm = useConfirm();
   const toast = useToast();
+  const { can } = useAuth();
 
   const handleClose = async () => {
     const ok = await confirm({
@@ -155,7 +166,7 @@ function EvaluationPlanDetailPage() {
         title={plan.subject}
         subtitle={
           <span className="page-header__meta">
-            Plan de evaluación · {plan.term_name}
+            {FORMATS[plan.format]?.label || 'Plan de evaluación'} · {plan.grade_name} {plan.sections.map((sec) => sec.name).join(', ')} · {plan.term_name}
             {plan.term_start && plan.term_end && ` (${formatDay(plan.term_start)} – ${formatDay(plan.term_end)})`}
             {closed ? <Badge variant="success">Cerrado</Badge> : <Badge variant="info">Abierto</Badge>}
           </span>
@@ -171,6 +182,10 @@ function EvaluationPlanDetailPage() {
           </>
         }
       />
+
+      <Card title="Configuración del plan" subtitle="Tipo de formato y secciones a las que se aplica">
+        <PlanSettings plan={plan} canEdit={can('evaluation_plans', 'update')} onChanged={refetch} />
+      </Card>
 
       <Card
         title="Total acumulado del lapso"
@@ -253,7 +268,16 @@ function EvaluationPlanDetailPage() {
         }
       >
         <Alert>{deleteError}</Alert>
-        <Table columns={activityColumns} rows={plan.activities} emptyMessage="Aún no hay actividades en este plan." />
+        {plan.format === 'detailed' ? (
+          <PlannerTable
+            activities={plan.activities}
+            sections={plan.sections}
+            categoryLabels={CATEGORY_LABELS}
+            renderActions={closed ? null : (a) => activityColumns.find((c) => c.key === 'actions').render(a)}
+          />
+        ) : (
+          <Table columns={activityColumns} rows={plan.activities} emptyMessage="Aún no hay actividades en este plan." />
+        )}
       </Card>
 
       <Card
@@ -277,6 +301,7 @@ function EvaluationPlanDetailPage() {
 
       {activityModal !== null && (
         <ActivityFormModal
+          plan={plan}
           planId={id}
           initial={activityModal}
           remaining={remaining + (activityModal.weight_percent ? Number(activityModal.weight_percent) : 0)}
@@ -294,8 +319,14 @@ function EvaluationPlanDetailPage() {
   );
 }
 
-function ActivityFormModal({ planId, initial, remaining, termStart, termEnd, onClose, onSaved }) {
+function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEnd, onClose, onSaved }) {
   const isEdit = Boolean(initial.id);
+  const detailed = plan.format === 'detailed';
+  // Formato detallado: estrategia, referencias, criterios/indicadores con puntaje y fechas por sección.
+  const [dForm, setDForm] = useState(() => detailedFormFrom(initial, plan.sections));
+  const [localError, setLocalError] = useState(null);
+  // Con notas registradas solo se corrigen textos (el backend también lo valida).
+  const locked = Boolean(initial.has_scores);
   const [form, setForm] = useState({
     title: initial.title || '',
     category: initial.category || 'formative',
@@ -328,6 +359,16 @@ function ActivityFormModal({ planId, initial, remaining, termStart, termEnd, onC
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (weightError) return;
+    let extra = {};
+    if (detailed) {
+      const result = detailedBody(dForm);
+      if (result.error) {
+        setLocalError(result.error);
+        return;
+      }
+      extra = result.body;
+    }
+    setLocalError(null);
     try {
       await run({
         title: form.title,
@@ -335,6 +376,7 @@ function ActivityFormModal({ planId, initial, remaining, termStart, termEnd, onC
         weightPercent: Number(form.weightPercent),
         description: form.description.trim(),
         plannedDate: form.plannedDate,
+        ...extra,
       });
       toast.success(isEdit ? 'Actividad actualizada' : 'Actividad creada', form.title);
       onSaved();
@@ -345,11 +387,11 @@ function ActivityFormModal({ planId, initial, remaining, termStart, termEnd, onC
   };
 
   return (
-    <Modal title={isEdit ? 'Editar actividad' : 'Nueva actividad'} onClose={onClose}>
-      <Alert>{error}</Alert>
+    <Modal title={isEdit ? 'Editar actividad' : 'Nueva actividad'} onClose={onClose} size={detailed ? 'lg' : undefined}>
+      <Alert>{localError || error}</Alert>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
-          <Field label="Título" error={fieldErrors.title} full>
+          <Field label={detailed ? 'Actividad o instrumento' : 'Título'} error={fieldErrors.title} full>
             <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} required />
           </Field>
           <Field label="Tipo" error={fieldErrors.category}>
@@ -406,6 +448,46 @@ function ActivityFormModal({ planId, initial, remaining, termStart, termEnd, onC
               placeholder="Ej.: Evaluación escrita de los temas 1 al 3. Se evalúa ortografía y comprensión."
             />
           </Field>
+          {detailed && (
+            <>
+              <Field label="Estrategia evaluativa" error={fieldErrors.strategy} hint="Ej.: Actividad evaluativa individual, trabajo en parejas…">
+                <Input value={dForm.strategy} onChange={(e) => setDForm((f) => ({ ...f, strategy: e.target.value }))} maxLength={200} />
+              </Field>
+              <Field label="Puntaje de la actividad" error={fieldErrors.maxScore} hint="Los indicadores deben sumar este puntaje (ej. 20).">
+                <Input
+                  inputMode="decimal"
+                  value={dForm.maxScore}
+                  onChange={(e) => setDForm((f) => ({ ...f, maxScore: e.target.value }))}
+                  suffix="pts"
+                  disabled={locked}
+                  required
+                />
+              </Field>
+              <Field label="Referencias teórico-prácticas" full hint="Temas y subtemas que evalúa la actividad.">
+                <ContentRefsEditor value={dForm.contentRefs} onChange={(contentRefs) => setDForm((f) => ({ ...f, contentRefs }))} />
+              </Field>
+              <Field label="Criterios e indicadores" error={fieldErrors.criteria} full>
+                <CriteriaEditor value={dForm.criteria} onChange={(criteria) => setDForm((f) => ({ ...f, criteria }))} maxScore={dForm.maxScore} locked={locked} />
+              </Field>
+              <Field label="Fechas de aplicación" error={fieldErrors.sectionDates} full hint={termStart && termEnd ? `Dentro del lapso: ${formatDay(termStart)} – ${formatDay(termEnd)}` : undefined}>
+                <div className="section-dates">
+                  {plan.sections.map((sec) => (
+                    <label key={sec.id} className="section-dates__item">
+                      <span>Sección {sec.name}</span>
+                      <Input
+                        type="date"
+                        value={dForm.sectionDates[sec.id] || ''}
+                        min={termStart || undefined}
+                        max={termEnd || undefined}
+                        onChange={(e) => setDForm((f) => ({ ...f, sectionDates: { ...f.sectionDates, [sec.id]: e.target.value } }))}
+                        aria-label={`Fecha de aplicación en la sección ${sec.name}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </Field>
+            </>
+          )}
         </div>
         <div className="form-actions">
           <Button type="button" variant="secondary" onClick={onClose}>

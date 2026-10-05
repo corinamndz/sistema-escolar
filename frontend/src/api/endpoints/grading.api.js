@@ -1,7 +1,9 @@
 import { axiosClient } from '../axiosClient';
 
 const gradingApi = {
-  getGradebook: (planId) => axiosClient.get(`/grading/plans/${planId}/gradebook`).then((r) => r.data),
+  /** `params.sectionId`: filtra los alumnos de una sección del plan. */
+  getGradebook: (planId, params) => axiosClient.get(`/grading/plans/${planId}/gradebook`, { params }).then((r) => r.data),
+  /** Simple: { studentId, rawScore, maxScore? }. Por indicadores: { studentId, indicatorScores: [{ indicatorId, points }] }. */
   upsertScore: (activityId, data) => axiosClient.put(`/grading/activities/${activityId}/scores`, data).then((r) => r.data),
 
   assessCompetency: (competencyId, data) =>

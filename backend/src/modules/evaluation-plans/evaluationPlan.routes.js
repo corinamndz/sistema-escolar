@@ -12,6 +12,7 @@ router.post('/terms', requirePermission('evaluation_plans', 'create'), controlle
 router.get('/', requirePermission('evaluation_plans', 'read'), controller.listPlans);
 router.post('/', requirePermission('evaluation_plans', 'create'), controller.createPlan);
 router.get('/:id', requirePermission('evaluation_plans', 'read'), controller.getPlan);
+router.put('/:planId', requirePermission('evaluation_plans', 'update'), controller.updatePlan);
 
 router.post('/:planId/project', requirePermission('evaluation_plans', 'create'), controller.createProject);
 router.post('/projects/:projectId/competencies', requirePermission('evaluation_plans', 'update'), controller.addCompetency);

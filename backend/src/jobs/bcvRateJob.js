@@ -17,11 +17,19 @@ async function runOnce() {
     console.error('[bcv] No se pudo obtener la tasa:', err.message);
     return;
   }
-  const tenants = await db('tenants').whereIn('status', ['active', 'trial']).select('id');
+  // Solo colegios que usan el bolívar (los que no configuraron monedas lo usan por defecto).
+  const tenants = await db('tenants as t')
+    .whereIn('t.status', ['active', 'trial'])
+    .where((q) =>
+      q
+        .whereExists(db('tenant_currencies').whereRaw('tenant_id = t.id').andWhere('currency_code', 'VES'))
+        .orWhereNotExists(db('tenant_currencies').whereRaw('tenant_id = t.id'))
+    )
+    .select('t.id');
   for (const t of tenants) {
     try {
       await withTenantTransaction(t.id, (trx) =>
-        exchange.upsertRate(trx, t.id, { rateDate: fetched.rateDate, rate: fetched.rate, source: 'bcv' })
+        exchange.upsertRate(trx, t.id, { currency: 'VES', rateDate: fetched.rateDate, rate: fetched.rate, source: 'bcv' })
       );
     } catch (err) {
       console.error(`[bcv] No se pudo guardar la tasa del colegio ${t.id}:`, err.message);

@@ -4,7 +4,7 @@ import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import Icon from '../../../components/ui/Icon';
 import Spinner from '../../../components/ui/Spinner';
-import { BsBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatDate, formatMoney } from '../paymentStatus';
+import { ConversionBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatDate, formatMoney } from '../paymentStatus';
 import { ProofButton } from './ProofViewer';
 
 /** Eventos del cobro en orden cronológico, a partir de sus fechas. */
@@ -32,7 +32,12 @@ function timelineOf(p) {
       date: p.paid_at,
       icon: 'checkCircle',
       label: 'Pago confirmado',
-      detail: p.ves_amount && p.currency !== 'VES' ? `${formatMoney(p.ves_amount, 'VES')} con la tasa del ${formatDate(p.ves_rate_date)}` : null,
+      detail:
+        p.conv_amount && p.conv_currency !== p.currency
+          ? `${formatMoney(p.conv_amount, p.conv_currency)} con la tasa del ${formatDate(p.conv_rate_date)}`
+          : p.conv_currency === 'USD'
+            ? 'Pagado en dólares'
+            : null,
     });
   }
   if (p.cancelled_at) events.push({ date: p.cancelled_at, icon: 'x', label: 'Cobro anulado', detail: null });
@@ -40,7 +45,7 @@ function timelineOf(p) {
 }
 
 /**
- * Detalle de un cobro: desglose $ × tasa BCV = Bs, datos del pago, cronología
+ * Detalle de un cobro: desglose monto USD × tasa del día = total en la moneda de referencia, datos del pago, cronología
  * y, si se puede, los demás cobros del mismo alumno.
  */
 export function PaymentDetailModal({ payment: p, showStudentHistory = true, actions = null, onClose }) {
@@ -64,10 +69,10 @@ export function PaymentDetailModal({ payment: p, showStudentHistory = true, acti
           <h4 className="detail-section__title">
             <Icon name="wallet" size={16} /> Desglose
           </h4>
-          <BsBreakdown payment={p} />
-          {p.ves_estimated && p.currency !== 'VES' && p.ves_amount && (
+          <ConversionBreakdown payment={p} />
+          {p.conv_estimated && p.conv_amount && (
             <p className="form-hint" style={{ marginTop: 6 }}>
-              Estimado con la tasa vigente hoy: el monto en Bs definitivo se fija con la tasa de la fecha de pago.
+              Estimado con la tasa vigente hoy: el monto definitivo en {p.conv_currency} se fija con la tasa de la fecha de pago.
             </p>
           )}
           <dl className="detail-list" style={{ marginTop: 12 }}>

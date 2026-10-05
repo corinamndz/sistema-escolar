@@ -22,6 +22,8 @@ async function buildReceiptData(trx, tenantId, paymentId) {
   const guardian = await trx('guardians').where({ id: p.guardian_id }).first();
 
   // Sección: la de la inscripción de la mensualidad, o la activa más reciente del alumno.
+  const refCurrency = p.ref_currency ? await exchange.getCurrency(trx, p.ref_currency, tenantId) : null;
+
   const section = await trx('enrollments as e')
     .join('sections as sec', 'sec.id', 'e.section_id')
     .join('grades as g', 'g.id', 'sec.grade_id')
@@ -57,9 +59,19 @@ async function buildReceiptData(trx, tenantId, paymentId) {
       note: p.report_note,
       currency: p.currency,
       amount: Number(p.amount),
-      amountVes: p.amount_ves !== null ? Number(p.amount_ves) : null,
-      rate: p.exchange_rate !== null ? Number(p.exchange_rate) : null,
-      rateDate: p.exchange_rate_date,
+      // Moneda de referencia en que se pagó y su conversión congelada al confirmar.
+      ref: refCurrency
+        ? {
+            code: refCurrency.code,
+            name: refCurrency.name,
+            symbol: refCurrency.symbol,
+            decimals: refCurrency.decimals,
+            locale: refCurrency.locale,
+            amount: p.ref_amount !== null ? Number(p.ref_amount) : null,
+            rate: p.ref_rate !== null ? Number(p.ref_rate) : null,
+            rateDate: p.ref_rate_date,
+          }
+        : null,
     },
     guardianEmail: guardian.email,
     tenantName: tenant.name,
@@ -83,23 +95,6 @@ async function regenerateReceipt(trx, tenantId, paymentId) {
   await trx('payments').where({ id: paymentId }).update({ receipt_url: receiptUrl });
   return (await paymentsQuery(trx, tenantId).where('p.id', paymentId))[0];
 }
-
-/**
- * Monto en bolívares de cada pago (columnas ves_*):
- *   - confirmado con conversión guardada → la foto de ese momento (no cambia con la tasa);
- *   - cobro en Bs (VES)                  → el monto tal cual;
- *   - pendiente en USD                   → estimado con la tasa BCV VIGENTE hoy.
- * Calculado en SQL (NUMERIC) para no arrastrar errores de punto flotante.
- */
-const VES_SELECT = [
-  `CASE WHEN p.amount_ves IS NOT NULL THEN p.amount_ves
-        WHEN p.currency = 'VES' THEN p.amount
-        WHEN cr.rate IS NOT NULL THEN round(p.amount * cr.rate, 2)
-   END AS ves_amount`,
-  `CASE WHEN p.amount_ves IS NOT NULL THEN p.exchange_rate WHEN p.currency = 'VES' THEN NULL ELSE cr.rate END AS ves_rate`,
-  `CASE WHEN p.amount_ves IS NOT NULL THEN p.exchange_rate_date WHEN p.currency = 'VES' THEN NULL ELSE cr.rate_date END AS ves_rate_date`,
-  `(p.amount_ves IS NULL AND p.currency <> 'VES') AS ves_estimated`,
-];
 
 const RECEIPTS_DIR = path.join(__dirname, '..', '..', '..', 'storage', 'receipts');
 fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
@@ -127,15 +122,21 @@ const DISPLAY_STATUSES = ['pending', 'overdue', 'reported', 'scheduled', 'paid',
 /** "Por cobrar": todo lo exigible (pendiente, vencido o reportado), sin meses futuros. */
 const DUE_STATUSES = ['pending', 'overdue', 'reported'];
 
-function paymentsQuery(trx, tenantId) {
+/**
+ * Pagos con su equivalente en la moneda de referencia (columnas conv_*, ver
+ * exchangeRate.service). `viewCurrency` (opcional) fuerza la moneda en que se
+ * estiman los pendientes en USD; los confirmados muestran siempre su foto.
+ */
+function paymentsQuery(trx, tenantId, { viewCurrency = null } = {}) {
+  const conv = exchange.conversionJoins(viewCurrency);
   return trx('payments as p')
     .join('students as s', 's.id', 'p.student_id')
     .join('guardians as g', 'g.id', 'p.guardian_id')
-    .joinRaw(`LEFT JOIN LATERAL (${exchange.effectiveRateSql()}) cr ON true`)
+    .joinRaw(conv.sql, conv.bindings)
     .where('p.tenant_id', tenantId)
     .select(
       'p.*',
-      ...VES_SELECT.map((sql) => trx.raw(sql)),
+      ...exchange.CONV_SELECT.map((sql) => trx.raw(sql)),
       trx.raw(`${DISPLAY_STATUS_SQL} AS display_status`),
       // Días de atraso (positivo) o que faltan para vencer (negativo); null si no aplica.
       trx.raw("CASE WHEN p.status = 'pending' AND p.due_date IS NOT NULL THEN current_date - p.due_date END AS days_overdue"),
@@ -151,11 +152,12 @@ function paymentsQuery(trx, tenantId) {
  * Listado de pagos. `status` acepta estados de visualización separados por
  * coma (ej. "pending,overdue") o el atajo "due" (= pendiente + vencido + reportado).
  */
-async function listPayments(trx, tenantId, { studentId, guardianId, status, schoolPeriodId, kind } = {}) {
+async function listPayments(trx, tenantId, { studentId, guardianId, status, schoolPeriodId, kind, currency } = {}) {
   // El estado de cuenta se completa antes de leerse (idempotente).
   await ensureTuition(trx, tenantId, { studentId, guardianId, schoolPeriodId });
+  const viewCurrency = currency ? await exchange.assertRefCurrency(trx, tenantId, currency) : null;
 
-  const query = paymentsQuery(trx, tenantId).orderByRaw(
+  const query = paymentsQuery(trx, tenantId, { viewCurrency }).orderByRaw(
     'p.due_date ASC NULLS LAST, s.last_name, s.first_name, p.created_at DESC'
   );
 
@@ -170,33 +172,122 @@ async function listPayments(trx, tenantId, { studentId, guardianId, status, scho
   return query;
 }
 
-/** Totales por estado de visualización y moneda (para las tarjetas del módulo de pagos). */
-async function getSummary(trx, tenantId, { schoolPeriodId } = {}) {
+/**
+ * Totales por estado de visualización y moneda (para las tarjetas del módulo
+ * de pagos), más el equivalente de cada estado en UNA moneda de referencia
+ * (`currency` o la predeterminada): `total_ref` / `ref_currency`.
+ */
+async function getSummary(trx, tenantId, { schoolPeriodId, currency } = {}) {
   const { billingIssues } = await ensureTuition(trx, tenantId, { schoolPeriodId });
+  const target = currency ? await exchange.assertRefCurrency(trx, tenantId, currency) : await exchange.getDefaultCurrency(trx, tenantId);
+  const tj = exchange.targetRateJoin(target);
 
   const query = trx('payments as p')
-    .joinRaw(`LEFT JOIN LATERAL (${exchange.effectiveRateSql()}) cr ON true`)
+    .joinRaw(tj.sql, tj.bindings)
     .where('p.tenant_id', tenantId)
     .select(trx.raw(`${DISPLAY_STATUS_SQL} AS display_status`), 'p.currency')
     .count('p.id as count')
     .sum('p.amount as total')
-    .select(trx.raw(`sum(${VES_SELECT[0].replace(/ AS ves_amount$/, '')}) AS total_ves`))
+    .select(trx.raw(`${exchange.sumTargetSql} AS total_ref`))
     .groupByRaw(`1, p.currency`);
   if (schoolPeriodId) query.andWhere('p.school_period_id', schoolPeriodId);
   const rows = await query;
 
-  const summary = Object.fromEntries(DISPLAY_STATUSES.map((s) => [s, { count: 0, amounts: [], total_ves: 0 }]));
+  // Sumas en centavos enteros: sin errores de punto flotante al combinar monedas de cobro.
+  const cents = (v) => Math.round(Number(v) * 100);
+  const summary = Object.fromEntries(DISPLAY_STATUSES.map((s) => [s, { count: 0, amounts: [], total_ref: 0 }]));
   rows.forEach((r) => {
-    summary[r.display_status].count += Number(r.count);
-    summary[r.display_status].amounts.push({ currency: r.currency, total: Number(r.total) });
-    // Equivalente en Bs (null si hay montos en USD sin tasa registrada).
     const bucket = summary[r.display_status];
-    bucket.total_ves = r.total_ves === null || bucket.total_ves === null ? null : Math.round((bucket.total_ves + Number(r.total_ves)) * 100) / 100;
+    bucket.count += Number(r.count);
+    bucket.amounts.push({ currency: r.currency, total: Number(r.total) });
+    // null si algún pago no se pudo convertir (falta tasa): nunca un total parcial.
+    bucket.total_ref = r.total_ref === null || bucket.total_ref === null ? null : (cents(bucket.total_ref) + cents(r.total_ref)) / 100;
   });
+  summary.ref_currency = target;
   summary.exchange = await exchange.getRateStatus(trx, tenantId);
   // Inscripciones sin mensualidades (falta tarifa, representante o fechas del año).
   summary.billing_issues = billingIssues;
   return summary;
+}
+
+/**
+ * Moneda de referencia de un pago: la pedida (validada), o la ya elegida, o la
+ * predeterminada. Un cobro que no es en USD se paga en su propia moneda (no
+ * hay tasas cruzadas entre monedas locales).
+ */
+async function resolveRefCurrency(trx, tenantId, payment, requested) {
+  if (payment.currency !== exchange.BASE) {
+    if (requested && String(requested).toUpperCase() !== payment.currency) {
+      throw ApiError.unprocessable(`Este cobro es en ${payment.currency}: se paga en esa misma moneda.`, [
+        { path: 'currency', message: 'Moneda no aplicable.' },
+      ]);
+    }
+    return payment.currency;
+  }
+  if (requested) return exchange.assertRefCurrency(trx, tenantId, requested);
+  return payment.ref_currency || exchange.getDefaultCurrency(trx, tenantId);
+}
+
+/** Tasa a aplicar (null si no hay conversión: se paga en la moneda del cobro). */
+async function rateForConversion(trx, tenantId, payment, refCurrency, onDate) {
+  if (refCurrency === payment.currency) return null;
+  const rate = await exchange.getEffectiveRate(trx, tenantId, refCurrency, onDate);
+  if (!rate) {
+    const currency = await exchange.getCurrency(trx, refCurrency, tenantId);
+    throw ApiError.unprocessable(
+      `No hay tasa de ${currency.name} (${refCurrency}) registrada vigente para ${onDate || 'hoy'}. Regístrala antes de continuar.`,
+      [{ path: 'currency', message: 'Sin tasa registrada.' }]
+    );
+  }
+  return rate;
+}
+
+/**
+ * Cotización exacta de un pago en una moneda y fecha (lo que se pagaría):
+ * la usan los modales de reportar/registrar al cambiar de moneda. Pueden
+ * pedirla la familia dueña del pago o quien puede leer pagos.
+ * Si el pago ya está confirmado, devuelve la foto guardada.
+ */
+async function quotePayment(trx, tenantId, userId, paymentId, { currency, date } = {}) {
+  await assertNotFutureDate(trx, date, 'date');
+  const payment = await trx('payments').where({ id: paymentId, tenant_id: tenantId }).first();
+  if (!payment) throw ApiError.notFound('Pago no encontrado.');
+  const perms = await getEffectivePermissions(trx, tenantId, userId);
+  if (!perms.payments?.can_read) {
+    const guardian = await trx('guardians').where({ tenant_id: tenantId, user_id: userId }).first();
+    if (!guardian || guardian.id !== payment.guardian_id) throw ApiError.notFound('Pago no encontrado.');
+  }
+
+  if (payment.ref_amount !== null) {
+    const cur = await exchange.getCurrency(trx, payment.ref_currency, tenantId);
+    return {
+      payment_id: payment.id,
+      base_currency: payment.currency,
+      base_amount: Number(payment.amount),
+      currency: cur,
+      rate: payment.ref_rate !== null ? Number(payment.ref_rate) : null,
+      rate_date: payment.ref_rate_date,
+      amount: Number(payment.ref_amount),
+      estimated: false,
+    };
+  }
+
+  const code = await resolveRefCurrency(trx, tenantId, payment, currency);
+  const cur = await exchange.getCurrency(trx, code, tenantId);
+  const rate = await rateForConversion(trx, tenantId, payment, code, date || null);
+  const { rows } = rate
+    ? await trx.raw('SELECT round(?::numeric * rate, ?)::numeric(18,2)::text AS amount FROM exchange_rates WHERE id = ?', [payment.amount, cur.decimals, rate.id])
+    : { rows: [{ amount: payment.amount }] };
+  return {
+    payment_id: payment.id,
+    base_currency: payment.currency,
+    base_amount: Number(payment.amount),
+    currency: cur,
+    rate: rate ? rate.rate : null,
+    rate_date: rate ? rate.rate_date : null,
+    amount: Number(rows[0].amount),
+    estimated: true,
+  };
 }
 
 /** Rechaza fechas de pago futuras según la fecha de la base de datos (zona horaria del colegio). */
@@ -218,9 +309,9 @@ async function getGuardianForUser(trx, tenantId, userId) {
  * Pagos de los hijos de un representante que inició sesión (vista de padres).
  * No incluye cobros anulados: no son deuda ni historial relevante para el padre.
  */
-async function listPaymentsForGuardianUser(trx, tenantId, userId) {
+async function listPaymentsForGuardianUser(trx, tenantId, userId, { currency } = {}) {
   const guardian = await getGuardianForUser(trx, tenantId, userId);
-  const rows = await listPayments(trx, tenantId, { guardianId: guardian.id });
+  const rows = await listPayments(trx, tenantId, { guardianId: guardian.id, currency });
   return rows.filter((p) => p.status !== 'cancelled');
 }
 
@@ -235,7 +326,7 @@ async function listPaymentsForGuardianUser(trx, tenantId, userId) {
  * Devuelve `{ payment, replacedProofPath }`: si se reemplazó un comprobante
  * anterior, el controlador lo borra cuando la transacción se confirma.
  */
-async function reportPayment(trx, tenantId, userId, paymentId, { method, reference, paidOn, note }, proof = null) {
+async function reportPayment(trx, tenantId, userId, paymentId, { method, reference, paidOn, note, currency }, proof = null) {
   await assertNotFutureDate(trx, paidOn);
   const guardian = await getGuardianForUser(trx, tenantId, userId);
   const payment = await trx('payments').where({ id: paymentId, tenant_id: tenantId }).first();
@@ -245,9 +336,13 @@ async function reportPayment(trx, tenantId, userId, paymentId, { method, referen
     throw ApiError.conflict(payment.status === 'paid' ? 'Este pago ya fue confirmado.' : 'Este cobro no admite reportes.');
   }
 
+  const refCurrency = await resolveRefCurrency(trx, tenantId, payment, currency);
+
   const [updated] = await trx('payments')
     .where({ id: paymentId })
     .update({
+      // Moneda en que la familia dice haber pagado: se usará al confirmar.
+      ref_currency: refCurrency,
       reported_at: trx.fn.now(),
       report_method: method,
       report_reference: reference || null,
@@ -277,6 +372,7 @@ async function getById(trx, tenantId, id) {
 }
 
 async function registerPayment(trx, tenantId, { studentId, guardianId, periodLabel, amount, currency = 'USD' }) {
+  currency = await exchange.assertRefCurrency(trx, tenantId, currency);
   const student = await trx('students').where({ id: studentId, tenant_id: tenantId }).first();
   if (!student) throw ApiError.notFound('Alumno no encontrado.');
 
@@ -307,7 +403,9 @@ async function registerPayment(trx, tenantId, { studentId, guardianId, periodLab
  * `details` (opcional): datos del pago que registra administración
  * { method, reference, paidOn, note }. Si el representante ya lo había
  * reportado, lo que envíe el administrador prevalece (es quien verificó).
- * La tasa BCV se toma de la fecha de pago: la indicada, la reportada o hoy.
+ * La conversión se hace a `details.currency`, o a la moneda que reportó la
+ * familia, o a la predeterminada del colegio, con la tasa de esa moneda
+ * vigente en la fecha de pago (la indicada, la reportada o hoy).
  */
 async function markAsPaid(trx, tenantId, paymentId, details = {}, proof = null) {
   await assertNotFutureDate(trx, details.paidOn);
@@ -333,28 +431,30 @@ async function markAsPaid(trx, tenantId, paymentId, details = {}, proof = null) 
   if (proof) Object.assign(paymentData, proof, { proof_uploaded_at: trx.fn.now() });
   const replacedProofPath = proof && payment.proof_path ? payment.proof_path : null;
 
-  // Tasa de la fecha en que se pagó (indicada, reportada o hoy).
-  let rate = null;
-  if (payment.currency !== 'VES') {
-    rate = await exchange.getEffectiveRate(trx, tenantId, paidOn);
-    if (!rate) {
-      throw ApiError.unprocessable(
-        `No hay tasa BCV registrada vigente para ${paidOn || 'hoy'}. Regístrala antes de confirmar el pago.`
-      );
-    }
-  }
+  // Moneda de referencia y tasa de la fecha en que se pagó.
+  const refCurrency = await resolveRefCurrency(trx, tenantId, payment, details.currency);
+  const rate = await rateForConversion(trx, tenantId, payment, refCurrency, paidOn);
 
   const paidAt = new Date();
-  // amount_ves = round(amount × tasa, 2) calculado en PostgreSQL (NUMERIC exacto).
+  // ref_amount = round(amount × tasa, decimales de la moneda), en PostgreSQL (NUMERIC exacto).
   await trx('payments')
     .where({ id: paymentId })
     .update({
       ...paymentData,
       status: 'paid',
       paid_at: paidAt,
-      exchange_rate: rate ? trx.raw('(SELECT rate FROM exchange_rates WHERE id = ?)', [rate.id]) : null,
-      exchange_rate_date: rate ? rate.rate_date : null,
-      amount_ves: rate ? trx.raw('round(amount * (SELECT rate FROM exchange_rates WHERE id = ?), 2)', [rate.id]) : trx.raw('amount'),
+      ref_currency: refCurrency,
+      ref_rate: rate ? trx.raw('(SELECT rate FROM exchange_rates WHERE id = ?)', [rate.id]) : null,
+      ref_rate_date: rate ? rate.rate_date : null,
+      ref_amount: rate
+        ? trx.raw(
+            `round(amount * (SELECT rate FROM exchange_rates WHERE id = ?),
+                   (SELECT COALESCE(tc.decimals, c.decimals) FROM currencies c
+                    LEFT JOIN tenant_currencies tc ON tc.currency_code = c.code AND tc.tenant_id = ?
+                    WHERE c.code = ?))`,
+            [rate.id, tenantId, refCurrency]
+          )
+        : trx.raw('amount'),
     });
 
   // El comprobante se arma leyendo el pago ya actualizado (conversión, método, referencia…).
@@ -421,7 +521,7 @@ module.exports = {
   regenerateReceipt,
   getProof,
   DISPLAY_STATUS_SQL,
-  VES_SELECT,
+  quotePayment,
   listPayments,
   getSummary,
   listPaymentsForGuardianUser,

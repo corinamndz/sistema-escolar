@@ -20,8 +20,10 @@ import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { useToast } from '../../../components/ui/Toast';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { LEVELS, LEVEL_CODES } from '../../academics/levels';
-import { BsBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatAmounts, formatDate, formatMoney } from '../paymentStatus';
+import { ConversionBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatAmounts, formatDate, formatMoney } from '../paymentStatus';
 import { ExchangeRatePanel } from '../components/ExchangeRatePanel';
+import { CurrencySelect, ViewCurrencySelect } from '../currency';
+import { useViewCurrency } from '../useViewCurrency';
 import { PaymentFormModal } from '../components/PaymentForms';
 import { PaymentDetailModal } from '../components/PaymentDetailModal';
 import { Link } from 'react-router-dom';
@@ -43,17 +45,22 @@ function PaymentsPage() {
   const { data: periods } = useFetch(() => academicsApi.listSchoolPeriods(), []);
   const [status, setStatus] = useState('due');
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
-  const params = { ...(status ? { status } : {}), ...(schoolPeriodId ? { schoolPeriodId } : {}) };
-  const { data: rows, loading, error, refetch } = useFetch(() => paymentsApi.list(params), [status, schoolPeriodId]);
+  // Tasas de las monedas activas + moneda en que se muestran los equivalentes (se recuerda).
+  const { data: rates, loading: loadingRates, refetch: refetchRates } = useFetch(() => paymentsApi.currentRate(), []);
+  const [viewCurrency, setViewCurrency] = useViewCurrency('payments.viewCurrency', rates);
+  const currencyParam = viewCurrency ? { currency: viewCurrency } : {};
+  const params = { ...(status ? { status } : {}), ...(schoolPeriodId ? { schoolPeriodId } : {}), ...currencyParam };
+  const { data: rows, loading, error, refetch } = useFetch(() => paymentsApi.list(params), [status, schoolPeriodId, viewCurrency]);
   const { data: summary, refetch: refetchSummary } = useFetch(
-    () => paymentsApi.summary(schoolPeriodId ? { schoolPeriodId } : undefined),
-    [schoolPeriodId]
+    () => paymentsApi.summary({ ...(schoolPeriodId ? { schoolPeriodId } : {}), ...currencyParam }),
+    [schoolPeriodId, viewCurrency]
   );
   const [modal, setModal] = useState(null); // 'fees' | 'generate' | 'other'
 
   const reload = () => {
     refetch();
     refetchSummary();
+    refetchRates();
   };
 
   const [viewing, setViewing] = useState(null); // cobro en "Ver detalle"
@@ -115,7 +122,7 @@ function PaymentsPage() {
       render: (p) => (
         <div className="amount-cell">
           <strong>{formatMoney(p.amount, p.currency)}</strong>
-          <BsBreakdown payment={p} compact />
+          <ConversionBreakdown payment={p} compact />
         </div>
       ),
       sortValue: (p) => Number(p.amount),
@@ -182,11 +189,16 @@ function PaymentsPage() {
   ];
 
   const dueTotal = summary && ['pending', 'overdue', 'reported'].reduce((n, s) => n + summary[s].count, 0);
-  /** "≈ Bs. 192.120,00" con la tasa vigente; vacío si falta la tasa. */
-  const bsHint = (statuses) => {
+  /**
+   * "≈ COL$ 494.820,00" en la moneda de vista con su tasa vigente; vacío si
+   * falta alguna tasa (no se muestra un total parcial). Suma en centavos.
+   */
+  const refHint = (statuses) => {
     if (!summary || statuses.every((s) => summary[s].count === 0)) return '';
-    if (statuses.some((s) => summary[s].total_ves === null)) return '';
-    return `≈ ${formatMoney(statuses.reduce((n, s) => n + summary[s].total_ves, 0), 'VES')}`;
+    if (statuses.some((s) => summary[s].total_ref === null)) return '';
+    if (summary.ref_currency === 'USD') return '';
+    const cents = statuses.reduce((n, s) => n + Math.round(summary[s].total_ref * 100), 0);
+    return `≈ ${formatMoney(cents / 100, summary.ref_currency)}`;
   };
   const dueAmounts = summary
     ? mergeAmounts(['pending', 'overdue', 'reported'].flatMap((s) => summary[s].amounts))
@@ -199,6 +211,7 @@ function PaymentsPage() {
         subtitle="Mensualidades y otros cobros. Cada mes se exige dentro de sus primeros 5 días."
         actions={
           <>
+            <ViewCurrencySelect value={viewCurrency} onChange={setViewCurrency} status={rates} />
             {can('payments', 'update') && (
               <Button variant="secondary" icon="settings" onClick={() => setModal('fees')}>
                 Tarifas
@@ -252,11 +265,11 @@ function PaymentsPage() {
         </div>
       )}
 
-      <ExchangeRatePanel onChanged={reload} />
+      <ExchangeRatePanel status={rates} loading={loadingRates} onChanged={reload} />
 
       <div className="grid grid--4" style={{ marginBottom: 24 }}>
-        <StatCard label="Por cobrar" value={summary ? dueTotal : undefined} icon="wallet" tone="warning" hint={summary ? [formatAmounts(dueAmounts), bsHint(['pending', 'overdue', 'reported'])].filter(Boolean).join(' · ') || '—' : ''} />
-        <StatCard label="Vencidos" value={summary?.overdue.count} icon="alertCircle" tone="danger" hint={summary ? [formatAmounts(summary.overdue.amounts), bsHint(['overdue'])].filter(Boolean).join(' · ') || 'Sin atrasos' : ''} />
+        <StatCard label="Por cobrar" value={summary ? dueTotal : undefined} icon="wallet" tone="warning" hint={summary ? [formatAmounts(dueAmounts), refHint(['pending', 'overdue', 'reported'])].filter(Boolean).join(' · ') || '—' : ''} />
+        <StatCard label="Vencidos" value={summary?.overdue.count} icon="alertCircle" tone="danger" hint={summary ? [formatAmounts(summary.overdue.amounts), refHint(['overdue'])].filter(Boolean).join(' · ') || 'Sin atrasos' : ''} />
         <StatCard label="Reportados por confirmar" value={summary?.reported.count} icon="receipt" tone="info" hint="Pagos informados por representantes" />
         <StatCard label="Cobrado" value={summary?.paid.count} icon="checkCircle" tone="success" hint={summary ? formatAmounts(summary.paid.amounts) || '—' : ''} />
       </div>
@@ -393,7 +406,7 @@ function TuitionFeesModal({ periods, onClose }) {
   return (
     <Modal title="Tarifas de mensualidad" onClose={onClose} size="lg">
       <p style={{ marginTop: -6 }}>
-        Las mensualidades se configuran en <strong>dólares</strong> y se cobran en bolívares con la <strong>tasa BCV del día</strong>.
+        Las mensualidades se configuran en <strong>dólares</strong> y cada familia las paga en la moneda que elija (bolívares, pesos, soles…) con la <strong>tasa del día</strong> de esa moneda.
         Se cobra una mensualidad por cada mes del año escolar. Cada nivel usa su tarifa propia o, si no tiene, la <strong>tarifa general</strong>.
         Cambiar una tarifa no modifica mensualidades ya generadas.
       </p>
@@ -485,7 +498,7 @@ function FeeRow({ schoolPeriodId, levelCode, fee, fallback, onChanged }) {
         </span>
       </div>
       <Input type="number" min="0.01" step="0.01" placeholder="Monto" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} aria-label={`Monto ${title}`} />
-      <Input value="USD" disabled aria-label={`Moneda ${title}`} title="Las mensualidades se configuran en dólares y se cobran en Bs con la tasa BCV del día" />
+      <Input value="USD" disabled aria-label={`Moneda ${title}`} title="Las mensualidades se configuran en dólares; se pagan en la moneda elegida con la tasa del día" />
       <Input type="number" min="1" max="28" value={form.dueDay} onChange={(e) => setForm((f) => ({ ...f, dueDay: e.target.value }))} aria-label={`Día límite ${title}`} title="Día límite de pago" />
       <div className="row-actions">
         <Button size="sm" onClick={save} loading={loading} disabled={invalid}>
@@ -605,6 +618,7 @@ function RegisterPaymentModal({ onClose, onCreated }) {
     [studentId]
   );
   const [form, setForm] = useState({ guardianId: '', periodLabel: '', amount: '', currency: 'USD' });
+  const { data: otherRates } = useFetch(() => paymentsApi.currentRate(), []);
   const { run, loading, error, fieldErrors } = useMutation(paymentsApi.register);
   const toast = useToast();
 
@@ -675,8 +689,8 @@ function RegisterPaymentModal({ onClose, onCreated }) {
             <Field label="Monto" error={fieldErrors.amount} required>
               <Input type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} required />
             </Field>
-            <Field label="Moneda" error={fieldErrors.currency} required>
-              <Input value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value.toUpperCase() }))} required />
+            <Field label="Moneda del cobro" error={fieldErrors.currency} required hint="Normalmente USD: la familia elige luego en qué moneda paga.">
+              <CurrencySelect value={form.currency} onChange={(currency) => setForm((f) => ({ ...f, currency }))} status={otherRates} />
             </Field>
           </div>
           <div className="form-actions">

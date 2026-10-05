@@ -26,14 +26,28 @@ const getPlan = asyncHandler(async (req, res) => {
 });
 const createPlan = asyncHandler(async (req, res) => {
   const schema = z.object({
-    sectionId: z.string().uuid(),
+    // Una sección (sectionId) o varias del mismo grado (sectionIds): el plan se aplica a todas.
+    sectionId: z.string().uuid().optional(),
+    sectionIds: z.array(z.string().uuid()).min(1).max(20).optional(),
     termId: z.string().uuid(),
+    format: z.enum(['simple', 'detailed']).default('simple'),
     // Secundaria: subjectId (el profesor se toma de la asignación). Inicial/Primaria: subject + teacherId.
     teacherId: z.string().uuid().optional(),
     subject: z.string().trim().min(1).optional(),
     subjectId: z.string().uuid().optional(),
   });
   res.status(201).json(await service.createPlan(req.db, req.tenantId, schema.parse(req.body)));
+});
+
+/** Cambia el formato o las secciones del plan. */
+const updatePlan = asyncHandler(async (req, res) => {
+  const data = z
+    .object({
+      format: z.enum(['simple', 'detailed']).optional(),
+      sectionIds: z.array(z.string().uuid()).min(1).max(20).optional(),
+    })
+    .parse(req.body);
+  res.status(200).json(await service.updatePlan(req.db, req.tenantId, req.params.planId, data));
 });
 
 // ---- Proyecto pedagógico y competencias ----
@@ -50,6 +64,9 @@ const addCompetency = asyncHandler(async (req, res) => {
   const schema = z.object({ description: z.string().min(1) });
   res.status(201).json(await service.addCompetency(req.db, req.tenantId, req.params.projectId, schema.parse(req.body)));
 });
+
+// Número con como máximo 2 decimales (NUMERIC(5,2)); tolerancia por punto flotante.
+const twoDecimals = z.number().refine((n) => Math.abs(n * 100 - Math.round(n * 100)) < 1e-6, 'Usa como máximo 2 decimales.');
 
 // ---- Actividades (con validación del 100%) ----
 const activitySchema = z.object({
@@ -68,6 +85,44 @@ const activitySchema = z.object({
     (v) => (v === '' ? null : v),
     z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida.').nullable().optional()
   ),
+
+  // ---- Formato detallado (todo opcional: si no se envía, se conserva lo guardado) ----
+  strategy: z.preprocess((v) => (v === '' ? null : v), z.string().trim().max(200).nullable().optional()),
+  // Referencias teórico-prácticas: temas con sus subtemas.
+  contentRefs: z
+    .array(
+      z.object({
+        topic: z.string().trim().min(1, 'Escribe el tema.').max(200),
+        subtopics: z.array(z.string().trim().min(1).max(200)).max(30).default([]),
+      })
+    )
+    .max(30)
+    .optional(),
+  // Puntaje máximo de la actividad (los indicadores deben sumarlo).
+  maxScore: twoDecimals.pipe(z.number().positive('Debe ser mayor que 0.').max(100)).optional(),
+  criteria: z
+    .array(
+      z.object({
+        id: z.string().uuid().optional(),
+        title: z.string().trim().min(1, 'Escribe el criterio.').max(300),
+        indicators: z
+          .array(
+            z.object({
+              id: z.string().uuid().optional(),
+              description: z.string().trim().min(1, 'Escribe el indicador.').max(300),
+              points: twoDecimals.pipe(z.number().positive('El puntaje debe ser mayor que 0.').max(100)),
+            })
+          )
+          .max(30),
+      })
+    )
+    .max(20)
+    .optional(),
+  // Fecha de aplicación en cada sección del plan.
+  sectionDates: z
+    .array(z.object({ sectionId: z.string().uuid(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida.') }))
+    .max(20)
+    .optional(),
 });
 
 const createActivity = asyncHandler(async (req, res) => {
@@ -99,6 +154,7 @@ const reopenPlan = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  updatePlan,
   closePlan,
   reopenPlan,
   listTerms,

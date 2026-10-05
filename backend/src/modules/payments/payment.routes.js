@@ -14,10 +14,20 @@ router.get('/mine', controller.listMine);
 router.post('/:id/report', proofUpload, controller.report);
 // Comprobante adjunto: privado; el servicio valida si quien lo pide es la familia o quien revisa pagos.
 router.get('/:id/proof', controller.downloadProof);
+// Cotización en otra moneda: el servicio valida si es la familia dueña o alguien que puede leer pagos.
+router.get('/:id/quote', controller.quote);
 
-// ---- Tasa BCV (rutas fijas antes de "/:id") ----
-// La tasa vigente es información pública: la ve cualquier usuario con sesión
-// (el representante la necesita para saber cuánto pagar en Bs).
+// ---- Monedas y tasas (rutas fijas antes de "/:id") ----
+// Las monedas activas y sus tasas vigentes son información pública para
+// cualquier usuario con sesión (el representante las necesita para saber
+// cuánto pagar en su moneda).
+router.get('/currencies', controller.listCurrencies);
+router.put('/currencies', requirePermission('payments', 'update'), controller.setCurrencies);
+// Administración de monedas del colegio ("/currencies/admin" antes de "/currencies/:code").
+router.get('/currencies/admin', requirePermission('payments', 'read'), controller.currencyAdmin);
+router.post('/currencies', requirePermission('payments', 'update'), controller.addCurrency);
+router.put('/currencies/:code', requirePermission('payments', 'update'), controller.updateCurrency);
+router.delete('/currencies/:code', requirePermission('payments', 'update'), controller.removeCurrency);
 router.get('/exchange-rates/current', controller.currentRate);
 router.get('/exchange-rates', requirePermission('payments', 'read'), controller.listRates);
 router.put('/exchange-rates', requirePermission('payments', 'update'), controller.upsertRate);

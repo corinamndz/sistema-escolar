@@ -30,74 +30,9 @@ export function PaymentStatusBadge({ payment }) {
   return <Badge variant={meta.variant}>{meta.label}</Badge>;
 }
 
-/** Número con formato venezolano: 96060 → "96.060,00". */
-const veNumber = (value, digits = 2) =>
-  Number(value).toLocaleString('es-VE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
-
-/** Convención venezolana: "$120,00" y "Bs. 96.060,00". Otras monedas con Intl. */
-export function formatMoney(amount, currency = 'USD') {
-  const value = Number(amount);
-  if (currency === 'USD') return `$${veNumber(value)}`;
-  if (currency === 'VES') return `Bs. ${veNumber(value)}`;
-  try {
-    return new Intl.NumberFormat('es', { style: 'currency', currency }).format(value);
-  } catch {
-    return `${value.toFixed(2)} ${currency}`;
-  }
-}
-
-/** Tasa BCV con 4 decimales: 857.0058 → "857,0058". */
-export const formatRate = (rate) => (rate === null || rate === undefined ? '—' : veNumber(rate, 4));
-
-/**
- * Desglose de una cuota en USD: monto base × tasa BCV = total en Bs.
- * - Pendiente: estimado con la tasa vigente hoy (cambia si cambia la tasa).
- * - Pagado: la conversión guardada al confirmar (tasa de la fecha de pago).
- * `compact` = una sola línea para tablas.
- */
-export function BsBreakdown({ payment, compact = false }) {
-  if (payment.currency === 'VES') {
-    return compact ? null : <div className="bs-breakdown bs-breakdown--single">Cobro en bolívares</div>;
-  }
-  const hasRate = payment.ves_amount !== null && payment.ves_amount !== undefined;
-  const label = payment.ves_estimated ? 'Total a pagar en Bs' : 'Pagado en Bs';
-
-  if (compact) {
-    return hasRate ? (
-      <span className="cell-person__sub" title={`Tasa BCV ${formatRate(payment.ves_rate)} (fecha valor ${formatDate(payment.ves_rate_date)})`}>
-        {payment.ves_estimated ? '≈ ' : ''}
-        {formatMoney(payment.ves_amount, 'VES')}
-      </span>
-    ) : (
-      <span className="cell-person__sub text-warning">Sin tasa BCV</span>
-    );
-  }
-
-  return (
-    <dl className="bs-breakdown">
-      <div>
-        <dt>Monto base en divisa</dt>
-        <dd>{formatMoney(payment.amount, 'USD')}</dd>
-      </div>
-      <div>
-        <dt>Tasa BCV {payment.ves_estimated ? 'del día' : 'aplicada'}</dt>
-        <dd>
-          {hasRate ? (
-            <>
-              Bs. {formatRate(payment.ves_rate)} <small>/ $ · f. valor {formatDate(payment.ves_rate_date, false)}</small>
-            </>
-          ) : (
-            <span className="text-warning">No registrada</span>
-          )}
-        </dd>
-      </div>
-      <div className="bs-breakdown__total">
-        <dt>{label}</dt>
-        <dd>{hasRate ? formatMoney(payment.ves_amount, 'VES') : '—'}</dd>
-      </div>
-    </dl>
-  );
-}
+// Formato de montos y desglose de conversión: ver currency.jsx (multimoneda).
+export { formatMoney, formatRate, ConversionBreakdown } from './currency';
+import { formatMoney } from './currency';
 
 /** "80,00 US$ + 1.500,00 VES": nunca se suman monedas distintas. */
 export const formatAmounts = (amounts = []) => amounts.map((a) => formatMoney(a.total, a.currency)).join(' + ');

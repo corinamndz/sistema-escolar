@@ -1,5 +1,5 @@
 const { listGuardianStudents } = require('../students/student.service');
-const { DISPLAY_STATUS_SQL, VES_SELECT } = require('../payments/payment.service');
+const { DISPLAY_STATUS_SQL } = require('../payments/payment.service');
 const exchange = require('../payments/exchangeRate.service');
 const { ensureTuition } = require('../payments/tuition.service');
 
@@ -14,8 +14,11 @@ const { ensureTuition } = require('../payments/tuition.service');
  *
  * "Por pagar" = exigible hoy (pendiente, vencido o reportado). Las mensualidades
  * de meses futuros ("programadas") y las anuladas no cuentan como deuda.
+ *
+ * Los totales "por pagar" se expresan además en una moneda de referencia
+ * (`currency` o la predeterminada del colegio), con la tasa vigente.
  */
-async function getGuardianPortal(trx, tenantId, userId) {
+async function getGuardianPortal(trx, tenantId, userId, { currency } = {}) {
   const guardian = await trx('guardians')
     .where({ tenant_id: tenantId, user_id: userId })
     .select('id', 'first_name', 'last_name', 'email', 'phone')
@@ -28,15 +31,17 @@ async function getGuardianPortal(trx, tenantId, userId) {
 
   const students = await listGuardianStudents(trx, guardian.id);
   const studentIds = students.map((s) => s.id);
+  const refCurrency = currency ? await exchange.assertRefCurrency(trx, tenantId, currency) : await exchange.getDefaultCurrency(trx, tenantId);
+  const tj = exchange.targetRateJoin(refCurrency);
 
   const payments = studentIds.length
     ? await trx('payments as p')
         .where({ 'p.tenant_id': tenantId, 'p.guardian_id': guardian.id })
         .whereIn('p.student_id', studentIds)
         .whereNot('p.status', 'cancelled')
-        .joinRaw(`LEFT JOIN LATERAL (${exchange.effectiveRateSql()}) cr ON true`)
+        .joinRaw(tj.sql, tj.bindings)
         .select(
-          trx.raw(VES_SELECT[0]),
+          trx.raw(`${exchange.TARGET_AMOUNT_SQL} AS ref_amount_target`),
           'p.id',
           'p.student_id',
           'p.period_label',
@@ -57,11 +62,14 @@ async function getGuardianPortal(trx, tenantId, userId) {
       list.reduce((acc, p) => ({ ...acc, [p.currency]: (acc[p.currency] || 0) + Number(p.amount) }), {})
     ).map(([currency, total]) => ({ currency, total: Math.round(total * 100) / 100 }));
 
-  /** Suma en Bs; null si algún monto en USD no tiene tasa registrada (no se inventa un total parcial). */
-  const sumVes = (list) =>
-    list.some((p) => p.ves_amount === null)
+  /**
+   * Suma en la moneda de referencia; null si algún monto no se pudo convertir
+   * (falta la tasa): no se inventa un total parcial. En centavos enteros.
+   */
+  const sumRef = (list) =>
+    list.some((p) => p.ref_amount_target === null)
       ? null
-      : Math.round(list.reduce((n, p) => n + Number(p.ves_amount), 0) * 100) / 100;
+      : list.reduce((n, p) => n + Math.round(Number(p.ref_amount_target) * 100), 0) / 100;
 
   const summaryFor = (studentId) => {
     const mine = payments.filter((p) => p.student_id === studentId);
@@ -73,7 +81,7 @@ async function getGuardianPortal(trx, tenantId, userId) {
       overdue_count: due.filter((p) => p.display_status === 'overdue').length,
       reported_count: due.filter((p) => p.display_status === 'reported').length,
       pending_amounts: sumByCurrency(due),
-      pending_ves: sumVes(due),
+      pending_ref: sumRef(due),
       paid_count: paid.length,
       next_due: next
         ? { period_label: next.period_label, due_date: next.due_date, amount: Number(next.amount), currency: next.currency }
@@ -98,8 +106,9 @@ async function getGuardianPortal(trx, tenantId, userId) {
       pending_count: allDue.length,
       overdue_count: allDue.filter((p) => p.display_status === 'overdue').length,
       pending_amounts: sumByCurrency(allDue),
-      pending_ves: sumVes(allDue),
+      pending_ref: sumRef(allDue),
     },
+    ref_currency: refCurrency,
     exchange: await exchange.getRateStatus(trx, tenantId),
   };
 }

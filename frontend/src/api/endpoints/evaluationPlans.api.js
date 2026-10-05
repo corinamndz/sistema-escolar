@@ -7,7 +7,10 @@ const evaluationPlansApi = {
 
   list: (params) => axiosClient.get('/evaluation-plans', { params }).then((r) => r.data),
   getOne: (id) => axiosClient.get(`/evaluation-plans/${id}`).then((r) => r.data),
+  /** { sectionIds: [...] (o sectionId), termId, format: 'simple' | 'detailed', subjectId | subject + teacherId } */
   create: (data) => axiosClient.post('/evaluation-plans', data).then((r) => r.data),
+  /** Cambia el formato o las secciones: { format?, sectionIds? } */
+  update: (planId, data) => axiosClient.put(`/evaluation-plans/${planId}`, data).then((r) => r.data),
 
   createProject: (planId, data) => axiosClient.post(`/evaluation-plans/${planId}/project`, data).then((r) => r.data),
   addCompetency: (projectId, data) =>

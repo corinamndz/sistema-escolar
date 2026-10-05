@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import paymentsApi from '../../../api/endpoints/payments.api';
 import { useMutation } from '../../../hooks/useMutation';
+import { useFetch } from '../../../hooks/useFetch';
+import { getErrorMessage } from '../../../api/axiosClient';
 import Modal from '../../../components/ui/Modal';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
@@ -9,7 +11,8 @@ import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
-import { BsBreakdown, REPORT_METHODS, formatDate, formatMoney } from '../paymentStatus';
+import { ConversionBreakdown, REPORT_METHODS, formatDate, formatMoney } from '../paymentStatus';
+import { BASE_CURRENCY, CurrencySelect, currencyLabel } from '../currency';
 import FileDropzone from '../../../components/ui/FileDropzone';
 import { ProofButton } from './ProofViewer';
 
@@ -31,7 +34,7 @@ const MODES = {
     call: (payment, data, file) => paymentsApi.report(payment.id, data, file),
     success: (toast) => toast.success('Pago reportado', 'Administración lo revisará y te enviará el comprobante.'),
   },
-  // Administración: registra el pago recibido (genera comprobante y fija la tasa BCV de la fecha de pago).
+  // Administración: registra el pago recibido (genera comprobante y fija la tasa de la moneda elegida en la fecha de pago).
   register: {
     title: 'Registrar pago',
     submit: 'Registrar pago',
@@ -50,7 +53,10 @@ const MODES = {
 /**
  * Formulario de datos del pago de una cuota (método, referencia, fecha, nota).
  * `mode`: 'report' (representante) | 'register' (administración).
- * Muestra el desglose $ × tasa BCV = Bs de la cuota.
+ *
+ * "Moneda de pago": USD o una moneda activa del colegio. Al cambiarla (o la
+ * fecha), se pide al servidor la cotización exacta con la tasa de esa moneda
+ * vigente ese día y se muestra el desglose monto USD → tasa → total.
  */
 export function PaymentFormModal({ payment, mode = 'report', onClose, onDone }) {
   const config = MODES[mode];
@@ -67,6 +73,45 @@ export function PaymentFormModal({ payment, mode = 'report', onClose, onDone }) 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
   const needsReference = form.method !== 'cash';
 
+  // ---- Moneda de pago y cotización ----
+  const { data: rates } = useFetch(() => paymentsApi.currentRate(), []);
+  // Un cobro que no es en USD (ej. un cargo en Bs) se paga en su propia moneda.
+  const lockedTo = payment.currency !== BASE_CURRENCY ? payment.currency : null;
+  const [currency, setCurrency] = useState(payment.ref_currency || null);
+  const payCurrency = lockedTo || currency || rates?.default_currency || null;
+  const [quote, setQuote] = useState(null);
+  const [quoteError, setQuoteError] = useState(null);
+  const [quoting, setQuoting] = useState(false);
+
+  useEffect(() => {
+    if (!payCurrency || !form.paidOn) return undefined;
+    let cancelled = false;
+    setQuoting(true);
+    // Pequeña espera: al escribir la fecha no se pide una cotización por tecla.
+    const timer = setTimeout(() => {
+      paymentsApi
+        .quote(payment.id, { currency: payCurrency, date: form.paidOn })
+        .then((q) => {
+          if (cancelled) return;
+          setQuote(q);
+          setQuoteError(null);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setQuote(null);
+          setQuoteError(getErrorMessage(err));
+        })
+        .finally(() => !cancelled && setQuoting(false));
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [payment.id, payCurrency, form.paidOn]);
+
+  // Registrar exige la tasa (el monto queda congelado); reportar no: se aplica al confirmar.
+  const blockedByRate = mode === 'register' && Boolean(quoteError);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -75,12 +120,13 @@ export function PaymentFormModal({ payment, mode = 'report', onClose, onDone }) 
         reference: form.reference.trim() || undefined,
         paidOn: form.paidOn,
         note: form.note.trim() || undefined,
+        currency: payCurrency || undefined,
       });
       config.success(toast, result);
       onDone?.(result);
       onClose();
     } catch {
-      // error visible en el modal (ej. falta la tasa BCV de esa fecha)
+      // error visible en el modal (ej. falta la tasa de esa moneda en esa fecha)
     }
   };
 
@@ -96,13 +142,30 @@ export function PaymentFormModal({ payment, mode = 'report', onClose, onDone }) 
         </div>
         <div className="pay-card__amount">{formatMoney(payment.amount, payment.currency)}</div>
       </div>
-      <BsBreakdown payment={payment} />
-      {payment.currency !== 'VES' && (
-        <p className="form-hint" style={{ margin: '8px 0 14px' }}>
-          {mode === 'register'
-            ? 'Al registrarlo, el monto en Bs queda fijado con la tasa BCV vigente en la fecha de pago indicada.'
-            : 'El monto en Bs se calcula con la tasa BCV vigente el día en que pagas. Si pagaste otro día, indica esa fecha.'}
-        </p>
+      <div className="pay-currency">
+        <Field
+          label="Moneda de pago"
+          hint={lockedTo ? `Este cobro es en ${currencyLabel(lockedTo)}: se paga en esa moneda.` : 'La tarifa base está en dólares; elige en qué moneda pagas.'}
+        >
+          <CurrencySelect value={payCurrency} onChange={setCurrency} status={rates} lockedTo={lockedTo} disabled={!rates} />
+        </Field>
+      </div>
+      <div className={`pay-quote ${quoting ? 'is-loading' : ''}`} aria-live="polite">
+        {quote ? <ConversionBreakdown quote={quote} /> : !quoteError && <ConversionBreakdown payment={payment} />}
+      </div>
+      {quoteError ? (
+        <Alert variant="warning">
+          {quoteError}
+          {mode === 'report' && ' Puedes reportar igual: administración aplicará la tasa al confirmar.'}
+        </Alert>
+      ) : (
+        payCurrency !== payment.currency && (
+          <p className="form-hint" style={{ margin: '8px 0 14px' }}>
+            {mode === 'register'
+              ? `Al registrarlo, el monto en ${payCurrency} queda fijado con la tasa vigente en la fecha de pago indicada.`
+              : `El monto en ${payCurrency} se calcula con la tasa vigente el día en que pagas. Si pagaste otro día, indica esa fecha.`}
+          </p>
+        )
       )}
       {mode === 'register' && payment.reported_at && (
         <Alert variant="info">
@@ -165,7 +228,7 @@ export function PaymentFormModal({ payment, mode = 'report', onClose, onDone }) 
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" icon="check" loading={loading} loadingText={config.loading}>
+          <Button type="submit" icon="check" loading={loading} loadingText={config.loading} disabled={blockedByRate || quoting}>
             {config.submit}
           </Button>
         </div>

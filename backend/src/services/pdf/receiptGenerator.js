@@ -11,7 +11,8 @@ const PDFDocument = require('pdfkit');
  *   │ ┌ Alumno y representante ┐ ┌ Datos del pago ┐             │
  *   │ └────────────────────────┘ └────────────────┘             │
  *   │ Concepto ............................................ $    │
- *   │ ┌ TOTAL PAGADO  $120,00   │  Bs. 102.840,70 ┐ [VERIFICADO] │
+ *   │ ┌ TOTAL PAGADO  $120,00   │  COL$ 494.820,00 ┐ [VERIFICADO]│
+ *   │   (monto base en USD)       tasa del día + fecha valor     │
  *   │ pie legal + código de verificación                         │
  *
  * Solo usa fuentes estándar de PDF (Helvetica): no depende de archivos de fuentes.
@@ -37,7 +38,29 @@ const METHOD_LABELS = {
   other: 'Otro',
 };
 
-const ve = (n, digits = 2) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+const USD = { code: 'USD', name: 'Dólar estadounidense', symbol: '$', decimals: 2, locale: 'es-VE' };
+
+/**
+ * Monto con el formato de su moneda: "$120,00", "Bs. 102.840,70",
+ * "COL$ 494.820,00", "S/ 450.00", "CLP$ 110.000".
+ * Helvetica (fuente estándar de PDF) no tiene glifos como ₲ o ₡: en ese caso
+ * se usa el código ISO ("PYG 875.000").
+ */
+function money(amount, cur = USD) {
+  const num = Number(amount).toLocaleString(cur.locale || 'es', {
+    minimumFractionDigits: cur.decimals ?? 2,
+    maximumFractionDigits: cur.decimals ?? 2,
+  });
+  if (cur.code === 'USD') return `$${num}`;
+  return `${pdfSymbol(cur)} ${num}`;
+}
+
+const pdfSymbol = (cur) => (/^[\x20-\x7E]+$/.test(cur.symbol || '') ? cur.symbol : cur.code);
+
+/** Tasa (moneda local por USD) con 2 a 4 decimales. */
+const rateText = (rate, cur) =>
+  `${pdfSymbol(cur)} ${Number(rate).toLocaleString(cur.locale || 'es', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+
 
 /** 'YYYY-MM-DD' o Date → "28/09/2026" (fecha de calendario sin corrimiento de zona horaria). */
 function dmy(value) {
@@ -110,9 +133,17 @@ function stamp(doc, cx, cy) {
  * @param {{id, issuedAt}} data.receipt
  * @param {{name, nationalId?, section?, schoolPeriod?}} data.student
  * @param {{name, nationalId?}} data.guardian
- * @param {{concept, kind?, paidOn?, method?, reference?, currency, amount, amountVes?, rate?, rateDate?}} data.payment
+ * @param {{concept, kind?, paidOn?, method?, reference?, currency, amount,
+ *          ref?: {code, name, symbol, decimals, locale, amount, rate, rateDate}}} data.payment
+ *   `ref`: moneda de referencia en que se pagó y su conversión congelada.
  */
 function generateReceiptPdf({ tenant, receipt, student, guardian, payment }) {
+  const ref = payment.ref || null;
+  // Moneda del cobro: USD (tarifa base) o, en un cargo en moneda local, esa moneda.
+  const chargeCur = payment.currency === 'USD' ? USD : ref && ref.code === payment.currency ? ref : { ...USD, code: payment.currency, symbol: payment.currency };
+  // Hubo conversión: cobro en USD pagado en otra moneda (VES, COP…).
+  const converted = Boolean(ref && ref.code !== payment.currency);
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A5',
@@ -184,6 +215,7 @@ function generateReceiptPdf({ tenant, receipt, student, guardian, payment }) {
       rows: [
         ['Fecha de pago', dmy(payment.paidOn || receipt.issuedAt)],
         ['Método', METHOD_LABELS[payment.method] || (payment.method ? payment.method : 'No indicado')],
+        ['Moneda', ref ? `${ref.name} (${ref.code})` : chargeCur.code],
         ['Referencia', payment.reference],
         ['Registrado', dmy(receipt.issuedAt)],
       ],
@@ -197,7 +229,7 @@ function generateReceiptPdf({ tenant, receipt, student, guardian, payment }) {
     doc.moveTo(M, y).lineTo(PAGE.width - M, y).lineWidth(0.6).stroke(BORDER);
     y += 8;
     doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text(payment.concept, M, y, { width: INNER - 110, lineBreak: false, ellipsis: true });
-    doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text(payment.currency === 'VES' ? `Bs. ${ve(payment.amount)}` : `$${ve(payment.amount)}`, M, y, { width: INNER, align: 'right' });
+    doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text(money(payment.amount, chargeCur), M, y, { width: INNER, align: 'right' });
     doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text(payment.kind === 'tuition' ? 'Mensualidad' : 'Otro cobro', M, y + 13, { width: INNER - 110, lineBreak: false });
     y += 32;
     doc.moveTo(M, y).lineTo(PAGE.width - M, y).lineWidth(0.6).stroke(BORDER);
@@ -205,29 +237,33 @@ function generateReceiptPdf({ tenant, receipt, student, guardian, payment }) {
 
     // ---- Tarjeta de montos (jerarquía principal) ----
     const onBrand = textOn(brand);
-    const boxH = payment.currency === 'VES' ? 70 : 98;
+    const boxH = converted ? 98 : 70;
     doc.roundedRect(M, y, INNER, boxH, 10).fill(brand);
     const pad = 16;
     doc.font('Helvetica-Bold').fontSize(7).fillColor(onBrand).opacity(0.8).text('TOTAL PAGADO', M + pad, y + 14, { characterSpacing: 1.2 });
     doc.opacity(1);
 
-    if (payment.currency === 'VES') {
-      doc.font('Helvetica-Bold').fontSize(24).fillColor(onBrand).text(`Bs. ${ve(payment.amount)}`, M + pad, y + 27);
+    if (!converted) {
+      // Pagado en la misma moneda del cobro (ej. USD en efectivo, o un cargo en Bs).
+      doc.font('Helvetica-Bold').fontSize(24).fillColor(onBrand).text(money(payment.amount, chargeCur), M + pad, y + 27);
     } else {
-      doc.font('Helvetica-Bold').fontSize(26).fillColor(onBrand).text(`$${ve(payment.amount)}`, M + pad, y + 26);
-      doc.font('Helvetica').fontSize(7.5).fillColor(onBrand).opacity(0.85).text('Monto en divisa (USD)', M + pad, y + 62);
+      doc.font('Helvetica-Bold').fontSize(26).fillColor(onBrand).text(money(payment.amount, USD), M + pad, y + 26);
+      doc.font('Helvetica').fontSize(7.5).fillColor(onBrand).opacity(0.85).text('Monto base en divisa (USD)', M + pad, y + 62);
       doc.opacity(1);
       // divisor vertical y conversión
       const half = M + INNER / 2 + 6;
       doc.moveTo(half - 10, y + 16).lineTo(half - 10, y + boxH - 16).lineWidth(0.6).strokeColor(onBrand).opacity(0.35).stroke();
       doc.opacity(1);
-      doc.font('Helvetica-Bold').fontSize(7).fillColor(onBrand).opacity(0.8).text('EQUIVALENTE EN BOLÍVARES', half, y + 14, { characterSpacing: 1 });
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(onBrand).opacity(0.8)
+        // Solo el código: el nombre de la moneda ya figura en "Datos del pago" y uno largo partiría la línea.
+        .text(`EQUIVALENTE EN ${ref.code}`, half, y + 14, { characterSpacing: 1, lineBreak: false });
       doc.opacity(1);
-      if (payment.amountVes !== null && payment.amountVes !== undefined) {
-        doc.font('Helvetica-Bold').fontSize(17).fillColor(onBrand).text(`Bs. ${ve(payment.amountVes)}`, half, y + 31, { width: INNER / 2 - pad - 6, lineBreak: false });
+      const colW = INNER / 2 - pad - 6;
+      if (ref.amount !== null && ref.amount !== undefined) {
+        doc.font('Helvetica-Bold').fontSize(17).fillColor(onBrand).text(money(ref.amount, ref), half, y + 31, { width: colW, lineBreak: false });
         doc.font('Helvetica').fontSize(7.5).fillColor(onBrand).opacity(0.85)
-          .text(`Tasa BCV: Bs. ${ve(payment.rate, 4)} por USD`, half, y + 58, { width: INNER / 2 - pad - 6, lineBreak: false });
-        doc.text(`Fecha valor: ${dmy(payment.rateDate)}`, half, y + 70, { width: INNER / 2 - pad - 6, lineBreak: false });
+          .text(`Tasa del día: ${rateText(ref.rate, ref)} por USD`, half, y + 58, { width: colW, lineBreak: false });
+        doc.text(`Fecha valor: ${dmy(ref.rateDate)}${ref.code === 'VES' ? ' (BCV)' : ''}`, half, y + 70, { width: colW, lineBreak: false });
         doc.opacity(1);
       } else {
         doc.font('Helvetica').fontSize(8.5).fillColor(onBrand).text('Sin conversión registrada', half, y + 34);

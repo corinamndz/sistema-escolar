@@ -4887,3 +4887,418 @@ a.cell-person__name:hover {
   .student-group__capacity .progress-bar { width: 50px; }
   .student-group__body { padding: 4px 8px 10px; }
 }
+
+/* ==========================================================================
+   Multimoneda: tasas por moneda, selector de moneda y cotización
+   ========================================================================== */
+
+.rate-board {
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.rate-board__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.rate-board__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.rate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.rate-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.rate-card--stale { border-color: var(--color-warning-border); background: var(--color-warning-soft); }
+
+.rate-card__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
+.rate-card__name { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); }
+
+.rate-card__value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.rate-card__value small { font-size: 12px; font-weight: 500; color: var(--color-text-muted); }
+
+.rate-card__note { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); }
+.rate-card__note--warning { color: var(--color-warning); font-weight: 600; }
+
+.rate-card__edit {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rate-card__edit:hover { background: var(--color-primary-soft); }
+
+/* Configuración de monedas */
+.currency-options { margin: 0; padding: 0; list-style: none; max-height: 380px; overflow: auto; }
+
+.currency-options li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.currency-options li.is-on { background: color-mix(in srgb, var(--color-primary) 5%, transparent); }
+.currency-options .checkbox-row { gap: 8px; }
+
+.currency-options__default {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.currency-options__default.is-disabled { opacity: 0.4; }
+
+/* "Ver montos en …" (encabezados de página) */
+.view-currency {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.view-currency .input { min-width: 220px; }
+
+/* Modal de pago: moneda y cotización */
+.pay-currency { margin: 14px 0 10px; }
+.pay-quote { transition: opacity var(--transition-fast); }
+.pay-quote.is-loading { opacity: 0.55; }
+
+@media (max-width: 640px) {
+  .view-currency { width: 100%; flex-wrap: wrap; }
+  .view-currency .input { min-width: 0; flex: 1; }
+  .rate-board__actions { width: 100%; }
+}
+
+/* ==========================================================================
+   Administración de monedas
+   ========================================================================== */
+
+.rate-cell { display: flex; flex-direction: column; gap: 6px; min-width: 200px; }
+.rate-cell__form { display: flex; align-items: center; gap: 6px; }
+
+.input--sm {
+  width: 120px;
+  height: 32px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.currency-preview {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   Portal del representante: pagos agrupados por alumno
+   ========================================================================== */
+
+.student-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.student-jump__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.student-jump__item:hover { border-color: var(--color-primary); }
+.student-jump__item .text-muted { font-weight: 500; }
+.student-jump__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); }
+.student-jump__item.is-due .student-jump__dot { background: var(--color-warning); }
+.student-jump__item.is-overdue .student-jump__dot { background: var(--color-danger); }
+
+.student-pay-list { display: flex; flex-direction: column; gap: 18px; }
+
+.student-pay {
+  --sp: var(--color-success);
+  border: 1px solid var(--color-border);
+  border-top: 4px solid var(--sp);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  scroll-margin-top: calc(var(--topbar-height, 64px) + 12px);
+}
+
+.student-pay--warning { --sp: var(--color-warning); }
+.student-pay--danger { --sp: var(--color-danger); }
+
+.student-pay__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 16px 18px 12px;
+}
+
+.student-pay__who { flex: 1; min-width: 180px; }
+.student-pay__who h3 { margin: 0; font-family: var(--font-display); font-size: 17px; color: var(--color-text); }
+
+.student-pay__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.student-pay__status--success { background: var(--color-success-soft); color: var(--color-success); }
+.student-pay__status--warning { background: var(--color-warning-soft); color: var(--color-warning); }
+.student-pay__status--danger { background: var(--color-danger-soft); color: var(--color-danger); }
+
+.student-pay__totals { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+.student-pay__totals strong { font-family: var(--font-display); font-size: 18px; color: var(--color-text); }
+
+.student-pay__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--color-border);
+  overflow-x: auto;
+}
+
+.student-pay__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: -1px;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.student-pay__tab:hover { color: var(--color-text); }
+.student-pay__tab.is-active { border-bottom-color: var(--color-primary); color: var(--color-primary); }
+.student-pay__tab--danger.is-active { border-bottom-color: var(--color-danger); color: var(--color-danger); }
+.student-pay__tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-primary-ring); border-radius: 6px; }
+
+.student-pay__count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.student-pay__tab--danger .student-pay__count { background: var(--color-danger-soft); color: var(--color-danger); }
+
+.student-pay__body { padding: 16px 18px 18px; }
+
+.student-pay__empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13.5px;
+}
+
+.student-pay__empty .icon { color: var(--color-success); }
+
+@media (max-width: 640px) {
+  .student-pay__head { padding: 14px; }
+  .student-pay__totals { align-items: flex-start; text-align: left; width: 100%; }
+  .student-pay__tabs { padding: 0 8px; }
+  .student-pay__body { padding: 14px; }
+}
+
+/* ==========================================================================
+   Planes de evaluación: formato detallado y varias secciones
+   ========================================================================== */
+
+.format-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+
+.format-picker__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.format-picker__option input { position: absolute; opacity: 0; pointer-events: none; }
+.format-picker__option:hover { border-color: var(--color-border-strong); }
+.format-picker__option.is-selected { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); background: var(--color-primary-softer); }
+.format-picker__option.is-disabled { cursor: default; opacity: 0.75; }
+.format-picker__option:focus-within { box-shadow: 0 0 0 3px var(--color-primary-ring); }
+.format-picker__icon { display: inline-flex; padding: 6px; border-radius: 8px; background: var(--color-surface-muted); color: var(--color-primary); }
+.format-picker__option strong { display: block; font-size: 14px; color: var(--color-text); }
+.format-picker__detail { display: block; font-size: 12.5px; color: var(--color-text-muted); }
+
+.plan-settings { display: grid; gap: 16px; }
+.plan-settings .student-card__label { display: block; margin-bottom: 6px; }
+.plan-settings__sections { align-items: center; margin-bottom: 4px; }
+
+.chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.chip-toggle.is-on { border-color: var(--color-primary); background: var(--color-primary-soft); color: var(--color-primary); font-weight: 600; }
+
+/* Tabla del planificador */
+.planner-table td { vertical-align: top; font-size: 13px; }
+.planner-table__num { text-align: right; white-space: nowrap; }
+.planner-table__actions { white-space: nowrap; }
+.planner-refs, .planner-criteria, .planner-points, .planner-dates { margin: 0; padding: 0; list-style: none; }
+.planner-refs ul, .planner-criteria ul { margin: 2px 0 6px; padding-left: 14px; list-style: '› '; color: var(--color-text-secondary); }
+.planner-criteria > li + li { margin-top: 6px; }
+.planner-points li { color: var(--color-text-secondary); }
+.planner-points + strong, .planner-points ~ strong { display: block; margin-top: 4px; }
+.planner-dates li { white-space: nowrap; }
+
+.planner-code {
+  display: inline-block;
+  min-width: 26px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+/* Editores anidados (temas/subtemas, criterios/indicadores) */
+.nested-editor { display: flex; flex-direction: column; gap: 10px; }
+
+.nested-editor__group {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.nested-editor__row { display: flex; align-items: center; gap: 8px; }
+.nested-editor__row + .nested-editor__row { margin-top: 6px; }
+.nested-editor__row > .input-group, .nested-editor__row > .input { flex: 1; }
+.nested-editor__children { margin: 8px 0 0 22px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.nested-editor__children .nested-editor__row { width: 100%; }
+.nested-editor__bullet { color: var(--color-text-muted); }
+.nested-editor__points { max-width: 110px; flex: 0 0 110px !important; }
+
+.points-total {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+.points-total--ok { background: var(--color-success-soft); color: var(--color-success); }
+.points-total--under, .points-total--over { background: var(--color-warning-soft); color: var(--color-warning); }
+
+.section-dates { display: flex; flex-wrap: wrap; gap: 12px; }
+.section-dates__item { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--color-text-secondary); }
+
+/* Libreta: calificación por indicador */
+.score-chip {
+  min-width: 70px;
+  padding: 6px 10px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.score-chip.is-graded { border-style: solid; color: var(--color-text); }
+.score-chip:hover { border-color: var(--color-primary); }
+.indicator-scores__input { max-width: 130px; margin-left: auto; }
+.indicator-scores tfoot th { font-size: 14px; }
+
+@media (max-width: 640px) {
+  .format-picker { grid-template-columns: 1fr; }
+  .nested-editor__children { margin-left: 8px; }
+  .nested-editor__points { max-width: 90px; flex-basis: 90px !important; }
+}

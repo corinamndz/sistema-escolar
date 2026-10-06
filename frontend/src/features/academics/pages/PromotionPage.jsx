@@ -220,7 +220,7 @@ function PromotionPage() {
         <div className="promotion-filters">
           <label>
             <span className="student-card__label">Año que finaliza</span>
-            <Select value={fromId} onChange={(e) => setFromId(e.target.value)}>
+            <Select sorted value={fromId} onChange={(e) => setFromId(e.target.value)}>
               <option value="">Selecciona…</option>
               {openPeriods.map((p) => (
                 <option key={p.id} value={p.id} disabled={p.id === toId}>
@@ -232,7 +232,7 @@ function PromotionPage() {
           <Icon name="arrowRight" size={20} className="promotion-filters__arrow" />
           <label>
             <span className="student-card__label">Año escolar nuevo</span>
-            <Select value={toId} onChange={(e) => setToId(e.target.value)}>
+            <Select sorted value={toId} onChange={(e) => setToId(e.target.value)}>
               <option value="">Selecciona…</option>
               {openPeriods.map((p) => (
                 <option key={p.id} value={p.id} disabled={p.id === fromId}>
@@ -243,7 +243,7 @@ function PromotionPage() {
           </label>
           <label>
             <span className="student-card__label">Grado</span>
-            <Select value={gradeId} onChange={(e) => setGradeId(e.target.value)} disabled={!preview}>
+            <Select sorted value={gradeId} onChange={(e) => setGradeId(e.target.value)} disabled={!preview}>
               <option value="">Todos los grados</option>
               {(preview?.grades || []).map((g) => (
                 <option key={g.id} value={g.id}>
@@ -617,7 +617,7 @@ function PromotionGroup({ group, open, onToggle, rows, preview, canEdit, canCrea
                         {r.action === 'graduate' ? (
                           <span className="text-muted text-sm">No aplica</span>
                         ) : (
-                          <Select value={r.target} disabled={!canEdit} onChange={(e) => setRow(s.enrollment_id, { target: e.target.value })} aria-label={`Sección destino de ${s.student.first_name}`}>
+                          <Select sorted value={r.target} disabled={!canEdit} onChange={(e) => setRow(s.enrollment_id, { target: e.target.value })} aria-label={`Sección destino de ${s.student.first_name}`}>
                             <option value="">Selecciona…</option>
                             {options.map((o) => (
                               <option key={o.id} value={o.id} disabled={o.free === 0}>

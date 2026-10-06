@@ -96,7 +96,7 @@ export function CurrencySelect({ value, onChange, status, includeUsd = true, dis
   if (lockedTo && !options.some((o) => o.code === lockedTo)) options.unshift({ code: lockedTo, missing: false });
 
   return (
-    <Select value={lockedTo || value || ''} onChange={(e) => onChange(e.target.value)} disabled={disabled || Boolean(lockedTo)} {...props}>
+    <Select sorted value={lockedTo || value || ''} onChange={(e) => onChange(e.target.value)} disabled={disabled || Boolean(lockedTo)} {...props}>
       {options.map((o) => (
         <option key={o.code} value={o.code}>
           {currencyLabel(o.code)}

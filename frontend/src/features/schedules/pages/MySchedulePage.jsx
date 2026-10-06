@@ -44,7 +44,7 @@ function MySchedulePage() {
 
       {sections?.length > 0 && (
         <Card title="Horario de mis secciones">
-          <Select value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Sección" style={{ maxWidth: 320 }}>
+          <Select sorted value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Sección" style={{ maxWidth: 320 }}>
             <option value="">Elige una sección…</option>
             {sections.map((s) => (
               <option key={s.id} value={s.id}>

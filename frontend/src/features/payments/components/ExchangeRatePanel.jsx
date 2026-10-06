@@ -190,7 +190,7 @@ function RateFormModal({ status, initialCurrency, onClose, onSaved }) {
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <Field label="Moneda" error={fieldErrors.currency} full required>
-            <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <Select sorted value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {(status?.currencies || []).map((c) => (
                 <option key={c.code} value={c.code}>
                   {currencyLabel(c.code)}

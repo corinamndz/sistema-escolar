@@ -229,7 +229,7 @@ function EnrollModal({ sectionId, onClose, onEnrolled }) {
       ) : (
         <form onSubmit={handleSubmit}>
           <Field label="Alumno">
-            <Select value={studentId} onChange={(e) => setStudentId(e.target.value)} required>
+            <Select sorted value={studentId} onChange={(e) => setStudentId(e.target.value)} required>
               <option value="">Selecciona…</option>
               {students.map((s) => (
                 <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>

@@ -163,7 +163,7 @@ function SchedulesPage() {
         <div className="promotion-filters">
           <label>
             <span className="student-card__label">Año escolar</span>
-            <Select value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
+            <Select sorted value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
               {(periods || []).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -174,7 +174,7 @@ function SchedulesPage() {
           </label>
           <label style={{ minWidth: 240 }}>
             <span className="student-card__label">Grado y sección</span>
-            <Select value={sectionId} onChange={(e) => setSectionId(e.target.value)} disabled={loadingSections}>
+            <Select sorted value={sectionId} onChange={(e) => setSectionId(e.target.value)} disabled={loadingSections}>
               <option value="">Selecciona…</option>
               {byGrade.map((g) => (
                 <optgroup key={g.name} label={g.name}>

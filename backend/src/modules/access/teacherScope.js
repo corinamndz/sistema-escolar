@@ -18,6 +18,8 @@ const { getEffectivePermissions } = require('../../middlewares/permission.middle
  *     materias de su sección, salvo las asignadas a un especialista.
  *   - Profesor por materia (Secundaria, o especialista en Primaria): solo esa
  *     materia en esa sección.
+ *   - Profesor guía (Secundaria): ve a los alumnos de su grupo (no las
+ *     materias que no dicta).
  * Un alumno es visible si tiene una inscripción en una sección de su carga.
  * La carga es la del PERÍODO ACTIVO: solo cuentan secciones de años escolares
  * activos y no finalizados.
@@ -63,6 +65,14 @@ async function loadAssignments(db, tenantId, staffId) {
         .andWhere(inActivePeriod(db, 'tss'))
         .select('tss.section_id', 'tss.subject_id')
     : [];
+  // Profesor guía (Secundaria): ve a los alumnos de su grupo, sin cubrir materias que no dicta.
+  const guided = staffId
+    ? await db('sections as sec')
+        .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
+        .where({ 'sec.tenant_id': tenantId, 'sec.guide_teacher_id': staffId, 'sp.is_active': true })
+        .whereNull('sp.closed_at')
+        .pluck('sec.id')
+    : [];
   // Materias de las secciones de aula que dicta OTRO profesor (especialista): no son del docente de aula.
   const specialists = homeroom.length
     ? await db('teacher_subject_sections').where('tenant_id', tenantId).whereIn('section_id', homeroom).whereNot('staff_id', staffId).select('section_id', 'subject_id')
@@ -75,7 +85,8 @@ async function loadAssignments(db, tenantId, staffId) {
     homeroom: new Set(homeroom),
     subjects,
     specialistTaken: new Set(specialists.map((s) => `${s.section_id}|${s.subject_id}`)),
-    sectionIds: [...new Set([...homeroom, ...bySubject.map((a) => a.section_id)])],
+    guided: new Set(guided),
+    sectionIds: [...new Set([...homeroom, ...bySubject.map((a) => a.section_id), ...guided])],
   };
 }
 

@@ -178,6 +178,42 @@ async function createSection(trx, tenantId, data) {
   return getSectionById(trx, tenantId, section.id);
 }
 
+/**
+ * Elimina una sección creada por error. En la base todo cuelga de la sección
+ * en cascada (inscripciones, planes, notas…), así que solo se permite si:
+ *   - no tiene alumnos (ni inscritos ni retirados/promovidos: es su historial),
+ *   - no tiene planes de evaluación (propios o compartidos con otras secciones),
+ *   - su año escolar no está finalizado.
+ * Sus asignaciones docentes y clases del horario se quitan con ella (se informan).
+ */
+async function deleteSection(trx, tenantId, id) {
+  const section = await getSectionById(trx, tenantId, id);
+  const label = `${section.grade_name} ${section.name}`;
+  const period = await trx('school_periods').where({ id: section.school_period_id }).first();
+  if (period?.closed_at) throw ApiError.unprocessable(`El año escolar ${period.name} está finalizado: sus secciones no se pueden eliminar.`);
+
+  const count = async (q) => Number((await q.count('* as n').first()).n);
+  const students = await count(trx('enrollments').where({ section_id: id }));
+  if (students) {
+    throw ApiError.conflict(
+      `No se puede eliminar la sección ${label}: tiene ${students} alumno(s) inscrito(s) (o con historial en ella). Retíralos o muévelos a otra sección primero.`,
+      [{ path: 'section', message: 'Tiene alumnos.' }]
+    );
+  }
+  const plans = await count(trx('evaluation_plan_sections').where({ section_id: id }));
+  if (plans) {
+    throw ApiError.conflict(
+      `No se puede eliminar la sección ${label}: tiene ${plans} plan(es) de evaluación. Elimínalos o quítale la sección a los planes compartidos.`,
+      [{ path: 'section', message: 'Tiene planes de evaluación.' }]
+    );
+  }
+  const removedAssignments =
+    (await count(trx('teacher_sections').where({ section_id: id }))) + (await count(trx('teacher_subject_sections').where({ section_id: id })));
+  const removedScheduleClasses = await count(trx('class_schedules').where({ section_id: id }));
+  await trx('sections').where({ id, tenant_id: tenantId }).delete();
+  return { ok: true, removedAssignments, removedScheduleClasses };
+}
+
 async function updateSection(trx, tenantId, id, data) {
   await getSectionById(trx, tenantId, id);
 
@@ -266,6 +302,7 @@ module.exports = {
   getSectionById,
   createSection,
   updateSection,
+  deleteSection,
   enrollStudent,
   withdrawEnrollment,
   listSectionRoster,

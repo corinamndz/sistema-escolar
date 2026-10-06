@@ -68,7 +68,7 @@ function GradebookPage() {
         title="Notas por actividad"
         actions={
           multiSection && (
-            <Select value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Filtrar por sección">
+            <Select sorted value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Filtrar por sección">
               <option value="">Todas las secciones</option>
               {gradebook.sections.map((s) => (
                 <option key={s.id} value={s.id}>

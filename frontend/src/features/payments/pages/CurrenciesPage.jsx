@@ -325,7 +325,7 @@ function CurrencyFormModal({ initial, available, onClose, onSaved }) {
         <div className="form-grid">
           {!isEdit && (
             <Field label="Moneda del catálogo" error={fieldErrors.code} full required hint="Monedas con código ISO 4217 que el colegio aún no tiene.">
-              <Select value={code} onChange={pick} required>
+              <Select sorted value={code} onChange={pick} required>
                 <option value="">Selecciona…</option>
                 {available.map((c) => (
                   <option key={c.code} value={c.code}>

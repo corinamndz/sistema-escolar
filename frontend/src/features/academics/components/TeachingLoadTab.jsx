@@ -100,7 +100,7 @@ function TeachingLoadTab() {
         filters={
           <>
             <LevelFilter value={level} onChange={setLevel} />
-            <Select value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)} aria-label="Año escolar">
+            <Select sorted value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)} aria-label="Año escolar">
               <option value="">Todos los años escolares</option>
               {(periods || []).map((p) => (
                 <option key={p.id} value={p.id}>

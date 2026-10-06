@@ -190,7 +190,7 @@ function EvaluationPlansPage() {
             )}
           </div>
           <div className="data-table__filters">
-            <Select value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)} disabled={loadingPeriods} aria-label="Año escolar">
+            <Select sorted value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)} disabled={loadingPeriods} aria-label="Año escolar">
               {(periods || []).map((p) => (
                 <option key={p.id} value={p.id}>
                   Año {p.name}
@@ -426,7 +426,7 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
               <FormatPicker value={format} onChange={setFormat} />
             </Field>
             <Field label="Sección" error={fieldErrors.sectionId} full required>
-              <Select value={sectionId} onChange={changeSection} required>
+              <Select sorted value={sectionId} onChange={changeSection} required>
                 <option value="">Selecciona…</option>
                 {LEVEL_CODES.map((code) => {
                   const list = sections.filter((s) => s.level_code === code);
@@ -505,7 +505,7 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
                       required
                       hint={primaryCurriculum ? 'Materias del plan de estudios del grado.' : 'Solo materias con profesor asignado en esta sección.'}
                     >
-                      <Select value={form.subjectId} onChange={set('subjectId')} required>
+                      <Select sorted value={form.subjectId} onChange={set('subjectId')} required>
                         <option value="">Selecciona…</option>
                         {assignedSubjects.map((s) => (
                           <option key={s.id} value={s.id}>
@@ -529,7 +529,7 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
                 ) : (
                   <>
                     <Field label="Docente" error={fieldErrors.teacherId} required>
-                      <Select value={form.teacherId} onChange={set('teacherId')} required>
+                      <Select sorted value={form.teacherId} onChange={set('teacherId')} required>
                         <option value="">Selecciona…</option>
                         {homeroomTeachers.map((t) => (
                           <option key={t.id} value={t.id}>

@@ -221,7 +221,7 @@ function SectionFormModal({ initial, onClose, onSaved }) {
               required
               hint={isEdit ? 'El grado no se puede cambiar: definiría otro nivel y otras reglas docentes.' : undefined}
             >
-              <Select value={form.gradeId} onChange={set('gradeId')} required disabled={isEdit}>
+              <Select sorted value={form.gradeId} onChange={set('gradeId')} required disabled={isEdit}>
                 <option value="">Selecciona…</option>
                 {LEVEL_CODES.map((code) => {
                   const list = grades.filter((g) => g.level_code === code);
@@ -238,7 +238,7 @@ function SectionFormModal({ initial, onClose, onSaved }) {
               </Select>
             </Field>
             <Field label="Año escolar" error={fieldErrors.schoolPeriodId} required>
-              <Select value={form.schoolPeriodId} onChange={set('schoolPeriodId')} required disabled={isEdit}>
+              <Select sorted value={form.schoolPeriodId} onChange={set('schoolPeriodId')} required disabled={isEdit}>
                 <option value="">Selecciona…</option>
                 {periods.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -259,7 +259,7 @@ function SectionFormModal({ initial, onClose, onSaved }) {
               <Input type="number" min="1" value={form.maxStudents} onChange={set('maxStudents')} required />
             </Field>
             <Field label="Aula física" full>
-              <Select value={form.classroomId} onChange={set('classroomId')}>
+              <Select sorted value={form.classroomId} onChange={set('classroomId')}>
                 <option value="">Sin asignar</option>
                 {classrooms.map((c) => (
                   <option key={c.id} value={c.id}>

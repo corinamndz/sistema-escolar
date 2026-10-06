@@ -15,6 +15,7 @@ import CurriculumChecklist from '../setup/CurriculumChecklist';
 import { StepGuide, StepFooter, BlockedNotice } from '../setup/StepGuide';
 import { SETUP_STEPS, useSetupStatus } from '../setup/useSetupStatus';
 import { LEVELS } from '../levels';
+import AcademicPanel from '../panel/AcademicPanel';
 
 /** Textos de ayuda de cada paso: qué hacer y cómo se conecta con el resto. */
 const GUIDES = {
@@ -57,8 +58,17 @@ const GUIDES = {
 
 const STEP_KEYS = SETUP_STEPS.map((s) => s.key);
 
+/**
+ * Estructura académica. Vista principal: el PANEL POR GRADO (materias del grado,
+ * secciones, profesor guía y docentes por materia en una sola pantalla, con
+ * autoguardado). La configuración por pasos queda para lo general: años
+ * escolares, grados y aulas, catálogo de materias y carga por docente.
+ */
 function AcademicsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const view = searchParams.get('vista') === 'pasos' || searchParams.get('paso') ? 'steps' : 'panel';
+  const setView = (v) => setSearchParams(v === 'steps' ? { vista: 'pasos' } : {}, { replace: true });
+  const goToSetup = (key) => setSearchParams({ vista: 'pasos', paso: key }, { replace: true });
   const [version, setVersion] = useState(0);
   const [sectionsView, setSectionsView] = useState('sections');
   const { status, loading, error } = useSetupStatus(version);
@@ -73,13 +83,34 @@ function AcademicsPage() {
   // Al entrar sin ?paso= se fija el paso sugerido en la URL: así, al completar
   // algo, la pantalla no salta sola al paso siguiente (el usuario decide cuándo avanzar).
   useEffect(() => {
-    if (status && !STEP_KEYS.includes(fromUrl)) setSearchParams({ paso: active }, { replace: true });
-  }, [status, fromUrl, active, setSearchParams]);
+    if (view === 'steps' && status && !STEP_KEYS.includes(fromUrl)) setSearchParams({ vista: 'pasos', paso: active }, { replace: true });
+  }, [view, status, fromUrl, active, setSearchParams]);
 
   const goTo = (key) => {
-    setSearchParams({ paso: key }, { replace: true });
+    setSearchParams({ vista: 'pasos', paso: key }, { replace: true });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const viewTabs = (
+    <Tabs
+      tabs={[
+        { key: 'panel', label: 'Panel por grado' },
+        { key: 'steps', label: 'Configuración general' },
+      ]}
+      active={view}
+      onChange={setView}
+    />
+  );
+
+  if (view === 'panel') {
+    return (
+      <div>
+        <PageHeader title="Estructura académica" subtitle="Elige un grado y configúralo en una sola pantalla: sus materias, sus secciones y el docente de cada una. Los cambios se guardan solos." />
+        {viewTabs}
+        <AcademicPanel onGoToSetup={goToSetup} />
+      </div>
+    );
+  }
 
   if (loading) return <Spinner />;
 
@@ -89,8 +120,9 @@ function AcademicsPage() {
     <div>
       <PageHeader
         title="Estructura académica"
-        subtitle="Configura el colegio en 4 pasos. Puedes volver a cualquiera cuando lo necesites."
+        subtitle="Años escolares, grados y aulas, catálogo de materias y carga por docente. Para armar cada grado usa el Panel por grado."
       />
+      {viewTabs}
       <Alert>{error}</Alert>
 
       {status && <SetupProgress status={status} active={active} onSelect={goTo} />}

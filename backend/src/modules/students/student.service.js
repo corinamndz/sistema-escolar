@@ -110,7 +110,7 @@ async function listGuardians(trx, tenantId) {
         WHERE sg.guardian_id = g.id
       ), '[]'::json) AS student_names`)
     )
-    .orderBy(['g.last_name', 'g.first_name']);
+    .orderBy(['g.first_name', 'g.last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
 }
 
 /**

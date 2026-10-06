@@ -165,6 +165,7 @@ function LinkGuardianModal({ studentId, onClose, onLinked }) {
         <form onSubmit={handleSubmit}>
           <Field label="Representante">
             <Select
+              sorted
               value={form.guardianId}
               onChange={(e) => setForm((f) => ({ ...f, guardianId: e.target.value }))}
               required

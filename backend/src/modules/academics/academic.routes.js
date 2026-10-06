@@ -41,6 +41,8 @@ router.get('/grades', read, controller.listGrades);
 router.post('/grades', create, controller.createGrade);
 router.put('/grades/:id', update, controller.updateGrade);
 router.get('/grades/:id/subjects', read, assignments.getGradeSubjects);
+// Panel unificado del grado (materias, docentes y secciones del año en una consulta).
+router.get('/grades/:id/panel', read, assignments.getGradePanel);
 router.put('/grades/:id/subjects', update, assignments.setGradeSubjects);
 
 router.get('/subjects', read, assignments.listSubjects);
@@ -52,6 +54,7 @@ router.get('/sections', read, controller.listSections);
 router.post('/sections', create, controller.createSection);
 router.get('/sections/:id', read, controller.getSection);
 router.put('/sections/:id', update, controller.updateSection);
+router.delete('/sections/:id', remove, controller.deleteSection);
 router.get('/sections/:id/roster', read, controller.getRoster);
 router.get('/sections/:id/teachers', read, assignments.getSectionAssignments);
 router.put('/sections/:id/teachers', update, assignments.setSectionAssignments);

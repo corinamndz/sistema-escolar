@@ -61,6 +61,10 @@ const createSection = asyncHandler(async (req, res) => {
   const data = sectionSchema.parse(req.body);
   res.status(201).json(await service.createSection(req.db, req.tenantId, data));
 });
+/** DELETE /academics/sections/:id — solo si no tiene alumnos ni planes de evaluación. */
+const deleteSection = asyncHandler(async (req, res) => {
+  res.status(200).json(await service.deleteSection(req.db, req.tenantId, req.params.id));
+});
 const updateSection = asyncHandler(async (req, res) => {
   // El grado y el año escolar no se cambian: moverían la sección de nivel y dejarían asignaciones inválidas.
   const data = sectionSchema.omit({ gradeId: true, schoolPeriodId: true }).partial().parse(req.body);
@@ -82,6 +86,7 @@ const withdraw = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  deleteSection,
   listSchoolPeriods,
   createSchoolPeriod,
   listClassrooms,

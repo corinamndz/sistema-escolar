@@ -215,6 +215,10 @@ async function setGradeSubjects(trx, tenantId, gradeId, { subjects }) {
       )
     : 0;
 
+  // Las clases del horario de esas materias se borran en cascada: se informa cuántas.
+  const removedScheduleClasses = removed.length
+    ? Number((await trx('class_schedules').where({ grade_id: gradeId }).whereIn('subject_id', removed).count('id as n').first()).n)
+    : 0;
   if (removed.length) {
     await trx('grade_subjects').where({ grade_id: gradeId }).whereIn('subject_id', removed).delete();
   }
@@ -232,7 +236,7 @@ async function setGradeSubjects(trx, tenantId, gradeId, { subjects }) {
       .merge(['weekly_hours', 'sort_order']);
   }
 
-  return { ...(await getGradeSubjects(trx, tenantId, gradeId)), removedAssignments };
+  return { ...(await getGradeSubjects(trx, tenantId, gradeId)), removedAssignments, removedScheduleClasses };
 }
 
 // ---------- Asignación docente por sección ----------
@@ -271,9 +275,14 @@ async function getSectionAssignments(trx, tenantId, sectionId) {
     };
   }
 
+  const guide = section.guide_teacher_id
+    ? await trx('staff').where({ id: section.guide_teacher_id }).select('id', 'first_name', 'last_name').first()
+    : null;
   return {
     section,
     mode: 'subjects',
+    // Profesor guía / tutor del grupo (opcional, solo Secundaria).
+    guide: guide ? { id: guide.id, name: fullName(guide) } : null,
     subjects: subjects.map((s) => ({ ...s, effectiveTeacher: s.teacher, inherited: false })),
   };
 }
@@ -328,6 +337,11 @@ async function setSectionAssignments(trx, tenantId, sectionId, body) {
   await trx('sections').where({ id: sectionId }).forUpdate().first();
 
   if (section.assignment_mode === 'homeroom') {
+    if (body.guideTeacherId) {
+      throw ApiError.unprocessable(`El profesor guía es de Secundaria: en ${section.level_name} el responsable del grupo es el docente titular.`, [
+        { path: 'guideTeacherId', message: 'No aplica en este nivel.' },
+      ]);
+    }
     if (body.subjects && !section.has_curriculum) {
       throw ApiError.unprocessable(`En ${section.level_name} no se asignan profesores por materia, sino docentes de aula.`);
     }
@@ -369,11 +383,16 @@ async function setSectionAssignments(trx, tenantId, sectionId, body) {
     return getSectionAssignments(trx, tenantId, sectionId);
   }
 
-  // ---- Secundaria: profesor por materia ----
-  if (!Array.isArray(body.subjects)) {
+  // ---- Secundaria: profesor por materia y profesor guía (opcional) ----
+  if (!Array.isArray(body.subjects) && !('guideTeacherId' in body)) {
     throw ApiError.unprocessable(`En ${section.level_name} los docentes se asignan por materia.`);
   }
-  await applySubjectTeachers(trx, tenantId, section, body.subjects);
+  if ('guideTeacherId' in body) {
+    const guideId = body.guideTeacherId || null;
+    if (guideId && guideId !== section.guide_teacher_id) await assertTeachers(trx, tenantId, [guideId]);
+    await trx('sections').where({ id: sectionId }).update({ guide_teacher_id: guideId });
+  }
+  if (Array.isArray(body.subjects)) await applySubjectTeachers(trx, tenantId, section, body.subjects);
   return getSectionAssignments(trx, tenantId, sectionId);
 }
 
@@ -436,7 +455,7 @@ async function listTeachingLoad(trx, tenantId, { schoolPeriodId } = {}) {
   const teachers = await trx('staff')
     .where({ tenant_id: tenantId, staff_type: 'teaching' })
     .select('id', 'first_name', 'last_name', 'email', 'status')
-    .orderBy(['last_name', 'first_name']);
+    .orderBy(['first_name', 'last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
 
   const base = (q) => {
     q.join('sections as sec', 'sec.id', 't.section_id')
@@ -500,7 +519,47 @@ async function listTeachingLoad(trx, tenantId, { schoolPeriodId } = {}) {
   });
 }
 
+/**
+ * Panel unificado de un grado en un año escolar: todo lo necesario para
+ * configurarlo en una sola pantalla.
+ *   grade       datos del grado y reglas de su nivel
+ *   curriculum  materias del grado (plan de estudios) con horas semanales
+ *   catalog     catálogo global de materias activas (para marcar/desmarcar)
+ *   teachers    docentes activos (para los selectores)
+ *   sections    secciones del grado en ese año, cada una con su asignación
+ *               (titular/auxiliar o profesor guía, y profesor por materia)
+ */
+async function getGradePanel(trx, tenantId, gradeId, { schoolPeriodId }) {
+  const { grade, subjects: curriculum } = await getGradeSubjects(trx, tenantId, gradeId);
+  const level = await trx('education_levels').where({ code: grade.level_code }).first();
+  const catalog = await listSubjects(trx, tenantId, { activeOnly: true });
+  const teachers = await trx('staff')
+    .where({ tenant_id: tenantId, staff_type: 'teaching', status: 'active' })
+    .select('id', 'first_name', 'last_name')
+    .orderBy(['first_name', 'last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
+  const sectionRows = schoolPeriodId
+    ? await trx('sections')
+        .where({ tenant_id: tenantId, grade_id: gradeId, school_period_id: schoolPeriodId })
+        .select('id', 'name', 'max_students', trx.raw("(SELECT count(*)::int FROM enrollments e WHERE e.section_id = sections.id AND e.status = 'active') AS enrolled"))
+        .orderBy('name')
+    : [];
+  const sections = [];
+  for (const s of sectionRows) {
+    const a = await getSectionAssignments(trx, tenantId, s.id);
+    sections.push({ id: s.id, name: s.name, max_students: s.max_students, enrolled: s.enrolled, mode: a.mode, homeroom: a.homeroom || null, guide: a.guide || null, subjects: a.subjects });
+  }
+  return {
+    grade: { ...grade, assignment_mode: level.assignment_mode, allows_assistant: level.allows_assistant, has_curriculum: level.has_curriculum, level_name: level.name },
+    curriculum,
+    // grade_count: en cuántos grados está (para saber si se puede borrar del catálogo).
+    catalog: catalog.map((s) => ({ id: s.id, name: s.name, code: s.code, grade_count: s.grade_count })),
+    teachers: teachers.map((t) => ({ id: t.id, name: fullName(t) })),
+    sections,
+  };
+}
+
 module.exports = {
+  getGradePanel,
   listLevels,
   assertTeachers,
   listSubjects,

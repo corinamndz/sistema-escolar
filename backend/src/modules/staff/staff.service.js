@@ -12,7 +12,7 @@ async function list(trx, tenantId, { staffType } = {}) {
       'u.status as access_status',
       'u.last_login_at as access_last_login_at'
     )
-    .orderBy(['s.last_name', 's.first_name']);
+    .orderBy(['s.first_name', 's.last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
   if (staffType) query.andWhere('s.staff_type', staffType);
   return query;
 }

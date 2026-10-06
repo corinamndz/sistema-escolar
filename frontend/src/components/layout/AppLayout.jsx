@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import ErrorBoundary from '../ErrorBoundary';
 
 const COLLAPSED_KEY = 'ui.sidebarCollapsed';
 
@@ -56,7 +57,10 @@ function AppLayout() {
       <div className={`app-main ${collapsed ? 'app-main--collapsed' : ''}`}>
         <Topbar onOpenMobileSidebar={() => setMobileOpen(true)} />
         <main className="app-content" key={pathname}>
-          <Outlet />
+          {/* Si una pantalla falla al dibujarse, se muestra un aviso (no la app en blanco). */}
+          <ErrorBoundary resetKey={pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
 

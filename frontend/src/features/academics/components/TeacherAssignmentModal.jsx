@@ -76,7 +76,7 @@ function useTeacherOptions(load, assignedIds) {
 
 function TeacherSelect({ value, onChange, options, excludeId, placeholder = 'Sin asignar', ...props }) {
   return (
-    <Select value={value || ''} onChange={(e) => onChange(e.target.value || null)} {...props}>
+    <Select sorted value={value || ''} onChange={(e) => onChange(e.target.value || null)} {...props}>
       <option value="">{placeholder}</option>
       {options
         .filter((o) => o.id !== excludeId)

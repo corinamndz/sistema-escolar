@@ -15,6 +15,7 @@ import { useToast } from '../../../components/ui/Toast';
 import ImportActions from '../../../components/import/ImportActions';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { LEVELS, LEVEL_CODES, LevelBadge, LevelFilter } from '../levels';
+import { sortByLabel } from '../../../utils/sortOptions';
 
 function GradesTab({ onChanged }) {
   const { can } = useAuth();
@@ -270,7 +271,7 @@ function CurriculumModal({ grade, canEdit, onClose, onSaved }) {
               <Icon name="plus" size={17} />
               <select className="input" value={toAdd} onChange={(e) => setToAdd(e.target.value)} aria-label="Materia a agregar">
                 <option value="">{available.length ? 'Agregar materia…' : 'No hay más materias activas en el catálogo'}</option>
-                {available.map((s) => (
+                {sortByLabel(available).map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                     {s.code ? ` (${s.code})` : ''}

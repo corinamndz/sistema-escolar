@@ -304,7 +304,7 @@ function PaymentsPage() {
                 </button>
               ))}
             </div>
-            <Select value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)} aria-label="Año escolar">
+            <Select sorted value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)} aria-label="Año escolar">
               <option value="">Todos los años escolares</option>
               {(periods || []).map((p) => (
                 <option key={p.id} value={p.id}>
@@ -411,7 +411,7 @@ function TuitionFeesModal({ periods, onClose }) {
         Cambiar una tarifa no modifica mensualidades ya generadas.
       </p>
       <Field label="Año escolar">
-        <Select value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)}>
+        <Select sorted value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)}>
           {periods.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -548,7 +548,7 @@ function GenerateTuitionModal({ periods, onClose, onGenerated }) {
             tarifas, o para inscripciones previas.
           </p>
           <Field label="Año escolar">
-            <Select value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)}>
+            <Select sorted value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)}>
               {periods.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -649,6 +649,7 @@ function RegisterPaymentModal({ onClose, onCreated }) {
           <div className="form-grid">
             <Field label="Alumno" error={fieldErrors.studentId} required>
               <Select
+                sorted
                 value={studentId}
                 onChange={(e) => {
                   setStudentId(e.target.value);
@@ -666,6 +667,7 @@ function RegisterPaymentModal({ onClose, onCreated }) {
             </Field>
             <Field label="Representante responsable" error={fieldErrors.guardianId} required>
               <Select
+                sorted
                 value={form.guardianId}
                 onChange={(e) => setForm((f) => ({ ...f, guardianId: e.target.value }))}
                 disabled={!studentId || loadingGuardians}

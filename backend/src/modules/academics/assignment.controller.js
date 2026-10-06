@@ -58,9 +58,11 @@ const assignmentSchema = z
     leadTeacherId: uuidOrNull.optional(),
     assistantTeacherId: uuidOrNull.optional(),
     subjects: z.array(z.object({ subjectId: z.string().uuid(), teacherId: uuidOrNull })).optional(),
+    // Secundaria: profesor guía / tutor del grupo (opcional; null lo quita).
+    guideTeacherId: uuidOrNull.optional(),
   })
-  .refine((b) => b.subjects !== undefined || b.leadTeacherId !== undefined || b.assistantTeacherId !== undefined, {
-    message: 'Envía la asignación de docentes de aula o la lista de materias.',
+  .refine((b) => b.subjects !== undefined || b.leadTeacherId !== undefined || b.assistantTeacherId !== undefined || b.guideTeacherId !== undefined, {
+    message: 'Envía la asignación de docentes de aula, el profesor guía o la lista de materias.',
   });
 
 const setSectionAssignments = asyncHandler(async (req, res) => {
@@ -74,7 +76,16 @@ const listTeachingLoad = asyncHandler(async (req, res) => {
   res.status(200).json(await service.listTeachingLoad(req.db, req.tenantId, { schoolPeriodId }));
 });
 
+/** GET /academics/grades/:id/panel?schoolPeriodId= — todo lo del grado en una sola consulta. */
+const getGradePanel = asyncHandler(async (req, res) => {
+  // Id del grado mal formado (enlace mal copiado) → 400; inexistente → 404 (lo lanza el servicio).
+  const gradeId = z.string().uuid({ message: 'El grado del enlace no es válido.' }).parse(req.params.id);
+  const schoolPeriodId = z.string().uuid({ message: 'El año escolar no es válido.' }).optional().parse(req.query.schoolPeriodId || undefined);
+  res.status(200).json(await service.getGradePanel(req.db, req.tenantId, gradeId, { schoolPeriodId }));
+});
+
 module.exports = {
+  getGradePanel,
   listLevels,
   listSubjects,
   createSubject,

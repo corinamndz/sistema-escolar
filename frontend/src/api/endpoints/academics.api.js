@@ -31,6 +31,8 @@ const academicsApi = {
   createGrade: (data) => post('/academics/grades', data),
   updateGrade: (id, data) => put(`/academics/grades/${id}`, data),
   getGradeSubjects: (id) => get(`/academics/grades/${id}/subjects`),
+  /** Panel unificado del grado: { grade, curriculum, catalog, teachers, sections } del año indicado. */
+  getGradePanel: (id, schoolPeriodId) => get(`/academics/grades/${id}/panel`, { schoolPeriodId }),
   /** `subjects = [{ subjectId, weeklyHours? }]` en el orden del plan de estudios. */
   setGradeSubjects: (id, subjects) => put(`/academics/grades/${id}/subjects`, { subjects }),
 
@@ -43,12 +45,15 @@ const academicsApi = {
   getSection: (id) => get(`/academics/sections/${id}`),
   createSection: (data) => post('/academics/sections', data),
   updateSection: (id, data) => put(`/academics/sections/${id}`, data),
+  /** Solo si no tiene alumnos ni planes de evaluación → { removedAssignments, removedScheduleClasses }. */
+  deleteSection: (id) => del(`/academics/sections/${id}`),
   getRoster: (id) => get(`/academics/sections/${id}/roster`),
 
   /**
    * Asignación docente de una sección. La forma depende del nivel:
    *   homeroom → { leadTeacherId, assistantTeacherId }
    *   subjects → { subjects: [{ subjectId, teacherId }] }
+   *              y/o { guideTeacherId } (profesor guía, opcional)
    */
   getSectionTeachers: (id) => get(`/academics/sections/${id}/teachers`),
   setSectionTeachers: (id, data) => put(`/academics/sections/${id}/teachers`, data),

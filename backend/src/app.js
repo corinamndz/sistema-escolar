@@ -68,6 +68,11 @@ app.use((err, req, res, next) => {
       : raw.slice(raw.lastIndexOf(' - ') + (raw.includes(' - ') ? 3 : 0));
     return res.status(422).json({ error: { message } });
   }
+  // 22P02 = invalid_text_representation: típicamente un id que no es un UUID
+  // válido en la URL (enlace mal copiado). Es un error del pedido, no del servidor.
+  if (err.code === '22P02') {
+    return res.status(400).json({ error: { message: 'Identificador inválido: revisa el enlace o el dato enviado.' } });
+  }
   if (err.code === '23505') {
     return res.status(409).json({ error: { message: 'Ya existe un registro con esos datos.' } });
   }

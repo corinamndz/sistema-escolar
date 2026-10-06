@@ -107,7 +107,7 @@ function StudentGrades({ studentId }) {
     <div>
       <div className="grades-toolbar">
         {periods.length > 1 && (
-          <Select value={schoolPeriodId || data.school_period?.id} onChange={(e) => { setSchoolPeriodId(e.target.value); setTermId(''); }} aria-label="Año escolar">
+          <Select sorted value={schoolPeriodId || data.school_period?.id} onChange={(e) => { setSchoolPeriodId(e.target.value); setTermId(''); }} aria-label="Año escolar">
             {periods.map((p) => (
               <option key={p.id} value={p.id}>
                 Año escolar {p.name}

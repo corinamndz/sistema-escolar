@@ -18,6 +18,7 @@ const MODULES = [
   { code: 'payments', label: 'Pagos', sortOrder: 9, extraActions: ['approve_payment', 'export'] },
   // Cierre de año escolar y promoción de alumnos (separado de 'academics' para no dárselo a los docentes).
   { code: 'promotion', label: 'Cierre y promoción', sortOrder: 10, extraActions: [] },
+  { code: 'schedules', label: 'Horarios', sortOrder: 11, extraActions: [] },
 ];
 
 const MODULE_CODES = MODULES.map((m) => m.code);

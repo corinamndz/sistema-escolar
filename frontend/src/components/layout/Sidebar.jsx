@@ -56,7 +56,7 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
                 // La ruta es única; el módulo no (Pagos y Monedas y tasas comparten "payments").
                 key={item.path}
                 to={item.path}
-                end={item.path === '/' || item.path === '/payments'}
+                end={item.path === '/' || item.path === '/payments' || item.path === '/schedules'}
                 className={({ isActive }) => `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`}
                 onClick={onCloseMobile}
                 data-tooltip={compact ? item.label : undefined}

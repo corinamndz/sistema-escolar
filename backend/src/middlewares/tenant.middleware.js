@@ -30,8 +30,9 @@ async function tenantMiddleware(req, res, next) {
   req.db = trx;
 
   let settled = false;
+  /** Confirma o revierte; devuelve false si la confirmación falló. */
   const finalize = async (shouldCommit) => {
-    if (settled) return;
+    if (settled) return true;
     settled = true;
     try {
       if (shouldCommit && !trx.isCompleted()) {
@@ -39,13 +40,33 @@ async function tenantMiddleware(req, res, next) {
       } else if (!trx.isCompleted()) {
         await trx.rollback();
       }
+      return true;
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Error cerrando la transacción del tenant:', err);
+      if (!trx.isCompleted()) await trx.rollback().catch(() => {});
+      return !shouldCommit;
     }
   };
 
-  res.on('finish', () => finalize(res.statusCode < 400));
+  // La transacción se confirma ANTES de enviar la respuesta: así, cuando el
+  // cliente recibe "guardado", los datos ya están confirmados (la siguiente
+  // petición los ve) y, si la confirmación falla, responde error en vez de un
+  // 200 con datos que no quedaron guardados.
+  const originalEnd = res.end.bind(res);
+  res.end = function endAfterCommit(...args) {
+    if (settled) return originalEnd(...args);
+    finalize(res.statusCode < 400).then((ok) => {
+      if (ok || res.headersSent) return originalEnd(...args);
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.removeHeader('Content-Length');
+      res.removeHeader('ETag');
+      return originalEnd(JSON.stringify({ error: { message: 'No se pudieron guardar los cambios. Inténtalo de nuevo.' } }));
+    });
+    return res;
+  };
+  // Conexión cortada antes de responder: se revierte.
   res.on('close', () => finalize(false));
 
   next();

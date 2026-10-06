@@ -80,6 +80,7 @@ async function listPlans(trx, tenantId, { sectionId, termId, termNumber, teacher
       'el.name as level_name',
       't.name as term_name',
       't.term_number',
+      't.school_period_id',
       trx.raw("st.first_name || ' ' || st.last_name AS teacher_name"),
       // Todas las secciones a las que se aplica el plan ("A, B").
       trx.raw(

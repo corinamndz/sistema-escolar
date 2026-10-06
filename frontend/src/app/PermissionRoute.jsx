@@ -4,13 +4,14 @@ import { useAuth } from '../context/AuthContext';
 /**
  * Bloquea una página completa si el usuario no tiene permiso de lectura sobre
  * el módulo. `blockTeacher`: además vedada a los docentes restringidos a su
- * carga. `guardianOnly`: solo cuentas de representante (sin `module`).
+ * carga. `guardianOnly`: solo cuentas de representante; `teacherOnly`: solo
+ * usuarios con ficha docente (ambos sin `module`).
  */
-function PermissionRoute({ module, blockTeacher = false, guardianOnly = false }) {
+function PermissionRoute({ module, blockTeacher = false, guardianOnly = false, teacherOnly = false }) {
   const { can, user } = useAuth();
 
-  const allowed =
-    !(blockTeacher && user?.isRestrictedTeacher) && (guardianOnly ? Boolean(user?.guardianId) : can(module, 'read'));
+  const ownOnly = guardianOnly ? Boolean(user?.guardianId) : teacherOnly ? Boolean(user?.teachingStaffId) : null;
+  const allowed = !(blockTeacher && user?.isRestrictedTeacher) && (ownOnly ?? can(module, 'read'));
   if (!allowed) {
     return (
       <div className="card">

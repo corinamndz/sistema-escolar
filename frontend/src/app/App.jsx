@@ -15,6 +15,8 @@ import StudentDetailPage from '../features/students/pages/StudentDetailPage';
 import GuardiansPage from '../features/students/pages/GuardiansPage';
 import AcademicsPage from '../features/academics/pages/AcademicsPage';
 import PromotionPage from '../features/academics/pages/PromotionPage';
+import SchedulesPage from '../features/schedules/pages/SchedulesPage';
+import MySchedulePage from '../features/schedules/pages/MySchedulePage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
 import EvaluationPlansPage from '../features/evaluation-plans/pages/EvaluationPlansPage';
 import EvaluationPlanDetailPage from '../features/evaluation-plans/pages/EvaluationPlanDetailPage';
@@ -60,6 +62,14 @@ function App() {
             <Route element={<PermissionRoute module="academics" blockTeacher />}>
               <Route path="academics" element={<AcademicsPage />} />
               <Route path="academics/sections/:id" element={<SectionDetailPage />} />
+            </Route>
+
+            {/* Horarios: la administración los arma; el docente ve "Mi horario". */}
+            <Route element={<PermissionRoute module="schedules" blockTeacher />}>
+              <Route path="schedules" element={<SchedulesPage />} />
+            </Route>
+            <Route element={<PermissionRoute teacherOnly />}>
+              <Route path="schedules/mine" element={<MySchedulePage />} />
             </Route>
 
             {/* Cierre y promoción: módulo propio, vedado a los docentes. */}

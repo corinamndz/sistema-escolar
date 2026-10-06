@@ -2,6 +2,7 @@ const { z } = require('zod');
 const service = require('./portal.service');
 const grades = require('./grades.service');
 const academicRecord = require('../academics/academicRecord.service');
+const schedules = require('../schedules/schedule.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 
 /** GET /portal/me — panel del representante autenticado ({ guardian: null } si el usuario no es representante). */
@@ -18,6 +19,13 @@ const getStudentHistory = asyncHandler(async (req, res) => {
 });
 
 /** GET /portal/students/:studentId/grades?schoolPeriodId= — calificaciones acumuladas de un alumno del representante. */
+/** Horario (solo lectura) de la sección en que cursa un alumno del representante. */
+const getStudentSchedule = asyncHandler(async (req, res) => {
+  const { studentId } = req.params;
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
+  res.status(200).json(await schedules.getStudentSchedule(req.db, req.tenantId, studentId));
+});
+
 const getStudentGrades = asyncHandler(async (req, res) => {
   const studentId = z.string().uuid().parse(req.params.studentId);
   const { schoolPeriodId } = z.object({ schoolPeriodId: z.string().uuid().optional() }).parse(req.query);
@@ -25,4 +33,4 @@ const getStudentGrades = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  getStudentHistory, getMyPortal, getStudentGrades };
+  getStudentHistory, getStudentSchedule, getMyPortal, getStudentGrades };

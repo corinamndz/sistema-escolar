@@ -2,6 +2,7 @@
  * Menú principal agrupado por secciones. `moduleCode` se valida contra los
  * permisos del usuario (`can(moduleCode, 'read')`); `public: true` lo muestra
  * a cualquier usuario autenticado; `guardianOnly` solo a representantes;
+ * `teacherOnly` solo a usuarios con ficha docente;
  * `blockTeacher` lo oculta a los docentes restringidos a su carga (el backend
  * igual responde 403). El Topbar usa esta misma lista para el título de la
  * página actual.
@@ -24,6 +25,9 @@ const NAV_SECTIONS = [
     items: [
       { moduleCode: 'academics', label: 'Grados y secciones', icon: 'school', path: '/academics', blockTeacher: true },
       { moduleCode: 'evaluation_plans', label: 'Planes de evaluación', icon: 'clipboard', path: '/evaluation-plans' },
+      { moduleCode: 'schedules', label: 'Horarios', icon: 'calendar', path: '/schedules', blockTeacher: true },
+      // Docentes: su horario semanal (solo lectura).
+      { moduleCode: 'my_schedule', label: 'Mi horario', icon: 'clock', path: '/schedules/mine', teacherOnly: true },
       { moduleCode: 'promotion', label: 'Cierre y promoción', icon: 'graduation', path: '/academics/promotion', blockTeacher: true },
     ],
   },
@@ -78,6 +82,7 @@ function navItemLabel(item, user) {
 function isNavItemVisible(item, { can, user }) {
   if (item.blockTeacher && user?.isRestrictedTeacher) return false;
   if (item.guardianOnly) return Boolean(user?.guardianId);
+  if (item.teacherOnly) return Boolean(user?.teachingStaffId);
   return Boolean(item.public) || can(item.moduleCode, 'read');
 }
 

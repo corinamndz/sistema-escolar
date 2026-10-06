@@ -3,6 +3,46 @@ const service = require('./evaluationPlan.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const teacherScope = require('../access/teacherScope');
 const { ApiError } = require('../../utils/ApiError');
+const academicService = require('../academics/academic.service');
+const assignmentService = require('../academics/assignment.service');
+
+// ---- Opciones para crear planes ----
+// El docente no accede al módulo de Grados y secciones: estas consultas le
+// dan SOLO lo de su carga docente del período activo (al resto, todo).
+
+/** GET /evaluation-plans/options/school-periods — años escolares (docente: los de su carga). */
+const listPeriodOptions = asyncHandler(async (req, res) => {
+  const periods = await academicService.listSchoolPeriods(req.db, req.tenantId);
+  const scope = await teacherScope.getTeacherScope(req);
+  if (!scope) return res.status(200).json(periods);
+  const mine = await req.db('sections').whereIn('id', scope.sectionIds).distinct().pluck('school_period_id');
+  return res.status(200).json(periods.filter((p) => mine.includes(p.id)));
+});
+
+/** GET /evaluation-plans/options/sections — secciones (docente: solo las suyas). */
+const listSectionOptions = asyncHandler(async (req, res) => {
+  const rows = await academicService.listSections(req.db, req.tenantId, {});
+  const scope = await teacherScope.getTeacherScope(req);
+  res.status(200).json(scope ? rows.filter((s) => teacherScope.coversSection(scope, s.id)) : rows);
+});
+
+/**
+ * GET /evaluation-plans/options/sections/:id/assignment — materias y docentes
+ * de la sección para el formulario de plan. Docente: solo SUS materias y él
+ * mismo como docente de aula (no ve la asignación de sus colegas).
+ */
+const getSectionAssignmentOptions = asyncHandler(async (req, res) => {
+  await teacherScope.assertSectionAccess(req, req.params.id);
+  const data = await assignmentService.getSectionAssignments(req.db, req.tenantId, req.params.id);
+  const scope = await teacherScope.getTeacherScope(req);
+  if (!scope) return res.status(200).json(data);
+  const self = (t) => (t && t.id === scope.staffId ? t : null);
+  return res.status(200).json({
+    ...data,
+    homeroom: data.homeroom ? { lead: self(data.homeroom.lead), assistant: self(data.homeroom.assistant) } : data.homeroom,
+    subjects: (data.subjects || []).filter((s) => s.effectiveTeacher?.id === scope.staffId && teacherScope.coversSubject(scope, req.params.id, s.id)),
+  });
+});
 
 // ---- Lapsos ----
 const listTerms = asyncHandler(async (req, res) => {
@@ -195,6 +235,9 @@ const reopenPlan = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  listPeriodOptions,
+  listSectionOptions,
+  getSectionAssignmentOptions,
   updatePlan,
   closePlan,
   reopenPlan,

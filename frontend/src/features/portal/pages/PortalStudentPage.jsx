@@ -11,9 +11,11 @@ import { LevelBadge } from '../../academics/levels';
 import { formatAmounts, formatDate, formatMoney } from '../../payments/paymentStatus';
 import StudentGrades from '../components/StudentGrades';
 import AcademicHistory from '../../students/components/AcademicHistory';
+import ScheduleGrid, { hueOf } from '../../schedules/components/ScheduleGrid';
 
 const TABS = [
   { key: 'grades', label: 'Calificaciones' },
+  { key: 'schedule', label: 'Horario' },
   { key: 'history', label: 'Historial académico' },
   { key: 'info', label: 'Información' },
 ];
@@ -70,6 +72,7 @@ function PortalStudentPage() {
       <Tabs tabs={TABS} active={tab} onChange={(key) => setParams({ tab: key }, { replace: true })} />
 
       {tab === 'grades' && <StudentGrades studentId={studentId} />}
+      {tab === 'schedule' && <PortalSchedule studentId={studentId} />}
       {tab === 'history' && <PortalHistory studentId={studentId} />}
 
       {tab === 'info' && (
@@ -128,6 +131,27 @@ function PortalHistory({ studentId }) {
   return (
     <Card title="Historial académico" subtitle="Grados cursados en cada año escolar, resultado y notas finales">
       <AcademicHistory data={data} />
+    </Card>
+  );
+}
+
+/** Horario semanal de la sección del alumno (solo lectura). */
+function PortalSchedule({ studentId }) {
+  const { data, loading, error } = useFetch(() => portalApi.getStudentSchedule(studentId), [studentId]);
+  if (loading) return <Spinner />;
+  if (error) return <Alert>{error}</Alert>;
+  return (
+    <Card
+      title="Horario de clases"
+      subtitle={data.section ? `${data.section.grade_name} · Sección ${data.section.name} · ${data.section.school_period_name}` : undefined}
+    >
+      {!data.section ? (
+        <p className="text-muted">El alumno no tiene una inscripción activa.</p>
+      ) : !data.slots.length || !data.entries.length ? (
+        <p className="text-muted">El colegio aún no ha publicado el horario de esta sección.</p>
+      ) : (
+        <ScheduleGrid days={data.days} slots={data.slots} entries={data.entries} colorOf={(e) => hueOf(e.subject_id)} />
+      )}
     </Card>
   );
 }

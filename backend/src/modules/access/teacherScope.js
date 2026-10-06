@@ -19,6 +19,12 @@ const { getEffectivePermissions } = require('../../middlewares/permission.middle
  *   - Profesor por materia (Secundaria, o especialista en Primaria): solo esa
  *     materia en esa sección.
  * Un alumno es visible si tiene una inscripción en una sección de su carga.
+ * La carga es la del PERÍODO ACTIVO: solo cuentan secciones de años escolares
+ * activos y no finalizados.
+ *
+ * El docente no usa el módulo de Grados y secciones ("academics": responde 403);
+ * lo que necesita para sus planes (años, sus secciones y sus materias) lo pide
+ * al módulo de planes de evaluación, ya filtrado por su carga.
  */
 
 const TEACHER_ROLE = 'Docente';
@@ -40,10 +46,22 @@ async function getTeacherScope(req) {
   return scope;
 }
 
+/** Solo secciones de años escolares ACTIVOS y no finalizados (la carga del período en curso). */
+const inActivePeriod = (db, alias) =>
+  db.raw(
+    `EXISTS (SELECT 1 FROM sections scope_s JOIN school_periods scope_sp ON scope_sp.id = scope_s.school_period_id
+             WHERE scope_s.id = ${alias}.section_id AND scope_sp.is_active AND scope_sp.closed_at IS NULL)`
+  );
+
 async function loadAssignments(db, tenantId, staffId) {
-  const homeroom = staffId ? await db('teacher_sections').where({ tenant_id: tenantId, staff_id: staffId }).pluck('section_id') : [];
+  const homeroom = staffId
+    ? await db('teacher_sections as ts').where({ 'ts.tenant_id': tenantId, 'ts.staff_id': staffId }).andWhere(inActivePeriod(db, 'ts')).pluck('ts.section_id')
+    : [];
   const bySubject = staffId
-    ? await db('teacher_subject_sections').where({ tenant_id: tenantId, staff_id: staffId }).select('section_id', 'subject_id')
+    ? await db('teacher_subject_sections as tss')
+        .where({ 'tss.tenant_id': tenantId, 'tss.staff_id': staffId })
+        .andWhere(inActivePeriod(db, 'tss'))
+        .select('tss.section_id', 'tss.subject_id')
     : [];
   // Materias de las secciones de aula que dicta OTRO profesor (especialista): no son del docente de aula.
   const specialists = homeroom.length

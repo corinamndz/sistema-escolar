@@ -7,15 +7,17 @@ const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 const { requirePermission } = require('../../middlewares/permission.middleware');
 const scope = require('../access/teacherScope');
 
-router.use(authMiddleware, tenantMiddleware);
+// Grados y secciones es configuración administrativa del colegio: los docentes
+// restringidos a su carga no acceden a NINGUNA ruta de este módulo (403). Lo que
+// necesitan para sus planes lo piden a /evaluation-plans/options/* (filtrado).
+router.use(authMiddleware, tenantMiddleware, scope.denyTeachers);
 
 const read = requirePermission('academics', 'read');
 const create = requirePermission('academics', 'create');
 const update = requirePermission('academics', 'update');
 const remove = requirePermission('academics', 'delete');
-// Cierre de año y promoción: módulo propio ("promotion"), vedado a los docentes (403).
-const promo = (action) => [scope.denyTeachers, requirePermission('promotion', action)];
-const ownSection = scope.guardParam(scope.assertSectionAccess, 'id');
+// Cierre de año y promoción: módulo propio ("promotion").
+const promo = (action) => requirePermission('promotion', action);
 
 router.get('/levels', read, assignments.listLevels);
 
@@ -48,11 +50,10 @@ router.delete('/subjects/:id', remove, assignments.deleteSubject);
 
 router.get('/sections', read, controller.listSections);
 router.post('/sections', create, controller.createSection);
-// Docente: solo las secciones de su carga (las demás → 404).
-router.get('/sections/:id', read, ownSection, controller.getSection);
-router.put('/sections/:id', update, ownSection, controller.updateSection);
-router.get('/sections/:id/roster', read, ownSection, controller.getRoster);
-router.get('/sections/:id/teachers', read, ownSection, assignments.getSectionAssignments);
+router.get('/sections/:id', read, controller.getSection);
+router.put('/sections/:id', update, controller.updateSection);
+router.get('/sections/:id/roster', read, controller.getRoster);
+router.get('/sections/:id/teachers', read, assignments.getSectionAssignments);
 router.put('/sections/:id/teachers', update, assignments.setSectionAssignments);
 
 router.get('/teaching-load', read, assignments.listTeachingLoad);

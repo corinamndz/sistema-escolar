@@ -19,6 +19,8 @@ const MODULES = [
   // Cierre de año escolar y promoción de alumnos (separado de 'academics' para no dárselo a los docentes).
   { code: 'promotion', label: 'Cierre y promoción', sortOrder: 10, extraActions: [] },
   { code: 'schedules', label: 'Horarios', sortOrder: 11, extraActions: [] },
+  // Sanciones disciplinarias de los alumnos.
+  { code: 'discipline', label: 'Convivencia', sortOrder: 12, extraActions: [] },
 ];
 
 const MODULE_CODES = MODULES.map((m) => m.code);

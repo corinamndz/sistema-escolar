@@ -16,5 +16,6 @@ router.use('/evaluation-plans', require('../modules/evaluation-plans/evaluationP
 router.use('/grading', require('../modules/grading/grading.routes'));
 router.use('/payments', require('../modules/payments/payment.routes'));
 router.use('/schedules', require('../modules/schedules/schedule.routes'));
+router.use('/discipline', require('../modules/discipline/discipline.routes'));
 
 module.exports = router;

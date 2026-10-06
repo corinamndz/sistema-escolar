@@ -15,6 +15,8 @@ const ROLE_TEMPLATES = {
       academics: { can_read: true },
       evaluation_plans: { can_create: true, can_read: true, can_update: true, can_delete: true },
       grading: { can_read: true, can_update: true },
+      // Convivencia: solo consulta (y solo de los alumnos de su carga docente).
+      discipline: { can_read: true },
     },
   },
   Representante: {

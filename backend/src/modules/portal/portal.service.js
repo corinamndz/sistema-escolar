@@ -92,7 +92,11 @@ async function getGuardianPortal(trx, tenantId, userId, { currency } = {}) {
     };
   };
 
-  const withPayments = students.map((s) => ({ ...s, payments: summaryFor(s.id) }));
+  const withPayments = students.map((s) => {
+    const summary = summaryFor(s.id);
+    // Con cuotas vencidas (no reportadas) no se pueden ver las calificaciones (ver grades.assertGradesUnlocked).
+    return { ...s, payments: summary, grades_locked: summary.overdue_count > 0 };
+  });
   const allDue = payments.filter(isDue);
 
   return {

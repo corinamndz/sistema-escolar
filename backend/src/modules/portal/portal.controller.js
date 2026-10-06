@@ -16,6 +16,7 @@ const getMyPortal = asyncHandler(async (req, res) => {
 const getStudentHistory = asyncHandler(async (req, res) => {
   const studentId = z.string().uuid().parse(req.params.studentId);
   await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
+  await grades.assertGradesUnlocked(req.db, req.tenantId, studentId); // 403 si tiene cuotas vencidas
   res.status(200).json(await academicRecord.getStudentHistory(req.db, req.tenantId, studentId));
 });
 
@@ -40,6 +41,8 @@ const getStudentSanctions = asyncHandler(async (req, res) => {
 const getStudentGrades = asyncHandler(async (req, res) => {
   const studentId = z.string().uuid().parse(req.params.studentId);
   const { schoolPeriodId } = z.object({ schoolPeriodId: z.string().uuid().optional() }).parse(req.query);
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
+  await grades.assertGradesUnlocked(req.db, req.tenantId, studentId); // 403 si tiene cuotas vencidas
   res.status(200).json(await grades.getStudentGrades(req.db, req.tenantId, req.user.id, studentId, { schoolPeriodId }));
 });
 

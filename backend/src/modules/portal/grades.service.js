@@ -36,6 +36,39 @@ async function assertGuardianOfStudent(trx, tenantId, userId, studentId) {
   return link;
 }
 
+/** Mensaje para la familia cuando las calificaciones están bloqueadas por deuda. */
+const GRADES_LOCKED_MESSAGE =
+  'Acceso a detalles del alumno bloqueado por pagos pendientes. Por favor, comuníquese con administración o reporte su pago.';
+
+/**
+ * Cuotas VENCIDAS del alumno: pendientes, con la fecha de vencimiento pasada
+ * y que la familia no haya reportado como pagadas (un pago reportado queda en
+ * revisión y no bloquea). Misma regla que el estado "vencido" de los pagos.
+ */
+async function overdueCount(trx, tenantId, studentId) {
+  const row = await trx('payments')
+    .where({ tenant_id: tenantId, student_id: studentId, status: 'pending' })
+    .whereNull('reported_at')
+    .whereNotNull('due_date')
+    .andWhere('due_date', '<', trx.raw('current_date'))
+    .andWhere((q) => q.whereNull('issue_date').orWhere('issue_date', '<=', trx.raw('current_date')))
+    .count('id as n')
+    .first();
+  return Number(row.n);
+}
+
+/**
+ * Portal del representante: con cuotas vencidas, las calificaciones del
+ * alumno (y su historial académico, que también muestra notas) quedan
+ * bloqueadas → 403 con un mensaje para la familia.
+ */
+async function assertGradesUnlocked(trx, tenantId, studentId) {
+  const overdue = await overdueCount(trx, tenantId, studentId);
+  if (overdue > 0) {
+    throw ApiError.forbidden(GRADES_LOCKED_MESSAGE, [{ path: 'payments', message: `GRADES_LOCKED: ${overdue} cuota(s) vencida(s)` }]);
+  }
+}
+
 function summarizePlan(activities) {
   const graded = activities.filter((a) => a.raw_score !== null);
   const totalWeight = activities.reduce((n, a) => n + a.weight_percent, 0);
@@ -213,4 +246,4 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
 }
 
 module.exports = {
-  assertGuardianOfStudent, getStudentGrades, GRADE_SCALE, PASSING_GRADE };
+  assertGuardianOfStudent, assertGradesUnlocked, overdueCount, GRADES_LOCKED_MESSAGE, getStudentGrades, GRADE_SCALE, PASSING_GRADE };

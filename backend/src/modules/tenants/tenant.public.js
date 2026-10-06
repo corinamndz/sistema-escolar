@@ -42,6 +42,9 @@ const getBranding = asyncHandler(async (req, res) => {
     logoUrl: toPublicUrl(settings?.logo_url),
     primaryColor: settings?.primary_color || '#2563EB',
     secondaryColor: settings?.secondary_color || '#1E293B',
+    menuGradient: settings?.menu_gradient || 'deep',
+    accentSecondaryColor: settings?.accent2_color || null,
+    tableHeaderStyle: settings?.table_header_style || 'subtle',
   });
 });
 

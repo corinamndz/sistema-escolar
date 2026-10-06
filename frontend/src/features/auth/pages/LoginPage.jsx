@@ -9,6 +9,7 @@ import Field from '../../../components/ui/Field';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
+import platformLogo from '../../../assets/modo-educa-logo.webp';
 import {
   BRANDING_UPDATED_KEY,
   isValidSlug,
@@ -17,11 +18,26 @@ import {
   resolveTenantSlug,
 } from '../../../lib/tenantSlug';
 
+/**
+ * Módulos del panel del login: tres esenciales (compactos) y dos destacados de
+ * MoDo Educa (más grandes, con descripción).
+ */
 const FEATURES = [
   { icon: 'graduation', label: 'Alumnos y representantes' },
   { icon: 'clipboard', label: 'Planes de evaluación' },
   { icon: 'card', label: 'Pagos y comprobantes' },
-  { icon: 'shield', label: 'Roles y permisos' },
+];
+const HIGHLIGHTS = [
+  {
+    icon: 'shield',
+    label: 'Convivencia y disciplina',
+    desc: 'Seguimiento de normas e historial disciplinario de cada alumno, visible para las familias.',
+  },
+  {
+    icon: 'clock',
+    label: 'Gestión de horarios',
+    desc: 'Programación por bloques con arrastrar y soltar, sin cruces de docentes.',
+  },
 ];
 
 const LOOKUP_DELAY_MS = 350;
@@ -108,6 +124,50 @@ function SchoolMark({ branding, size = 'lg' }) {
   );
 }
 
+/** Producto y empresa creadora del software. */
+const PLATFORM_NAME = 'MoDo Educa';
+const COMPANY_NAME = 'MoDo';
+
+/**
+ * Logo oficial de MoDo Educa: preside SIEMPRE el formulario, para que quede
+ * claro que se ingresa al sistema de gestión escolar de MoDo. Es un archivo de
+ * assets (WebP con fondo transparente, ~80 KB): Vite lo empaqueta con hash en
+ * el nombre, así el navegador lo guarda en caché y carga al instante. Alto
+ * fijo + object-fit: contain → nunca se deforma.
+ */
+function PlatformLogo() {
+  return (
+    <div className="login-platform">
+      <img src={platformLogo} alt={`${PLATFORM_NAME} · Sistema de gestión escolar`} width="1201" height="228" decoding="async" fetchpriority="high" />
+    </div>
+  );
+}
+
+/**
+ * Identidad del COLEGIO cliente, separada de la marca MoDo Educa: su logo o
+ * escudo grande (o un monograma si no subió uno) y su nombre con peso de
+ * título. Si el logo no carga, se muestra el monograma.
+ */
+function SchoolIdentity({ branding }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [branding?.logoUrl]);
+  return (
+    <div className="login-school">
+      {branding.logoUrl && !failed ? (
+        <img src={branding.logoUrl} alt={`Logo de ${branding.name}`} className="login-school__logo" onError={() => setFailed(true)} />
+      ) : (
+        <span className="school-mark login-school__mark" aria-hidden="true">
+          {monogram(branding.name)}
+        </span>
+      )}
+      <div className="login-school__text">
+        <span className="login-school__label">Colegio</span>
+        <strong>{branding.name}</strong>
+      </div>
+    </div>
+  );
+}
+
 function LoginPage() {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -174,30 +234,48 @@ function LoginPage() {
           <div className="login-features">
             {FEATURES.map((f) => (
               <div key={f.label} className="login-feature">
-                <Icon name={f.icon} size={18} />
+                <span className="login-feature__icon">
+                  <Icon name={f.icon} size={18} />
+                </span>
                 {f.label}
+              </div>
+            ))}
+            {HIGHLIGHTS.map((f) => (
+              <div key={f.label} className="login-feature login-feature--highlight">
+                <span className="login-feature__icon">
+                  <Icon name={f.icon} size={20} />
+                </span>
+                <div>
+                  <strong>
+                    {f.label} <span className="login-feature__badge">Nuevo</span>
+                  </strong>
+                  <span className="login-feature__desc">{f.desc}</span>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
         <div className="login-hero__foot">
-          © {new Date().getFullYear()} {schoolName || 'Sistema Escolar'}
-          {branding && ' · Plataforma Sistema Escolar'}
+          © {new Date().getFullYear()} {schoolName ? `${schoolName} · ` : ''}
+          {PLATFORM_NAME}, un producto de {COMPANY_NAME}
         </div>
       </aside>
 
       <main className="login-panel">
         <div className="login-card">
-          <div className="login-card__brand">
-            <SchoolMark branding={branding} />
-            <div>
-              <h2>{schoolName || 'Bienvenido de nuevo'}</h2>
-              <p className="login-card__sub">
-                {schoolName ? 'Inicia sesión para continuar.' : 'Ingresa con las credenciales de tu colegio.'}
-              </p>
-            </div>
-          </div>
+          {/* 1) Marca del software (MoDo Educa) · 2) colegio cliente al que se ingresa */}
+          <header className="login-card__brand login-card__brand--stacked">
+            <PlatformLogo />
+            {branding ? (
+              <SchoolIdentity branding={branding} />
+            ) : (
+              <div>
+                <h2>Bienvenido de nuevo</h2>
+                <p className="login-card__sub">Ingresa con las credenciales de tu colegio.</p>
+              </div>
+            )}
+          </header>
 
           <Alert>{error}</Alert>
 

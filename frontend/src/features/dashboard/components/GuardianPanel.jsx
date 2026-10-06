@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import GradesLockedNotice, { GRADES_LOCKED_MESSAGE } from '../../portal/components/GradesLockedNotice';
 import { Link } from 'react-router-dom';
 import portalApi from '../../../api/endpoints/portal.api';
 import { useFetch } from '../../../hooks/useFetch';
@@ -21,6 +23,9 @@ const STUDENT_STATUS = {
 function StudentCard({ student, refCurrency }) {
   const [statusLabel, statusVariant] = STUDENT_STATUS[student.status] || ['—', 'neutral'];
   const { payments } = student;
+  // Con cuotas vencidas, las calificaciones están bloqueadas (el backend también lo exige).
+  const locked = Boolean(student.grades_locked);
+  const [showLock, setShowLock] = useState(false);
   const initials = `${student.first_name[0] || ''}${student.last_name[0] || ''}`.toUpperCase();
 
   return (
@@ -29,9 +34,13 @@ function StudentCard({ student, refCurrency }) {
         <span className="avatar">{initials}</span>
         <div className="student-card__who">
           <h3 className="student-card__name">
-            <Link to={`/portal/students/${student.id}`}>
-              {student.first_name} {student.last_name}
-            </Link>
+            {locked ? (
+              `${student.first_name} ${student.last_name}`
+            ) : (
+              <Link to={`/portal/students/${student.id}`}>
+                {student.first_name} {student.last_name}
+              </Link>
+            )}
           </h3>
           <div className="cell-person__sub">
             {[student.relationship, student.national_id ? `C.I. ${student.national_id}` : null].filter(Boolean).join(' · ') ||
@@ -99,13 +108,25 @@ function StudentCard({ student, refCurrency }) {
         )}
       </div>
       <div className="student-card__actions">
-        <Link to={`/portal/students/${student.id}?tab=grades`} className="btn btn--secondary btn--sm">
-          <Icon name="clipboard" size={15} /> Calificaciones
-        </Link>
-        <Link to={`/portal/students/${student.id}?tab=info`} className="btn btn--ghost btn--sm">
-          Ver detalle <Icon name="arrowRight" size={15} />
-        </Link>
+        {locked ? (
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm btn--locked"
+            aria-disabled="true"
+            aria-expanded={showLock}
+            aria-controls={`lock-${student.id}`}
+            title={GRADES_LOCKED_MESSAGE}
+            onClick={() => setShowLock((v) => !v)}
+          >
+            <Icon name="lock" size={15} /> Detalles del alumno
+          </button>
+        ) : (
+          <Link to={`/portal/students/${student.id}`} className="btn btn--secondary btn--sm">
+            <Icon name="clipboard" size={15} /> Detalles del alumno
+          </Link>
+        )}
       </div>
+      {locked && showLock && <GradesLockedNotice id={`lock-${student.id}`} overdueCount={payments.overdue_count} compact />}
     </article>
   );
 }

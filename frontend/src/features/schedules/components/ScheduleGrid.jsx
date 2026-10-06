@@ -12,6 +12,11 @@ import Icon from '../../../components/ui/Icon';
  *     tocar-y-colocar (pantallas táctiles, teclado).
  *   - `onEntryDragStart(entry)`, `onEntryRemove(entry)` sobre una clase.
  * `entryText(entry)` → { title, sub } de cada clase (por defecto materia y docente).
+ *
+ * Solo lectura:
+ *   - `cellHint(day, slot)` → { className?, label?, title? } para marcar celdas
+ *     (p. ej. los huecos o cruces de un docente);
+ *   - `onEntryClick(entry)` hace cada clase clicable (p. ej. abrir su sección).
  */
 function ScheduleGrid({
   days,
@@ -26,6 +31,8 @@ function ScheduleGrid({
   onEntryRemove,
   entryText = (e) => ({ title: e.subject_name, sub: e.teacher_name }),
   colorOf,
+  cellHint,
+  onEntryClick,
 }) {
   const at = (day, slotId) => entries.filter((e) => e.day_of_week === day && e.time_slot_id === slotId);
 
@@ -63,8 +70,10 @@ function ScheduleGrid({
                 {days.map((d) => {
                   const list = at(d.day, slot.id);
                   const state = (editable && cellState?.(d.day, slot)) || {};
+                  const hint = cellHint?.(d.day, slot) || {};
                   const classes = [
                     'schedule-grid__cell',
+                    hint.className || '',
                     state.conflict ? 'is-conflict' : '',
                     state.droppable ? 'is-droppable' : '',
                     list.length ? 'is-filled' : '',
@@ -75,7 +84,7 @@ function ScheduleGrid({
                     <td
                       key={d.day}
                       className={classes}
-                      title={state.conflict || undefined}
+                      title={state.conflict || hint.title || undefined}
                       onDragOver={
                         editable
                           ? (e) => {
@@ -96,10 +105,23 @@ function ScheduleGrid({
                     >
                       {list.map((entry) => {
                         const text = entryText(entry);
+                        const clickable = !editable && onEntryClick;
                         return (
                           <div
                             key={entry.id}
-                            className={`schedule-entry ${entry.teacher_changed ? 'has-warning' : ''}`}
+                            className={`schedule-entry ${entry.teacher_changed ? 'has-warning' : ''} ${clickable ? 'is-clickable' : ''}`}
+                            role={clickable ? 'button' : undefined}
+                            tabIndex={clickable ? 0 : undefined}
+                            onKeyDown={
+                              clickable
+                                ? (e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      onEntryClick(entry);
+                                    }
+                                  }
+                                : undefined
+                            }
                             style={colorOf ? { '--entry-hue': colorOf(entry) } : undefined}
                             draggable={editable}
                             onDragStart={
@@ -112,7 +134,7 @@ function ScheduleGrid({
                                 : undefined
                             }
                             onDragEnd={editable ? () => onEntryDragEnd?.() : undefined}
-                            onClick={editable ? (e) => e.stopPropagation() : undefined}
+                            onClick={editable ? (e) => e.stopPropagation() : clickable ? () => onEntryClick(entry) : undefined}
                           >
                             <strong>{text.title}</strong>
                             {text.sub && <span>{text.sub}</span>}
@@ -138,6 +160,7 @@ function ScheduleGrid({
                         );
                       })}
                       {state.conflict && !list.length && <span className="schedule-grid__conflict-hint">Cruce</span>}
+                      {!state.conflict && hint.label && !list.length && <span className="schedule-grid__hint">{hint.label}</span>}
                     </td>
                   );
                 })}

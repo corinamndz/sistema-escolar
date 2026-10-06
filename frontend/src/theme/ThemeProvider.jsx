@@ -1,60 +1,50 @@
-import { useEffect } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useTenant } from '../context/TenantContext';
+import { buildTheme } from './palette';
 
-const DEFAULT_PRIMARY = '#2563EB';
-const DEFAULT_SECONDARY = '#0F172A';
-
-/** Normaliza `#abc` / `#aabbcc` a `[r, g, b]`; devuelve null si el valor no es un hex válido. */
-function hexToRgb(hex) {
-  if (typeof hex !== 'string') return null;
-  let h = hex.trim().replace('#', '');
-  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
-  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
-  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
-}
-
-/** Luminancia relativa WCAG, para decidir si el texto sobre el color va en blanco o en oscuro. */
-function luminance([r, g, b]) {
-  const [R, G, B] = [r, g, b].map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * R + 0.7152 * G + 0.0722 * B;
-}
+const ThemePreviewContext = createContext({ setPreview: () => {} });
 
 /**
- * Inyecta los colores del tenant como variables CSS en `:root`, para que
- * todo el UI (botones, links activos, acentos del sidebar) se adapte sin
- * duplicar hojas de estilo por colegio. Los tonos derivados (hover, fondos
- * traslúcidos, anillos de foco) se calculan en index.css con color-mix(),
- * así que aquí solo hace falta publicar los dos colores base, su versión
- * RGB y un color de texto legible encima de cada uno.
+ * Aplica la paleta del colegio a TODA la interfaz como variables CSS en
+ * `:root` (ver palette.js: degradado del menú, acento, texto legible encima,
+ * encabezados de tabla…). Se recalcula al instante cuando cambia la
+ * configuración guardada, o mientras se edita en Configuración (`setPreview`):
+ * así el cambio se ve en toda la plataforma antes de guardarlo.
  */
 function ThemeProvider({ children }) {
   const { settings } = useTenant();
+  const [preview, setPreview] = useState(null); // colores en edición (sin guardar)
+
+  const theme = useMemo(
+    () =>
+      buildTheme({
+        menuColor: settings.secondaryColor,
+        accentColor: settings.primaryColor,
+        menuGradient: settings.menuGradient,
+        accentSecondaryColor: settings.accentSecondaryColor,
+        tableHeaderStyle: settings.tableHeaderStyle,
+        ...(preview || {}),
+      }),
+    [settings.secondaryColor, settings.primaryColor, settings.menuGradient, settings.accentSecondaryColor, settings.tableHeaderStyle, preview]
+  );
 
   useEffect(() => {
     const root = document.documentElement;
-    const primary = hexToRgb(settings.primaryColor) ? settings.primaryColor : DEFAULT_PRIMARY;
-    const secondary = hexToRgb(settings.secondaryColor) ? settings.secondaryColor : DEFAULT_SECONDARY;
-    const primaryRgb = hexToRgb(primary);
-    const secondaryRgb = hexToRgb(secondary);
-
-    root.style.setProperty('--color-primary', primary);
-    root.style.setProperty('--color-primary-rgb', primaryRgb.join(', '));
-    root.style.setProperty('--color-on-primary', luminance(primaryRgb) > 0.45 ? '#0f172a' : '#ffffff');
-    root.style.setProperty('--color-secondary', secondary);
-    // Un sidebar con color secundario claro necesita texto oscuro para seguir siendo legible.
-    root.style.setProperty('--sidebar-fg-rgb', luminance(secondaryRgb) > 0.45 ? '15, 23, 42' : '248, 250, 252');
-
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', secondary);
-  }, [settings.primaryColor, settings.secondaryColor]);
+    Object.entries(theme.vars).forEach(([name, value]) => root.style.setProperty(name, value));
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.info.menuStart);
+  }, [theme]);
 
   useEffect(() => {
     document.title = settings.name ? `${settings.name} · Sistema Escolar` : 'Sistema Escolar';
   }, [settings.name]);
 
-  return children;
+  const value = useMemo(() => ({ setPreview }), []);
+  return <ThemePreviewContext.Provider value={value}>{children}</ThemePreviewContext.Provider>;
 }
 
-export { ThemeProvider };
+/** Para Configuración: `setPreview({ accentColor, … })` muestra los colores en vivo; `setPreview(null)` vuelve a lo guardado. */
+function useThemePreview() {
+  return useContext(ThemePreviewContext);
+}
+
+export { ThemeProvider, useThemePreview };

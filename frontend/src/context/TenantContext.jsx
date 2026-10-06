@@ -9,6 +9,9 @@ const DEFAULT_SETTINGS = {
   logoUrl: null,
   primaryColor: '#2563EB',
   secondaryColor: '#1E293B',
+  menuGradient: 'deep',
+  accentSecondaryColor: null,
+  tableHeaderStyle: 'subtle',
   contactPhone: null,
   contactEmail: null,
 };
@@ -33,10 +36,15 @@ function TenantProvider({ children }) {
     try {
       const data = await tenantApi.getSettings();
       setSettings({ ...data, logoUrl: resolveAssetUrl(data.logoUrl) });
-    } catch (err) {
-      // Si el usuario no tiene permiso de leer tenant_settings, seguimos con
-      // los valores por defecto en vez de romper el layout.
-      setSettings(DEFAULT_SETTINGS);
+    } catch {
+      // Sin permiso de Configuración (docentes, familias): el perfil del colegio
+      // trae lo mismo que necesita el diseño (nombre, logo, colores, contacto).
+      try {
+        const profile = await tenantApi.getProfile();
+        setSettings({ ...DEFAULT_SETTINGS, ...profile, logoUrl: resolveAssetUrl(profile.logoUrl) });
+      } catch {
+        setSettings(DEFAULT_SETTINGS); // sin romper el layout
+      }
     } finally {
       setLoading(false);
     }
@@ -51,6 +59,21 @@ function TenantProvider({ children }) {
     authRef.current = isAuthenticated;
     if (isAuthenticated) load();
     else if (wasAuthenticated) setSettings(DEFAULT_SETTINGS);
+  }, [isAuthenticated, load]);
+
+  // Al volver a la pestaña se relee la configuración (máx. cada 30 s): si la
+  // administración cambió el contacto o los colores, se ve sin recargar.
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    let last = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - last > 30000) {
+        last = Date.now();
+        load();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [isAuthenticated, load]);
 
   /**
@@ -68,6 +91,9 @@ function TenantProvider({ children }) {
             logoUrl: resolveAssetUrl(branding.logoUrl),
             primaryColor: branding.primaryColor,
             secondaryColor: branding.secondaryColor,
+            menuGradient: branding.menuGradient,
+            accentSecondaryColor: branding.accentSecondaryColor,
+            tableHeaderStyle: branding.tableHeaderStyle,
           }
         : DEFAULT_SETTINGS
     );

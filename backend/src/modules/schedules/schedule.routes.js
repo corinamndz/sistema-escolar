@@ -14,6 +14,9 @@ const admin = (action) => [denyTeachers, requirePermission('schedules', action)]
 router.get('/mine', controller.mySchedule);
 router.get('/sections/:id', controller.getSectionSchedule); // docente: sus secciones; administración: todas
 
+// Consulta filtrada por grado/sección o por docente (auditoría de carga).
+router.get('/', admin('read'), controller.querySchedule);
+router.get('/teachers', admin('read'), controller.listTeachers);
 router.get('/sections', admin('read'), controller.listSections);
 router.get('/periods/:periodId/slots', admin('read'), controller.listSlots);
 router.put('/periods/:periodId/slots', admin('update'), controller.saveSlots);

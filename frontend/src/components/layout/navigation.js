@@ -18,6 +18,9 @@ const NAV_SECTIONS = [
       { moduleCode: 'students', label: 'Alumnos', teacherLabel: 'Mis alumnos', icon: 'graduation', path: '/students' },
       { moduleCode: 'guardians', label: 'Representantes', icon: 'users', path: '/guardians' },
       { moduleCode: 'staff', label: 'Personal', icon: 'briefcase', path: '/staff' },
+      // Sanciones disciplinarias: módulo de la administración. El docente consulta
+      // las de sus alumnos en la ficha de cada uno; el representante, en el portal.
+      { moduleCode: 'discipline', label: 'Convivencia', icon: 'shield', path: '/discipline', blockTeacher: true },
     ],
   },
   {

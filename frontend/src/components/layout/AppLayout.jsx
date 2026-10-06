@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import ErrorBoundary from '../ErrorBoundary';
+import SchoolFooter from './SchoolFooter';
 
 const COLLAPSED_KEY = 'ui.sidebarCollapsed';
 
@@ -62,6 +63,8 @@ function AppLayout() {
             <Outlet />
           </ErrorBoundary>
         </main>
+        {/* Pie de página del inicio: al final de la columna, siempre al fondo de la vista. */}
+        {pathname === '/' && <SchoolFooter />}
       </div>
 
       {mobileOpen && <div className="app-overlay" onClick={() => setMobileOpen(false)} aria-hidden="true" />}

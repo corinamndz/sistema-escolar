@@ -17,6 +17,7 @@ import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import Card from '../../../components/ui/Card';
 import AcademicHistory from '../components/AcademicHistory';
 import { useAuth } from '../../../context/AuthContext';
+import StudentSanctions from '../../discipline/components/StudentSanctions';
 
 function StudentDetailPage() {
   const { id } = useParams();
@@ -25,7 +26,7 @@ function StudentDetailPage() {
   const { run: unlinkRun, error: unlinkError } = useMutation((guardianId) => studentsApi.unlinkGuardian(id, guardianId));
 
   const confirm = useConfirm();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
 
   const handleUnlink = async (guardianId) => {
     const ok = await confirm({
@@ -104,6 +105,9 @@ function StudentDetailPage() {
       <Card title="Historial académico" subtitle="Años escolares cursados, resultado y boleta de cada año">
         <HistoryLoader studentId={id} />
       </Card>
+
+      {/* Convivencia: administración gestiona; el docente solo consulta (alumnos de su carga). */}
+      {can('discipline', 'read') && <StudentSanctions studentId={id} />}
 
       <Card
         title="Representantes"

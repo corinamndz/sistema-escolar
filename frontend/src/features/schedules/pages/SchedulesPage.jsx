@@ -14,9 +14,23 @@ import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
 import ScheduleGrid, { hueOf } from '../components/ScheduleGrid';
 import SlotsEditorModal from '../components/SlotsEditorModal';
+import TeacherScheduleView from '../components/TeacherScheduleView';
+
+const VIEWS = [
+  { key: 'section', label: 'Por grado / sección', icon: 'layers' },
+  { key: 'teacher', label: 'Por docente', icon: 'user' },
+];
 
 /**
- * Horarios por sección (administración).
+ * Horarios (administración). Dos formas de ver la grilla semanal:
+ *
+ *   - Por grado / sección: se elige grado y sección; se ve y se ARMA su
+ *     horario (lo de abajo).
+ *   - Por docente: se elige un profesor (A-Z) y se ve, en solo lectura, toda
+ *     su semana en las distintas secciones, con huecos y carga por día. Al
+ *     tocar una clase se abre su sección para editarla.
+ *
+ * Armado del horario de una sección:
  *
  *   - Arrastra una materia del banco (o una clase ya colocada) y suéltala en
  *     una celda; o tócala y luego toca la celda (pantallas táctiles).
@@ -35,7 +49,14 @@ function SchedulesPage() {
     () => (periodId ? schedulesApi.listSections({ schoolPeriodId: periodId }) : Promise.resolve([])),
     [periodId],
   );
+  const [view, setView] = useState('section'); // 'section' (grado/sección) | 'teacher' (docente)
+  const [gradeId, setGradeId] = useState('');
   const [sectionId, setSectionId] = useState('');
+  const [teacherId, setTeacherId] = useState('');
+  const { data: teachers, loading: loadingTeachers } = useFetch(
+    () => (periodId && view === 'teacher' ? schedulesApi.listTeachers(periodId) : Promise.resolve(null)),
+    [periodId, view],
+  );
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -52,7 +73,11 @@ function SchedulesPage() {
       .sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')));
     setPeriodId((sorted.find((p) => p.is_active) || sorted[0] || periods[0]).id);
   }, [periods, periodId]);
-  useEffect(() => setSectionId(''), [periodId]);
+  useEffect(() => {
+    setGradeId('');
+    setSectionId('');
+    setTeacherId('');
+  }, [periodId]);
 
   const load = async (id = sectionId) => {
     if (!id) return setData(null);
@@ -77,15 +102,32 @@ function SchedulesPage() {
   const editable = Boolean(data && !data.read_only && can('schedules', 'update'));
   const active = dragging || selected; // lo que se está por colocar
 
-  // Secciones agrupadas por grado para el selector.
+  // Secciones agrupadas por grado: primero se elige el grado y luego su sección.
   const byGrade = useMemo(() => {
     const map = new Map();
     (sections || []).forEach((s) => {
-      if (!map.has(s.grade_id)) map.set(s.grade_id, { name: s.grade_name, list: [] });
+      if (!map.has(s.grade_id)) map.set(s.grade_id, { id: s.grade_id, name: s.grade_name, list: [] });
       map.get(s.grade_id).list.push(s);
     });
     return [...map.values()];
   }, [sections]);
+  const gradeSections = byGrade.find((g) => g.id === gradeId)?.list || [];
+
+  const chooseGrade = (id) => {
+    setGradeId(id);
+    // Si el grado tiene una sola sección, se abre directamente.
+    const list = byGrade.find((g) => g.id === id)?.list || [];
+    setSectionId(list.length === 1 ? list[0].id : '');
+  };
+
+  /** Desde la vista por docente: abrir (y poder editar) el horario de una de sus secciones. */
+  const openSection = (id) => {
+    const s = (sections || []).find((x) => x.id === id);
+    if (!s) return;
+    setGradeId(s.grade_id);
+    setSectionId(s.id);
+    setView('section');
+  };
 
   /** Cruce: el profesor de lo que se coloca ya da clase en otra sección en ese día y bloque. */
   const conflictAt = (item, day, slot) => {
@@ -160,173 +202,227 @@ function SchedulesPage() {
       />
 
       <Card>
-        <div className="promotion-filters">
-          <label>
-            <span className="student-card__label">Año escolar</span>
-            <Select sorted value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
-              {(periods || []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.closed_at ? ' (finalizado)' : ''}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label style={{ minWidth: 240 }}>
-            <span className="student-card__label">Grado y sección</span>
-            <Select sorted value={sectionId} onChange={(e) => setSectionId(e.target.value)} disabled={loadingSections}>
-              <option value="">Selecciona…</option>
-              {byGrade.map((g) => (
-                <optgroup key={g.name} label={g.name}>
-                  {g.list.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.grade_name} · Sección {s.name}
+        <div className="schedule-filters">
+          <div className="segmented schedule-filters__views" role="tablist" aria-label="Ver horario">
+            {VIEWS.map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                role="tab"
+                aria-selected={view === v.key}
+                className={`segmented__item ${view === v.key ? 'segmented__item--active' : ''}`}
+                onClick={() => setView(v.key)}
+              >
+                <Icon name={v.icon} size={15} /> {v.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="schedule-filters__fields">
+            <label>
+              <span className="student-card__label">Año escolar</span>
+              <Select sorted value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
+                {(periods || []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {p.closed_at ? ' (finalizado)' : ''}
+                  </option>
+                ))}
+              </Select>
+            </label>
+
+            {view === 'section' ? (
+              <>
+                <label>
+                  <span className="student-card__label">Grado</span>
+                  <Select sorted value={gradeId} onChange={(e) => chooseGrade(e.target.value)} disabled={loadingSections}>
+                    <option value="">Selecciona…</option>
+                    {byGrade.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+                <label>
+                  <span className="student-card__label">Sección</span>
+                  <Select sorted value={sectionId} onChange={(e) => setSectionId(e.target.value)} disabled={!gradeId}>
+                    <option value="">{gradeId ? 'Selecciona…' : 'Primero elige el grado'}</option>
+                    {gradeSections.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        Sección {s.name}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              </>
+            ) : (
+              <label className="schedule-filters__teacher">
+                <span className="student-card__label">Docente</span>
+                <Select sorted value={teacherId} onChange={(e) => setTeacherId(e.target.value)} disabled={loadingTeachers}>
+                  <option value="">{loadingTeachers ? 'Cargando docentes…' : 'Selecciona…'}</option>
+                  {(teachers || []).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                      {t.classes ? ` · ${t.classes} h/sem` : ' · sin clases'}
+                      {t.active ? '' : ' (inactivo)'}
                     </option>
                   ))}
-                </optgroup>
-              ))}
-            </Select>
-          </label>
+                </Select>
+              </label>
+            )}
+          </div>
         </div>
       </Card>
 
-      <Alert>{error}</Alert>
-      {loading && <Spinner label="Cargando horario…" />}
+      {view === 'teacher' &&
+        (teacherId && periodId ? (
+          <TeacherScheduleView periodId={periodId} teacherId={teacherId} onOpenSection={openSection} />
+        ) : (
+          <p className="text-muted">Elige un docente para ver su semana completa en todas sus secciones, con sus huecos y su carga por día.</p>
+        ))}
 
-      {!sectionId && !loading && <p className="text-muted">Elige un grado y sección para ver o armar su horario.</p>}
+      {view === 'section' && (
+        <>
+          <Alert>{error}</Alert>
+          {loading && <Spinner label="Cargando horario…" />}
 
-      {data && !loading && data.slots.length === 0 && (
-        <Card>
-          <div className="empty-state">
-            <div className="empty-state__icon">
-              <Icon name="clock" size={24} />
-            </div>
-            <div className="empty-state__title">El año {data.section.school_period_name} aún no tiene bloques horarios</div>
-            <div className="text-sm">Define las horas de clase (por ejemplo 07:00–07:45) para todas las secciones del año.</div>
-            {can('schedules', 'update') && (
-              <Button icon="clock" onClick={() => setEditingSlots(true)} style={{ marginTop: 12 }}>
-                Configurar bloques horarios
-              </Button>
-            )}
-          </div>
-        </Card>
-      )}
+          {!sectionId && !loading && <p className="text-muted">Elige un grado y su sección para ver o armar su horario.</p>}
 
-      {data && !loading && data.slots.length > 0 && (
-        <div className={`schedule-board ${editable ? '' : 'is-readonly'}`}>
-          {editable && (
-            <aside
-              className={`schedule-bank ${dragging?.entryId ? 'is-drop-remove' : ''}`}
-              onDragOver={(e) => dragging?.entryId && e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const entry = dragging?.entryId && data.entries.find((x) => x.id === dragging.entryId);
-                setDragging(null);
-                if (entry) remove(entry);
-              }}
-            >
-              <div className="schedule-bank__head">
-                <strong>
-                  Materias de {data.section.grade_name} {data.section.name}
-                </strong>
-                <span className="text-sm text-muted">Arrastra a la grilla, o tócala y luego toca la celda.</span>
-              </div>
-              {data.bank.length === 0 && (
-                <p className="text-sm text-muted">El grado no tiene plan de estudios: agrégale materias en Grados y secciones.</p>
-              )}
-              <ul className="schedule-bank__list">
-                {data.bank.map((b) => {
-                  const done = b.weekly_hours && b.placed >= b.weekly_hours;
-                  const isSelected = selected && !selected.entryId && selected.subjectId === b.subject_id;
-                  return (
-                    <li
-                      key={b.subject_id}
-                      className={`schedule-bank__item ${b.teacher ? '' : 'is-disabled'} ${isSelected ? 'is-selected' : ''} ${done ? 'is-done' : ''}`}
-                      style={{ '--entry-hue': hueOf(b.subject_id) }}
-                      draggable={Boolean(b.teacher)}
-                      onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = 'copy';
-                        e.dataTransfer.setData('text/plain', b.subject_id);
-                        setDragging(itemOfSubject(b));
-                      }}
-                      onDragEnd={() => setDragging(null)}
-                    >
-                      {/* div (no <button>): Firefox no inicia el arrastre desde un botón. */}
-                      <div
-                        role="button"
-                        tabIndex={b.teacher ? 0 : -1}
-                        className="schedule-bank__card"
-                        aria-disabled={!b.teacher}
-                        aria-pressed={isSelected}
-                        onClick={() => b.teacher && setSelected(isSelected ? null : itemOfSubject(b))}
-                        onKeyDown={(e) => {
-                          if (b.teacher && (e.key === 'Enter' || e.key === ' ')) {
-                            e.preventDefault();
-                            setSelected(isSelected ? null : itemOfSubject(b));
-                          }
-                        }}
-                        title={b.teacher ? 'Arrástrala a la grilla, o tócala y luego toca la celda' : 'Asigna un profesor en la carga docente'}
-                      >
-                        <span className="schedule-bank__name">{b.subject_name}</span>
-                        <span className="schedule-bank__teacher">{b.teacher ? b.teacher.name : 'Sin profesor asignado'}</span>
-                        <span className={`schedule-bank__hours ${done ? 'is-done' : ''}`}>
-                          {b.placed}
-                          {b.weekly_hours ? ` / ${b.weekly_hours}` : ''} h
-                        </span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-              {dragging?.entryId && (
-                <div className="schedule-bank__drop">
-                  <Icon name="trash" size={16} /> Suelta aquí para quitarla del horario
+          {data && !loading && data.slots.length === 0 && (
+            <Card>
+              <div className="empty-state">
+                <div className="empty-state__icon">
+                  <Icon name="clock" size={24} />
                 </div>
-              )}
-              <p className="text-sm text-muted schedule-bank__summary">
-                {totalPlaced} de {freeCells} horas de la semana ocupadas.
-              </p>
-            </aside>
+                <div className="empty-state__title">El año {data.section.school_period_name} aún no tiene bloques horarios</div>
+                <div className="text-sm">Define las horas de clase (por ejemplo 07:00–07:45) para todas las secciones del año.</div>
+                {can('schedules', 'update') && (
+                  <Button icon="clock" onClick={() => setEditingSlots(true)} style={{ marginTop: 12 }}>
+                    Configurar bloques horarios
+                  </Button>
+                )}
+              </div>
+            </Card>
           )}
 
-          <div className="schedule-main">
-            {selected && (
-              <Alert variant="info">
-                Toca la celda donde va <strong>{selected.name}</strong> ({selected.teacher?.name}). Las celdas en rojo son horas en que el
-                profesor ya tiene clase.{' '}
-                <button type="button" className="link-button" onClick={() => setSelected(null)}>
-                  Cancelar
-                </button>
-              </Alert>
-            )}
-            {data.read_only && (
-              <Alert variant="info">
-                Horario de solo lectura
-                {data.section.period_closed_at ? `: el año ${data.section.school_period_name} está finalizado.` : '.'}
-              </Alert>
-            )}
-            <ScheduleGrid
-              days={data.days}
-              slots={data.slots}
-              entries={data.entries}
-              editable={editable && !saving}
-              cellState={cellState}
-              colorOf={(e) => hueOf(e.subject_id)}
-              onCellDrop={(day, slot) => {
-                const item = dragging;
-                setDragging(null);
-                if (item) placeAt(item, day, slot);
-              }}
-              onCellClick={(day, slot) => {
-                if (selected) placeAt(selected, day, slot);
-              }}
-              onEntryDragStart={(e) => setDragging(itemOfEntry(e))}
-              onEntryDragEnd={() => setDragging(null)}
-              onEntryRemove={remove}
-            />
-            {saving && <Spinner label="Guardando…" />}
-          </div>
-        </div>
+          {data && !loading && data.slots.length > 0 && (
+            <div className={`schedule-board ${editable ? '' : 'is-readonly'}`}>
+              {editable && (
+                <aside
+                  className={`schedule-bank ${dragging?.entryId ? 'is-drop-remove' : ''}`}
+                  onDragOver={(e) => dragging?.entryId && e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const entry = dragging?.entryId && data.entries.find((x) => x.id === dragging.entryId);
+                    setDragging(null);
+                    if (entry) remove(entry);
+                  }}
+                >
+                  <div className="schedule-bank__head">
+                    <strong>
+                      Materias de {data.section.grade_name} {data.section.name}
+                    </strong>
+                    <span className="text-sm text-muted">Arrastra a la grilla, o tócala y luego toca la celda.</span>
+                  </div>
+                  {data.bank.length === 0 && (
+                    <p className="text-sm text-muted">El grado no tiene plan de estudios: agrégale materias en Grados y secciones.</p>
+                  )}
+                  <ul className="schedule-bank__list">
+                    {data.bank.map((b) => {
+                      const done = b.weekly_hours && b.placed >= b.weekly_hours;
+                      const isSelected = selected && !selected.entryId && selected.subjectId === b.subject_id;
+                      return (
+                        <li
+                          key={b.subject_id}
+                          className={`schedule-bank__item ${b.teacher ? '' : 'is-disabled'} ${isSelected ? 'is-selected' : ''} ${done ? 'is-done' : ''}`}
+                          style={{ '--entry-hue': hueOf(b.subject_id) }}
+                          draggable={Boolean(b.teacher)}
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = 'copy';
+                            e.dataTransfer.setData('text/plain', b.subject_id);
+                            setDragging(itemOfSubject(b));
+                          }}
+                          onDragEnd={() => setDragging(null)}
+                        >
+                          {/* div (no <button>): Firefox no inicia el arrastre desde un botón. */}
+                          <div
+                            role="button"
+                            tabIndex={b.teacher ? 0 : -1}
+                            className="schedule-bank__card"
+                            aria-disabled={!b.teacher}
+                            aria-pressed={isSelected}
+                            onClick={() => b.teacher && setSelected(isSelected ? null : itemOfSubject(b))}
+                            onKeyDown={(e) => {
+                              if (b.teacher && (e.key === 'Enter' || e.key === ' ')) {
+                                e.preventDefault();
+                                setSelected(isSelected ? null : itemOfSubject(b));
+                              }
+                            }}
+                            title={b.teacher ? 'Arrástrala a la grilla, o tócala y luego toca la celda' : 'Asigna un profesor en la carga docente'}
+                          >
+                            <span className="schedule-bank__name">{b.subject_name}</span>
+                            <span className="schedule-bank__teacher">{b.teacher ? b.teacher.name : 'Sin profesor asignado'}</span>
+                            <span className={`schedule-bank__hours ${done ? 'is-done' : ''}`}>
+                              {b.placed}
+                              {b.weekly_hours ? ` / ${b.weekly_hours}` : ''} h
+                            </span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {dragging?.entryId && (
+                    <div className="schedule-bank__drop">
+                      <Icon name="trash" size={16} /> Suelta aquí para quitarla del horario
+                    </div>
+                  )}
+                  <p className="text-sm text-muted schedule-bank__summary">
+                    {totalPlaced} de {freeCells} horas de la semana ocupadas.
+                  </p>
+                </aside>
+              )}
+
+              <div className="schedule-main">
+                {selected && (
+                  <Alert variant="info">
+                    Toca la celda donde va <strong>{selected.name}</strong> ({selected.teacher?.name}). Las celdas en rojo son horas en que el
+                    profesor ya tiene clase.{' '}
+                    <button type="button" className="link-button" onClick={() => setSelected(null)}>
+                      Cancelar
+                    </button>
+                  </Alert>
+                )}
+                {data.read_only && (
+                  <Alert variant="info">
+                    Horario de solo lectura
+                    {data.section.period_closed_at ? `: el año ${data.section.school_period_name} está finalizado.` : '.'}
+                  </Alert>
+                )}
+                <ScheduleGrid
+                  days={data.days}
+                  slots={data.slots}
+                  entries={data.entries}
+                  editable={editable && !saving}
+                  cellState={cellState}
+                  colorOf={(e) => hueOf(e.subject_id)}
+                  onCellDrop={(day, slot) => {
+                    const item = dragging;
+                    setDragging(null);
+                    if (item) placeAt(item, day, slot);
+                  }}
+                  onCellClick={(day, slot) => {
+                    if (selected) placeAt(selected, day, slot);
+                  }}
+                  onEntryDragStart={(e) => setDragging(itemOfEntry(e))}
+                  onEntryDragEnd={() => setDragging(null)}
+                  onEntryRemove={remove}
+                />
+                {saving && <Spinner label="Guardando…" />}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {editingSlots && period && <SlotsEditorModal period={period} onClose={() => setEditingSlots(false)} onSaved={() => load()} />}

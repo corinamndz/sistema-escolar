@@ -263,6 +263,152 @@ async function sectionOfEntry(trx, tenantId, entryId) {
 }
 
 // ---------------------------------------------------------------------------
+// Consulta filtrada (administración): por grado/sección o por docente
+// ---------------------------------------------------------------------------
+
+/**
+ * Docentes para el filtro "Ver por docente", de la A a la Z: el personal
+ * docente activo y, además, cualquiera que ya tenga clases en el año (aunque
+ * hoy esté inactivo, para poder auditarlo). `classes` = horas por semana.
+ */
+async function listTeachers(trx, tenantId, periodId) {
+  await loadPeriod(trx, tenantId, periodId);
+  const load = trx('class_schedules as cs')
+    .join('sections as sec', 'sec.id', 'cs.section_id')
+    .where({ 'cs.tenant_id': tenantId, 'sec.school_period_id': periodId })
+    .groupBy('cs.staff_id')
+    .select('cs.staff_id', trx.raw('COUNT(*)::int AS classes'), trx.raw('COUNT(DISTINCT cs.section_id)::int AS sections'))
+    .as('c');
+  const rows = await trx('staff as st')
+    .leftJoin(load, 'c.staff_id', 'st.id')
+    .where('st.tenant_id', tenantId)
+    .andWhere((q) => q.where({ 'st.staff_type': 'teaching', 'st.status': 'active' }).orWhereNotNull('c.staff_id'))
+    .select('st.id', 'st.first_name', 'st.last_name', 'st.status', 'c.classes', 'c.sections')
+    .orderBy([{ column: 'st.first_name' }, { column: 'st.last_name' }]);
+  return rows.map((r) => ({
+    id: r.id,
+    name: `${r.first_name} ${r.last_name}`,
+    active: r.status === 'active',
+    classes: Number(r.classes || 0),
+    sections: Number(r.sections || 0),
+  }));
+}
+
+/**
+ * Resumen para auditar una grilla (sobre todo la de un docente):
+ *   - clases por día y total;
+ *   - huecos: horas de clase LIBRES entre la primera y la última clase de un
+ *     mismo día (tiempo muerto del docente);
+ *   - cruces: celdas con más de una clase (la base de datos no lo permite
+ *     para un docente, pero se informa por si acaso);
+ *   - secciones que atiende, con sus horas.
+ */
+function summarize(days, slots, entries) {
+  const classSlots = slots.filter((s) => !s.is_break);
+  const gaps = [];
+  const byDay = days.map((d) => {
+    const taken = classSlots.map((s) => entries.some((e) => e.day_of_week === d.day && e.time_slot_id === s.id));
+    const first = taken.indexOf(true);
+    const last = taken.lastIndexOf(true);
+    for (let i = first + 1; first >= 0 && i < last; i += 1) {
+      if (!taken[i]) gaps.push({ day_of_week: d.day, time_slot_id: classSlots[i].id });
+    }
+    return { day_of_week: d.day, name: d.name, classes: taken.filter(Boolean).length };
+  });
+
+  const cells = new Map();
+  entries.forEach((e) => {
+    const k = `${e.day_of_week}|${e.time_slot_id}`;
+    cells.set(k, (cells.get(k) || 0) + 1);
+  });
+  const conflicts = [...cells.entries()]
+    .filter(([, n]) => n > 1)
+    .map(([k]) => {
+      const [day, slot] = k.split('|');
+      return { day_of_week: Number(day), time_slot_id: slot };
+    });
+
+  const sections = new Map();
+  entries.forEach((e) => {
+    if (!sections.has(e.section_id)) sections.set(e.section_id, { section_id: e.section_id, label: `${e.grade_name} ${e.section_name}`, classes: 0 });
+    sections.get(e.section_id).classes += 1;
+  });
+
+  return {
+    classes: entries.length,
+    capacity: classSlots.length * days.length,
+    free_days: byDay.filter((d) => !d.classes).map((d) => d.name),
+    by_day: byDay,
+    gaps,
+    conflicts,
+    sections: [...sections.values()].sort((a, b) => a.label.localeCompare(b.label, 'es', { numeric: true })),
+  };
+}
+
+/**
+ * Horario filtrado de un año escolar. Filtros opcionales y combinables:
+ *   - sectionId: una sección (define el año si no se indica);
+ *   - gradeId: todas las secciones de un grado;
+ *   - teacherId: todas las clases de un docente, en cualquier sección.
+ * Devuelve la grilla (días, bloques, clases), el grado/sección/docente
+ * filtrados y un resumen para auditar la carga (huecos, días libres, cruces).
+ */
+async function querySchedule(trx, tenantId, { schoolPeriodId = null, gradeId = null, sectionId = null, teacherId = null }) {
+  let periodId = schoolPeriodId;
+  let section = null;
+  if (sectionId) {
+    section = await loadSection(trx, tenantId, sectionId);
+    if (periodId && periodId !== section.school_period_id) {
+      throw ApiError.badRequest('La sección no pertenece a ese año escolar.', [{ path: 'section_id', message: 'Sección de otro año.' }]);
+    }
+    if (gradeId && gradeId !== section.grade_id) {
+      throw ApiError.badRequest('La sección no pertenece a ese grado.', [{ path: 'section_id', message: 'Sección de otro grado.' }]);
+    }
+    periodId = section.school_period_id;
+  }
+  if (!periodId) {
+    throw ApiError.badRequest('Indica el año escolar (school_period_id) o la sección (section_id).', [{ path: 'school_period_id', message: 'Requerido.' }]);
+  }
+  const period = await loadPeriod(trx, tenantId, periodId);
+
+  let grade = null;
+  if (gradeId) {
+    grade = await trx('grades').where({ id: gradeId, tenant_id: tenantId }).select('id', 'name', 'level_code').first();
+    if (!grade) throw ApiError.notFound('Grado no encontrado.');
+  }
+  let teacher = null;
+  if (teacherId) {
+    const st = await trx('staff').where({ id: teacherId, tenant_id: tenantId }).select('id', 'first_name', 'last_name', 'staff_type', 'status').first();
+    if (!st) throw ApiError.notFound('Docente no encontrado.');
+    teacher = { id: st.id, name: `${st.first_name} ${st.last_name}`, staff_type: st.staff_type, active: st.status === 'active' };
+  }
+
+  const entries = (
+    await entriesQuery(trx, tenantId)
+      .andWhere('sec.school_period_id', period.id)
+      .modify((q) => {
+        if (sectionId) q.andWhere('cs.section_id', sectionId);
+        if (gradeId) q.andWhere('sec.grade_id', gradeId);
+        if (teacherId) q.andWhere('cs.staff_id', teacherId);
+      })
+      .orderBy([{ column: 'cs.day_of_week' }, { column: 'ts.start_time' }, { column: 'g.name' }, { column: 'sec.name' }])
+  ).map(formatEntry);
+  const slots = await listSlots(trx, tenantId, period.id);
+
+  return {
+    school_period: { id: period.id, name: period.name, closed: Boolean(period.closed_at) },
+    filters: { school_period_id: period.id, grade_id: gradeId, section_id: sectionId, teacher_id: teacherId },
+    grade,
+    section,
+    teacher,
+    days: DAYS,
+    slots,
+    entries,
+    summary: summarize(DAYS, slots, entries),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Consultas de solo lectura: docente y representante
 // ---------------------------------------------------------------------------
 
@@ -306,4 +452,7 @@ module.exports = {
   sectionOfEntry,
   getTeacherSchedule,
   getStudentSchedule,
+  listTeachers,
+  querySchedule,
+  summarize,
 };

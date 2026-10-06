@@ -16,6 +16,13 @@ const schedulesApi = {
   /** Mueve una clase: { dayOfWeek, timeSlotId }. */
   move: (entryId, data) => axiosClient.put(`/schedules/entries/${entryId}`, data).then((r) => r.data),
   remove: (entryId) => axiosClient.delete(`/schedules/entries/${entryId}`).then((r) => r.data),
+  /**
+   * Horario filtrado (solo lectura): { school_period_id | section_id, grade_id?, teacher_id? }.
+   * → { school_period, grade, section, teacher, days, slots, entries, summary }
+   */
+  query: (filters) => get('/schedules', filters),
+  /** Docentes A-Z con sus horas en el año: [{ id, name, active, classes, sections }]. */
+  listTeachers: (schoolPeriodId) => get('/schedules/teachers', { school_period_id: schoolPeriodId }),
   /** Horario semanal del docente autenticado. */
   mine: () => get('/schedules/mine'),
 };

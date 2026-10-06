@@ -11,12 +11,15 @@ import { LevelBadge } from '../../academics/levels';
 import { formatAmounts, formatDate, formatMoney } from '../../payments/paymentStatus';
 import StudentGrades from '../components/StudentGrades';
 import AcademicHistory from '../../students/components/AcademicHistory';
+import GradesLockedNotice from '../components/GradesLockedNotice';
 import ScheduleGrid, { hueOf } from '../../schedules/components/ScheduleGrid';
+import { SanctionCard, SeverityTotals } from '../../discipline/components/SanctionParts';
 
 const TABS = [
   { key: 'grades', label: 'Calificaciones' },
   { key: 'schedule', label: 'Horario' },
   { key: 'history', label: 'Historial académico' },
+  { key: 'discipline', label: 'Convivencia' },
   { key: 'info', label: 'Información' },
 ];
 
@@ -69,13 +72,19 @@ function PortalStudentPage() {
         }
       />
 
-      <Tabs tabs={TABS} active={tab} onChange={(key) => setParams({ tab: key }, { replace: true })} />
+      {/* Con cuotas vencidas los detalles (calificaciones) están bloqueados: solo el aviso. */}
+      {student.grades_locked ? (
+        <GradesLockedNotice overdueCount={student.payments?.overdue_count} />
+      ) : (
+        <Tabs tabs={TABS} active={tab} onChange={(key) => setParams({ tab: key }, { replace: true })} />
+      )}
 
-      {tab === 'grades' && <StudentGrades studentId={studentId} />}
-      {tab === 'schedule' && <PortalSchedule studentId={studentId} />}
-      {tab === 'history' && <PortalHistory studentId={studentId} />}
+      {!student.grades_locked && tab === 'grades' && <StudentGrades studentId={studentId} />}
+      {!student.grades_locked && tab === 'schedule' && <PortalSchedule studentId={studentId} />}
+      {!student.grades_locked && tab === 'history' && <PortalHistory studentId={studentId} />}
+      {!student.grades_locked && tab === 'discipline' && <PortalSanctions studentId={studentId} />}
 
-      {tab === 'info' && (
+      {!student.grades_locked && tab === 'info' && (
         <div className="grid grid--2">
           <Card title="Datos del alumno">
             <dl className="detail-list">
@@ -131,6 +140,27 @@ function PortalHistory({ studentId }) {
   return (
     <Card title="Historial académico" subtitle="Grados cursados en cada año escolar, resultado y notas finales">
       <AcademicHistory data={data} />
+    </Card>
+  );
+}
+
+/** Historial disciplinario del alumno (solo lectura): tipo de falta, motivo, medida, fecha y lapso. */
+function PortalSanctions({ studentId }) {
+  const { data, loading, error } = useFetch(() => portalApi.getStudentSanctions(studentId), [studentId]);
+  if (loading) return <Spinner />;
+  if (error) return <Alert>{error}</Alert>;
+  return (
+    <Card title="Historial disciplinario" subtitle="Faltas y llamados de atención registrados por el colegio">
+      <SeverityTotals totals={data.totals} />
+      {data.items.length === 0 ? (
+        <p className="text-muted">Sin sanciones registradas. ¡Sigue así!</p>
+      ) : (
+        <div className="sanction-list">
+          {data.items.map((s) => (
+            <SanctionCard key={s.id} sanction={s} />
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

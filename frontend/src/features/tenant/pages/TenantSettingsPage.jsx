@@ -10,10 +10,11 @@ import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
-import Icon from '../../../components/ui/Icon';
 import ImageUpload from '../../../components/ui/ImageUpload';
 import { useToast } from '../../../components/ui/Toast';
 import { notifyBrandingChanged } from '../../../lib/tenantSlug';
+import { useThemePreview } from '../../../theme/ThemeProvider';
+import AppearanceEditor, { ThemePreview } from '../components/AppearanceEditor';
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 
@@ -22,6 +23,9 @@ function pickForm(settings) {
     name: settings.name || '',
     primaryColor: settings.primaryColor || '#2563EB',
     secondaryColor: settings.secondaryColor || '#1E293B',
+    menuGradient: settings.menuGradient || 'deep',
+    accentSecondaryColor: settings.accentSecondaryColor || '', // '' = automático
+    tableHeaderStyle: settings.tableHeaderStyle || 'subtle',
     contactPhone: settings.contactPhone || '',
     contactEmail: settings.contactEmail || '',
   };
@@ -40,27 +44,6 @@ function useObjectUrl(file) {
     return () => URL.revokeObjectURL(next);
   }, [file]);
   return url;
-}
-
-function ColorField({ label, name, value, onChange, error, disabled }) {
-  const valid = HEX.test(value);
-  return (
-    <Field label={label} error={error || (!valid ? 'Usa un color hex, ej. #2563EB' : null)}>
-      <div className="color-field">
-        <label className="color-field__swatch" style={{ background: valid ? value : '#fff' }} title="Elegir color">
-          <input
-            type="color"
-            name={name}
-            value={valid ? value : '#000000'}
-            onChange={onChange}
-            aria-label={label}
-            disabled={disabled}
-          />
-        </label>
-        <Input name={name} value={value} onChange={onChange} error={!valid || error} maxLength={7} disabled={disabled} />
-      </div>
-    </Field>
-  );
 }
 
 function TenantSettingsPage() {
@@ -85,7 +68,24 @@ function TenantSettingsPage() {
     if (file) setRemoveLogo(false);
   };
 
-  const colorsValid = HEX.test(form.primaryColor) && HEX.test(form.secondaryColor);
+  const colorsValid = HEX.test(form.primaryColor) && HEX.test(form.secondaryColor) && (!form.accentSecondaryColor || HEX.test(form.accentSecondaryColor));
+
+  // Vista previa EN VIVO en toda la plataforma mientras se editan los colores
+  // (sin guardar). Al salir de la página o descartar, vuelve a lo guardado.
+  const { setPreview } = useThemePreview();
+  const themeKey = [form.primaryColor, form.secondaryColor, form.menuGradient, form.accentSecondaryColor, form.tableHeaderStyle].join('|');
+  useEffect(() => {
+    if (!colorsValid) return;
+    setPreview({
+      menuColor: form.secondaryColor,
+      accentColor: form.primaryColor,
+      menuGradient: form.menuGradient,
+      accentSecondaryColor: form.accentSecondaryColor || null,
+      tableHeaderStyle: form.tableHeaderStyle,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeKey, colorsValid]);
+  useEffect(() => () => setPreview(null), [setPreview]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -95,6 +95,9 @@ function TenantSettingsPage() {
     data.append('name', form.name.trim());
     data.append('primaryColor', form.primaryColor);
     data.append('secondaryColor', form.secondaryColor);
+    data.append('menuGradient', form.menuGradient);
+    data.append('tableHeaderStyle', form.tableHeaderStyle);
+    data.append('accentSecondaryColor', form.accentSecondaryColor || 'auto');
     data.append('contactPhone', form.contactPhone.trim());
     data.append('contactEmail', form.contactEmail.trim());
     if (logoFile) data.append('logo', logoFile);
@@ -178,22 +181,14 @@ function TenantSettingsPage() {
               />
             </Field>
 
-            <ColorField
-              label="Color primario"
-              name="primaryColor"
-              value={form.primaryColor}
-              onChange={handleChange}
-              error={fieldErrors.primaryColor}
-              disabled={!canEdit}
-            />
-            <ColorField
-              label="Color secundario (menú lateral)"
-              name="secondaryColor"
-              value={form.secondaryColor}
-              onChange={handleChange}
-              error={fieldErrors.secondaryColor}
-              disabled={!canEdit}
-            />
+            <div className="form-field--full appearance-section">
+              <h3 className="appearance-section__title">Apariencia</h3>
+              <p className="text-sm text-muted">
+                Elige dos colores: el resto (degradado del menú, tonos al pasar el cursor, textos legibles) se calcula solo. Los cambios se ven en
+                toda la plataforma mientras editas y se guardan al pulsar «Guardar cambios».
+              </p>
+              <AppearanceEditor form={form} setForm={setForm} onChange={handleChange} fieldErrors={fieldErrors} disabled={!canEdit} />
+            </div>
           </div>
 
           <RequirePermission module="tenant_settings" action="update">
@@ -204,6 +199,7 @@ function TenantSettingsPage() {
                 disabled={!dirty || loading}
                 onClick={() => {
                   setForm(pickForm(settings));
+                  setPreview(null);
                   setLogoFile(null);
                   setRemoveLogo(false);
                 }}
@@ -218,44 +214,7 @@ function TenantSettingsPage() {
         </form>
 
         <Card title="Vista previa" subtitle="Así se verá el panel con estos cambios">
-          <div className="brand-preview">
-            <div className="brand-preview__side" style={{ background: HEX.test(form.secondaryColor) ? form.secondaryColor : '#1E293B', color: '#f8fafc' }}>
-              <div className="brand-preview__brand">
-                {previewLogo ? (
-                  <img src={previewLogo} alt="" className="brand-preview__logo" style={{ background: '#fff', padding: 2 }} />
-                ) : (
-                  <span className="brand-preview__logo" style={{ background: form.primaryColor }}>
-                    <Icon name="school" size={16} />
-                  </span>
-                )}
-                <span>{form.name || 'Nombre del colegio'}</span>
-              </div>
-              <div className="brand-preview__item" style={{ background: `${form.primaryColor}33` }}>
-                Inicio
-              </div>
-              <div className="brand-preview__item" style={{ opacity: 0.6 }}>
-                Alumnos
-              </div>
-              <div className="brand-preview__item" style={{ opacity: 0.6 }}>
-                Pagos
-              </div>
-            </div>
-            <div className="brand-preview__main">
-              <div className="brand-preview__card">
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Tarjeta de ejemplo</div>
-                <div style={{ height: 6, borderRadius: 99, background: 'var(--color-border)', marginBottom: 6 }} />
-                <div style={{ height: 6, width: '60%', borderRadius: 99, background: 'var(--color-border)' }} />
-              </div>
-              <button
-                type="button"
-                className="btn btn--sm"
-                style={{ background: form.primaryColor, color: '#fff', alignSelf: 'flex-start', cursor: 'default' }}
-                tabIndex={-1}
-              >
-                Botón principal
-              </button>
-            </div>
-          </div>
+          <ThemePreview form={form} logoUrl={previewLogo} />
         </Card>
       </div>
     </div>

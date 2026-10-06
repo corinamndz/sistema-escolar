@@ -10,6 +10,8 @@ const portalApi = {
       return r.data;
     }),
   /** Calificaciones acumuladas de un alumno del representante (404 si no es su representado). */
+  /** Historial disciplinario (sanciones) del alumno: { student, items, totals }. */
+  getStudentSanctions: (studentId) => axiosClient.get(`/portal/students/${studentId}/sanctions`).then((r) => r.data),
   /** Horario semanal (solo lectura) de la sección del alumno. */
   getStudentSchedule: (studentId) => axiosClient.get(`/portal/students/${studentId}/schedule`).then((r) => r.data),
   /** Historial académico de un alumno del representante. */

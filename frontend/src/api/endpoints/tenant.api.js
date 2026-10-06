@@ -2,6 +2,8 @@ import { axiosClient } from '../axiosClient';
 
 const tenantApi = {
   getSettings: () => axiosClient.get('/tenant/settings').then((r) => r.data),
+  /** Nombre, logo, colores y contacto del colegio: para cualquier usuario con sesión. */
+  getProfile: () => axiosClient.get('/tenant/profile').then((r) => r.data),
   /**
    * `formData` es un FormData con los campos de texto y, opcionalmente, el
    * archivo `logo`. Hay que pisar el Content-Type JSON por defecto del

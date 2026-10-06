@@ -67,6 +67,37 @@ const removeEntry = asyncHandler(async (req, res) => {
   res.status(200).json(await service.removeEntry(req.db, req.tenantId, uuid.parse(req.params.id)));
 });
 
+/**
+ * GET /schedules?school_period_id=&grade_id=&section_id=&teacher_id=
+ * Horario filtrado (administración, solo lectura). Todos los filtros son
+ * opcionales y combinables; se requiere el año escolar o la sección. Acepta
+ * también camelCase (schoolPeriodId, gradeId, sectionId, teacherId).
+ */
+const querySchedule = asyncHandler(async (req, res) => {
+  const q = req.query;
+  const pick = (snake, camel) => (q[snake] ?? q[camel]) || undefined;
+  const filters = z
+    .object({
+      schoolPeriodId: uuid.optional(),
+      gradeId: uuid.optional(),
+      sectionId: uuid.optional(),
+      teacherId: uuid.optional(),
+    })
+    .parse({
+      schoolPeriodId: pick('school_period_id', 'schoolPeriodId'),
+      gradeId: pick('grade_id', 'gradeId'),
+      sectionId: pick('section_id', 'sectionId'),
+      teacherId: pick('teacher_id', 'teacherId'),
+    });
+  res.status(200).json(await service.querySchedule(req.db, req.tenantId, filters));
+});
+
+/** GET /schedules/teachers?school_period_id= — docentes A-Z con sus horas en el año (filtro "Ver por docente"). */
+const listTeachers = asyncHandler(async (req, res) => {
+  const periodId = uuid.parse(req.query.school_period_id ?? req.query.schoolPeriodId);
+  res.status(200).json(await service.listTeachers(req.db, req.tenantId, periodId));
+});
+
 /** GET /schedules/mine — horario semanal del docente autenticado (solo lectura). */
 const mySchedule = asyncHandler(async (req, res) => {
   const staff = await req.db('staff').where({ tenant_id: req.tenantId, user_id: req.user.id }).select('id').first();
@@ -74,4 +105,4 @@ const mySchedule = asyncHandler(async (req, res) => {
   res.status(200).json(await service.getTeacherSchedule(req.db, req.tenantId, staff.id));
 });
 
-module.exports = { listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule };
+module.exports = { listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers };

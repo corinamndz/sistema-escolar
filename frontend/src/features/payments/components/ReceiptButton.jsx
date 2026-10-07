@@ -1,19 +1,8 @@
 import { useState } from 'react';
 import paymentsApi from '../../../api/endpoints/payments.api';
-import { getErrorMessage } from '../../../api/axiosClient';
 import { useToast } from '../../../components/ui/Toast';
 import Icon from '../../../components/ui/Icon';
-
-/** Lee el mensaje de error del backend cuando la respuesta pedida era un Blob. */
-async function blobErrorMessage(err) {
-  try {
-    const text = await err?.response?.data?.text?.();
-    if (text) return JSON.parse(text).error?.message || getErrorMessage(err);
-  } catch {
-    // mensaje genérico
-  }
-  return getErrorMessage(err);
-}
+import { blobErrorMessage } from '../../../utils/download';
 
 /**
  * Abre el recibo PDF de un pago en otra pestaña. El recibo es privado: se

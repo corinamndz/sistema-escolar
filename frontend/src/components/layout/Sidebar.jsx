@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTenant } from '../../context/TenantContext';
 import Icon from '../ui/Icon';
+import SchoolLogo from '../ui/SchoolLogo';
 import { NAV_SECTIONS, isNavItemVisible, navItemLabel } from './navigation';
 import { initials } from './initials';
 
@@ -27,13 +28,9 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
       aria-label="Menú principal"
     >
       <div className="sidebar__brand">
-        {settings.logoUrl ? (
-          <img src={settings.logoUrl} alt={settings.name} className="sidebar__logo" />
-        ) : (
-          <div className="sidebar__logo">
-            <Icon name="school" size={20} />
-          </div>
-        )}
+        {/* Sin logo propio (o si no carga): el de MoDo Educa. */}
+        <SchoolLogo src={settings.logoUrl} name={settings.name} className="sidebar__logo" />
+
         {!compact && (
           <div className="sidebar__brand-text">
             <span className="sidebar__school-name" title={settings.name}>

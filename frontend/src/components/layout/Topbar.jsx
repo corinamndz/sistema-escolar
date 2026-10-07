@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTenant } from '../../context/TenantContext';
 import Icon from '../ui/Icon';
+import SchoolLogo from '../ui/SchoolLogo';
 import { findRouteMeta } from './navigation';
 import { initials } from './initials';
 
@@ -63,13 +64,7 @@ function Topbar({ onOpenMobileSidebar }) {
 
       <div className="topbar__right">
         <div className="topbar__school" title={settings.name}>
-          {settings.logoUrl ? (
-            <img src={settings.logoUrl} alt="" className="topbar__school-logo" />
-          ) : (
-            <span className="topbar__school-logo">
-              <Icon name="building" size={14} />
-            </span>
-          )}
+          <SchoolLogo src={settings.logoUrl} alt="" className="topbar__school-logo" />
           <span>{settings.name}</span>
         </div>
 

@@ -10,7 +10,11 @@ import Icon from '../../../components/ui/Icon';
  *     pintar la celda mientras se arrastra (rojo = cruce del docente).
  *   - `onCellDrop(day, slot)` al soltar; `onCellClick(day, slot)` para el modo
  *     tocar-y-colocar (pantallas táctiles, teclado).
- *   - `onEntryDragStart(entry)`, `onEntryRemove(entry)` sobre una clase.
+ *   - `onEntryDragStart(entry)`, `onEntryRemove(entry)` sobre una clase;
+ *     `onEntrySelect(entry)` al tocarla (mover con toques) y
+ *     `selectedEntryId` para resaltarla.
+ *   - `cellState` puede traer `action: 'replace' | 'swap'` en una celda
+ *     ocupada: se muestra "Reemplazar" o "Intercambiar" al pasar por encima.
  * `entryText(entry)` → { title, sub } de cada clase (por defecto materia y docente).
  *
  * Solo lectura:
@@ -33,6 +37,8 @@ function ScheduleGrid({
   colorOf,
   cellHint,
   onEntryClick,
+  onEntrySelect,
+  selectedEntryId,
 }) {
   const at = (day, slotId) => entries.filter((e) => e.day_of_week === day && e.time_slot_id === slotId);
 
@@ -76,6 +82,7 @@ function ScheduleGrid({
                     hint.className || '',
                     state.conflict ? 'is-conflict' : '',
                     state.droppable ? 'is-droppable' : '',
+                    state.action ? `is-${state.action}` : '',
                     list.length ? 'is-filled' : '',
                   ]
                     .filter(Boolean)
@@ -89,6 +96,7 @@ function ScheduleGrid({
                         editable
                           ? (e) => {
                               e.preventDefault();
+                              // Debe ser compatible con el effectAllowed del origen ('copyMove').
                               e.dataTransfer.dropEffect = state.conflict ? 'none' : 'move';
                             }
                           : undefined
@@ -109,7 +117,7 @@ function ScheduleGrid({
                         return (
                           <div
                             key={entry.id}
-                            className={`schedule-entry ${entry.teacher_changed ? 'has-warning' : ''} ${clickable ? 'is-clickable' : ''}`}
+                            className={`schedule-entry ${entry.teacher_changed ? 'has-warning' : ''} ${clickable ? 'is-clickable' : ''} ${selectedEntryId === entry.id ? 'is-selected' : ''}`}
                             role={clickable ? 'button' : undefined}
                             tabIndex={clickable ? 0 : undefined}
                             onKeyDown={
@@ -134,7 +142,16 @@ function ScheduleGrid({
                                 : undefined
                             }
                             onDragEnd={editable ? () => onEntryDragEnd?.() : undefined}
-                            onClick={editable ? (e) => e.stopPropagation() : clickable ? () => onEntryClick(entry) : undefined}
+                            onClick={
+                              editable
+                                ? (e) => {
+                                    e.stopPropagation();
+                                    onEntrySelect?.(entry);
+                                  }
+                                : clickable
+                                  ? () => onEntryClick(entry)
+                                  : undefined
+                            }
                           >
                             <strong>{text.title}</strong>
                             {text.sub && <span>{text.sub}</span>}
@@ -150,8 +167,12 @@ function ScheduleGrid({
                               <button
                                 type="button"
                                 className="schedule-entry__remove"
-                                onClick={() => onEntryRemove(entry)}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // no seleccionar la clase al quitarla
+                                  onEntryRemove(entry);
+                                }}
                                 aria-label={`Quitar ${text.title}`}
+                                title="Quitar del horario"
                               >
                                 <Icon name="x" size={12} />
                               </button>
@@ -160,6 +181,12 @@ function ScheduleGrid({
                         );
                       })}
                       {state.conflict && !list.length && <span className="schedule-grid__conflict-hint">Cruce</span>}
+                      {state.action && list.length > 0 && (
+                        <span className="schedule-grid__action" aria-hidden="true">
+                          <Icon name={state.action === 'swap' ? 'arrowRight' : 'pencil'} size={12} />
+                          {state.action === 'swap' ? 'Intercambiar' : 'Reemplazar'}
+                        </span>
+                      )}
                       {!state.conflict && hint.label && !list.length && <span className="schedule-grid__hint">{hint.label}</span>}
                     </td>
                   );

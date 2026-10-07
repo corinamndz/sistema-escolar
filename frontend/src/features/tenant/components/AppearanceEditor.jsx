@@ -1,81 +1,99 @@
-import Field from '../../../components/ui/Field';
-import Input from '../../../components/ui/Input';
 import Icon from '../../../components/ui/Icon';
-import { DEFAULT_THEME, PRESETS, buildTheme, isHex, menuGradient } from '../../../theme/palette';
+import SchoolLogo from '../../../components/ui/SchoolLogo';
+import { ACCENT_SWATCHES, DEFAULT_THEME, MENU_SWATCHES, PRESETS, isHex, menuGradient, themeFromColors } from '../../../theme/palette';
 
-/** Selector de color: muestra + campo hex. */
-export function ColorField({ label, name, value, onChange, error, disabled, hint }) {
-  const valid = isHex(value);
-  return (
-    <Field label={label} hint={hint} error={error || (!valid ? 'Usa un color hex, ej. #2563EB' : null)}>
-      <div className="color-field">
-        <label className="color-field__swatch" style={{ background: valid ? value : '#fff' }} title="Elegir color">
-          <input type="color" name={name} value={valid ? value : '#000000'} onChange={onChange} aria-label={label} disabled={disabled} />
-        </label>
-        <Input name={name} value={value} onChange={onChange} error={!valid || error} maxLength={7} disabled={disabled} />
-      </div>
-    </Field>
-  );
-}
-
-/** Nivel de contraste WCAG legible para el usuario. */
-function ContrastBadge({ ratio }) {
-  const level = ratio >= 4.5 ? ['ok', 'Contraste óptimo'] : ratio >= 3 ? ['warn', 'Contraste justo'] : ['bad', 'Contraste bajo'];
-  return (
-    <span className={`contrast-badge contrast-badge--${level[0]}`} title={`Relación de contraste ${ratio.toFixed(1)}:1 (mínimo recomendado 4.5:1)`}>
-      <Icon name={level[0] === 'ok' ? 'checkCircle' : 'alertTriangle'} size={12} /> {level[1]} · {ratio.toFixed(1)}:1
-    </span>
-  );
-}
-
-function Swatch({ color, label }) {
-  return (
-    <span className="theme-swatch">
-      <span className="theme-swatch__chip" style={{ background: color }} />
-      <span>
-        {label}
-        <code>{color}</code>
-      </span>
-    </span>
-  );
-}
-
-const GRADIENTS = [
-  { key: 'deep', label: 'Profundo', hint: 'Mismo tono, más intenso abajo' },
-  { key: 'analogous', label: 'Armónico', hint: 'Hacia un tono vecino' },
-  { key: 'solid', label: 'Sólido', hint: 'Sin degradado' },
-];
-const HEADERS = [
-  { key: 'subtle', label: 'Suave', hint: 'Tinte del acento' },
-  { key: 'solid', label: 'Intenso', hint: 'Acento pleno' },
-  { key: 'neutral', label: 'Neutro', hint: 'Gris clásico' },
-];
+const upper = (v) => String(v || '').toUpperCase();
+const gradientCss = (hex) => {
+  const g = menuGradient(hex);
+  return `linear-gradient(170deg, ${g.start}, ${g.end})`;
+};
 
 /**
- * Apariencia del colegio: dos selectores principales (menú y acento) y el
- * resto se calcula solo (degradado, hover, texto legible, encabezados…).
+ * Selector de UN color: muestras predefinidas + "Personalizado" (selector
+ * nativo) + código hex para colores institucionales exactos.
+ * `swatchStyle(hex)` dibuja cada muestra (el menú se ve con su degradado).
+ */
+function ColorChoice({ step, title, description, name, value, swatches, swatchStyle, onPick, onChange, error, disabled }) {
+  const valid = isHex(value);
+  const isCustom = valid && !swatches.some((s) => s.color === upper(value));
+  return (
+    <section className="color-choice" aria-labelledby={`${name}-title`}>
+      <header className="color-choice__head">
+        <span className="gp-step">{step}</span>
+        <div>
+          <h4 id={`${name}-title`}>{title}</h4>
+          <p className="text-sm text-muted">{description}</p>
+        </div>
+      </header>
+
+      <div className="color-choice__grid" role="radiogroup" aria-labelledby={`${name}-title`}>
+        {swatches.map((s) => {
+          const selected = upper(value) === s.color;
+          return (
+            <button
+              key={s.color}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-label={s.name}
+              title={s.name}
+              className={`color-choice__swatch ${selected ? 'is-selected' : ''}`}
+              style={swatchStyle(s.color)}
+              onClick={() => onPick(s.color)}
+              disabled={disabled}
+            >
+              {selected && <Icon name="check" size={16} />}
+            </button>
+          );
+        })}
+        {/* Personalizado: abre el selector de color del navegador. */}
+        <label
+          className={`color-choice__swatch color-choice__swatch--custom ${isCustom ? 'is-selected' : ''} ${disabled ? 'is-disabled' : ''}`}
+          style={isCustom ? swatchStyle(upper(value)) : undefined}
+          title="Color personalizado"
+        >
+          <input type="color" value={valid ? value.toLowerCase() : '#000000'} onChange={(e) => onPick(e.target.value.toUpperCase())} disabled={disabled} aria-label={`${title}: color personalizado`} />
+          {isCustom ? <Icon name="check" size={16} /> : <Icon name="plus" size={16} />}
+        </label>
+      </div>
+
+      <div className="color-choice__code">
+        <span className="color-choice__dot" style={{ background: valid ? value : 'transparent' }} />
+        <input
+          name={name}
+          value={value}
+          onChange={onChange}
+          maxLength={7}
+          disabled={disabled}
+          spellCheck={false}
+          aria-label={`${title}: código de color`}
+          aria-invalid={!valid || Boolean(error)}
+          className={`input color-choice__hex ${!valid || error ? 'input--error' : ''}`}
+        />
+        {(!valid || error) && <span className="color-choice__error">{error || 'Usa un código como #2563EB'}</span>}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Apariencia del colegio, simplificada a DOS colores:
+ *   1. Menú lateral: su degradado y el color del texto se calculan solos.
+ *   2. Acento: botones, enlaces, pestañas, encabezados de tabla y detalles.
+ * Arriba, paletas rápidas que fijan los dos de un clic.
  * `form` usa los nombres del API: secondaryColor = menú, primaryColor = acento.
  */
 function AppearanceEditor({ form, setForm, onChange, fieldErrors = {}, disabled }) {
-  const { info } = buildTheme({
-    menuColor: form.secondaryColor,
-    accentColor: form.primaryColor,
-    menuGradient: form.menuGradient,
-    accentSecondaryColor: form.accentSecondaryColor || null,
-    tableHeaderStyle: form.tableHeaderStyle,
-  });
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
-  const menuValid = isHex(form.secondaryColor);
-  const accentValid = isHex(form.primaryColor);
+  const isDefault = upper(form.secondaryColor) === DEFAULT_THEME.menuColor && upper(form.primaryColor) === DEFAULT_THEME.accentColor;
 
   return (
     <div className="appearance">
-      <div className="appearance__presets">
-        <span className="student-card__label">Combinaciones sugeridas</span>
+      <div className="appearance__quick">
+        <span className="student-card__label">Paletas rápidas</span>
         <div className="appearance__preset-list">
           {PRESETS.map((p) => {
-            const active = form.secondaryColor.toUpperCase() === p.menuColor && form.primaryColor.toUpperCase() === p.accentColor;
-            const g = menuGradient(p.menuColor, form.menuGradient);
+            const active = upper(form.secondaryColor) === p.menuColor && upper(form.primaryColor) === p.accentColor;
             return (
               <button
                 key={p.name}
@@ -84,10 +102,11 @@ function AppearanceEditor({ form, setForm, onChange, fieldErrors = {}, disabled 
                 onClick={() => set({ secondaryColor: p.menuColor, primaryColor: p.accentColor })}
                 disabled={disabled}
                 aria-pressed={active}
-                title={p.name}
               >
-                <span className="appearance__preset-menu" style={{ background: `linear-gradient(170deg, ${g.start}, ${g.end})` }} />
-                <span className="appearance__preset-accent" style={{ background: p.accentColor }} />
+                <span className="appearance__preset-colors">
+                  <span style={{ background: gradientCss(p.menuColor) }} />
+                  <span style={{ background: p.accentColor }} />
+                </span>
                 <span className="appearance__preset-name">{p.name}</span>
               </button>
             );
@@ -95,161 +114,58 @@ function AppearanceEditor({ form, setForm, onChange, fieldErrors = {}, disabled 
         </div>
       </div>
 
-      {/* 1 · Menú lateral */}
-      <section className="appearance__block">
-        <h4>
-          <span className="gp-step">1</span> Color del menú
-        </h4>
-        <ColorField
-          label="Color base del menú lateral"
+      <div className="appearance__choices">
+        <ColorChoice
+          step="1"
+          title="Color del menú"
+          description="Menú lateral. El degradado y el color del texto se ajustan solos."
           name="secondaryColor"
           value={form.secondaryColor}
+          swatches={MENU_SWATCHES}
+          swatchStyle={(hex) => ({ background: gradientCss(hex), color: themeFromColors(hex).info.menuFg })}
+          onPick={(hex) => set({ secondaryColor: hex })}
           onChange={onChange}
           error={fieldErrors.secondaryColor}
           disabled={disabled}
-          hint="El degradado se calcula solo a partir de este color."
         />
-        <div className="appearance__segmented" role="radiogroup" aria-label="Estilo del degradado">
-          {GRADIENTS.map((o) => {
-            const g = menuValid ? menuGradient(form.secondaryColor, o.key) : { start: '#1E293B', end: '#0F172A' };
-            return (
-              <label key={o.key} className={`appearance__option ${form.menuGradient === o.key ? 'is-selected' : ''}`}>
-                <input type="radio" name="menuGradient" value={o.key} checked={form.menuGradient === o.key} onChange={() => set({ menuGradient: o.key })} disabled={disabled} />
-                <span className="appearance__option-swatch" style={{ background: `linear-gradient(170deg, ${g.start}, ${g.end})` }} />
-                <strong>{o.label}</strong>
-                <span className="text-sm text-muted">{o.hint}</span>
-              </label>
-            );
-          })}
-        </div>
-        {menuValid && (
-          <div className="appearance__derived">
-            <Swatch color={info.menuStart} label="Inicio" />
-            <Swatch color={info.menuEnd} label="Fin" />
-            <Swatch color={info.menuFg} label="Texto del menú" />
-            <ContrastBadge ratio={info.contrasts.menu} />
-          </div>
-        )}
-      </section>
-
-      {/* 2 · Acento */}
-      <section className="appearance__block">
-        <h4>
-          <span className="gp-step">2</span> Color de acento
-        </h4>
-        <ColorField
-          label="Botones, encabezados de tabla y elementos activos"
+        <ColorChoice
+          step="2"
+          title="Color de acento"
+          description="Botones principales, enlaces, pestañas y detalles destacados."
           name="primaryColor"
           value={form.primaryColor}
+          swatches={ACCENT_SWATCHES}
+          swatchStyle={(hex) => ({ background: hex, color: themeFromColors(undefined, hex).info.onAccent })}
+          onPick={(hex) => set({ primaryColor: hex })}
           onChange={onChange}
           error={fieldErrors.primaryColor}
           disabled={disabled}
         />
-        <span className="student-card__label">Encabezados de tabla</span>
-        <div className="appearance__segmented" role="radiogroup" aria-label="Estilo de los encabezados de tabla">
-          {HEADERS.map((o) => {
-            const h = accentValid ? buildTheme({ accentColor: form.primaryColor, tableHeaderStyle: o.key }).info.header : { bg: '#F8FAFC', fg: '#64748B' };
-            return (
-              <label key={o.key} className={`appearance__option ${form.tableHeaderStyle === o.key ? 'is-selected' : ''}`}>
-                <input type="radio" name="tableHeaderStyle" value={o.key} checked={form.tableHeaderStyle === o.key} onChange={() => set({ tableHeaderStyle: o.key })} disabled={disabled} />
-                <span className="appearance__option-header" style={{ background: h.bg, color: h.fg }}>
-                  ALUMNO · NOTA
-                </span>
-                <strong>{o.label}</strong>
-                <span className="text-sm text-muted">{o.hint}</span>
-              </label>
-            );
-          })}
-        </div>
-        {accentValid && (
-          <div className="appearance__derived">
-            <Swatch color={info.accentHover} label="Al pasar el cursor" />
-            <Swatch color={info.onAccent} label="Texto sobre el acento" />
-            <ContrastBadge ratio={info.contrasts.button} />
-            <Swatch color={info.accentText} label="Enlaces y textos" />
-            {info.accentText !== info.accent && <span className="text-sm text-muted">Oscurecido automáticamente para que se lea bien sobre blanco.</span>}
-          </div>
-        )}
-      </section>
+      </div>
 
-      {/* Opciones avanzadas */}
-      <details className="appearance__advanced">
-        <summary>Opciones avanzadas</summary>
-        <div className="appearance__advanced-body">
-          <Field label="Acento secundario" hint="Para insignias y detalles. En automático se elige un tono que combina con el acento.">
-            <div className="appearance__auto-row">
-              <label className="appearance__check">
-                <input
-                  type="checkbox"
-                  checked={!form.accentSecondaryColor}
-                  onChange={(e) => set({ accentSecondaryColor: e.target.checked ? '' : info.accent2 })}
-                  disabled={disabled}
-                />
-                Automático
-              </label>
-              {form.accentSecondaryColor ? (
-                <ColorField label="Acento secundario" name="accentSecondaryColor" value={form.accentSecondaryColor} onChange={onChange} error={fieldErrors.accentSecondaryColor} disabled={disabled} />
-              ) : (
-                <Swatch color={info.accent2} label="Calculado" />
-              )}
-            </div>
-          </Field>
-          <div className="appearance__vars">
-            <span className="student-card__label">Variables generadas</span>
-            <div className="appearance__derived">
-              <Swatch color={info.menuStart} label="--sidebar-bg-start" />
-              <Swatch color={info.menuEnd} label="--sidebar-bg-end" />
-              <Swatch color={info.accent} label="--color-primary" />
-              <Swatch color={info.accentHover} label="--color-primary-hover" />
-              <Swatch color={info.accentText} label="--color-primary-text" />
-              <Swatch color={info.onAccent} label="--color-on-primary" />
-              <Swatch color={info.accent2} label="--color-accent-2" />
-              <Swatch color={info.header.bg} label="--table-head-bg" />
-              <Swatch color={info.header.fg} label="--table-head-fg" />
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm"
-            onClick={() =>
-              set({
-                secondaryColor: DEFAULT_THEME.menuColor,
-                primaryColor: DEFAULT_THEME.accentColor,
-                menuGradient: DEFAULT_THEME.menuGradient,
-                accentSecondaryColor: '',
-                tableHeaderStyle: DEFAULT_THEME.tableHeaderStyle,
-              })
-            }
-            disabled={disabled}
-          >
-            <Icon name="arrowLeft" size={14} /> Restablecer colores por defecto
-          </button>
-        </div>
-      </details>
+      {!isDefault && (
+        <button
+          type="button"
+          className="link-button appearance__reset"
+          onClick={() => set({ secondaryColor: DEFAULT_THEME.menuColor, primaryColor: DEFAULT_THEME.accentColor })}
+          disabled={disabled}
+        >
+          <Icon name="arrowLeft" size={14} /> Volver a los colores originales
+        </button>
+      )}
     </div>
   );
 }
 
-/** Vista previa en miniatura del panel con la paleta en edición. */
+/** Vista previa en miniatura del panel con los dos colores en edición. */
 export function ThemePreview({ form, logoUrl }) {
-  const { info } = buildTheme({
-    menuColor: form.secondaryColor,
-    accentColor: form.primaryColor,
-    menuGradient: form.menuGradient,
-    accentSecondaryColor: form.accentSecondaryColor || null,
-    tableHeaderStyle: form.tableHeaderStyle,
-  });
+  const { info } = themeFromColors(form.secondaryColor, form.primaryColor);
   return (
     <div className="brand-preview">
       <div className="brand-preview__side" style={{ background: `linear-gradient(170deg, ${info.menuStart}, ${info.menuEnd})`, color: info.menuFg }}>
         <div className="brand-preview__brand">
-          {logoUrl ? (
-            <img src={logoUrl} alt="" className="brand-preview__logo" style={{ background: '#fff', padding: 2 }} />
-          ) : (
-            <span className="brand-preview__logo" style={{ background: info.accent, color: info.onAccent }}>
-              <Icon name="school" size={16} />
-            </span>
-          )}
+          {/* Sin logo propio: el de MoDo Educa, igual que en el menú real. */}
+          <SchoolLogo src={logoUrl} alt="" className="brand-preview__logo" style={{ background: '#fff', padding: 2 }} />
           <span>{form.name || 'Nombre del colegio'}</span>
         </div>
         <div className="brand-preview__item" style={{ background: `${info.accent}40`, boxShadow: `inset 3px 0 0 ${info.accent}` }}>
@@ -284,7 +200,7 @@ export function ThemePreview({ form, logoUrl }) {
           <span className="brand-preview__btn" style={{ background: info.accent, color: info.onAccent }}>
             Botón principal
           </span>
-          <span className="brand-preview__badge" style={{ background: info.accent2, color: readableBadge(info.accent2) }}>
+          <span className="brand-preview__badge" style={{ background: info.accent2, color: themeFromColors(undefined, info.accent2).info.onAccent }}>
             Insignia
           </span>
         </div>
@@ -292,7 +208,5 @@ export function ThemePreview({ form, logoUrl }) {
     </div>
   );
 }
-
-const readableBadge = (hex) => buildTheme({ accentColor: hex }).info.onAccent;
 
 export default AppearanceEditor;

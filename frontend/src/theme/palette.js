@@ -209,3 +209,38 @@ export const PRESETS = [
   { name: 'Atardecer', menuColor: '#431407', accentColor: '#EA580C' },
   { name: 'Grafito', menuColor: '#18181B', accentColor: '#52525B' },
 ];
+
+/** Muestras para el color del menú: tonos oscuros/profundos, que dan buen contraste con texto claro. */
+export const MENU_SWATCHES = [
+  { name: 'Pizarra', color: '#1E293B' },
+  { name: 'Azul marino', color: '#1E3A8A' },
+  { name: 'Océano', color: '#0C4A6E' },
+  { name: 'Verde azulado', color: '#134E4A' },
+  { name: 'Verde bosque', color: '#14532D' },
+  { name: 'Vinotinto', color: '#4C0519' },
+  { name: 'Morado', color: '#2E1065' },
+  { name: 'Café', color: '#431407' },
+  { name: 'Grafito', color: '#18181B' },
+];
+
+/** Muestras para el color de acento: tonos vivos, legibles en botones. */
+export const ACCENT_SWATCHES = [
+  { name: 'Azul', color: '#2563EB' },
+  { name: 'Celeste', color: '#0891B2' },
+  { name: 'Verde azulado', color: '#0D9488' },
+  { name: 'Verde', color: '#16A34A' },
+  { name: 'Ámbar', color: '#D97706' },
+  { name: 'Naranja', color: '#EA580C' },
+  { name: 'Rojo', color: '#DC2626' },
+  { name: 'Carmesí', color: '#BE123C' },
+  { name: 'Rosa', color: '#DB2777' },
+  { name: 'Morado', color: '#7C3AED' },
+  { name: 'Gris', color: '#52525B' },
+];
+
+/**
+ * Tema a partir de SOLO los dos colores que elige el colegio. Todo lo demás
+ * (degradado del menú, hover, texto legible, acento secundario, encabezados
+ * de tabla) se calcula en automático con los valores por defecto.
+ */
+export const themeFromColors = (menuColor, accentColor) => buildTheme({ menuColor, accentColor });

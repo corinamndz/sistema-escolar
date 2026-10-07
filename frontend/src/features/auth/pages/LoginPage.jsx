@@ -9,6 +9,7 @@ import Field from '../../../components/ui/Field';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
+import SchoolLogo from '../../../components/ui/SchoolLogo';
 import platformLogo from '../../../assets/modo-educa-logo.webp';
 import {
   BRANDING_UPDATED_KEY,
@@ -41,16 +42,6 @@ const HIGHLIGHTS = [
 ];
 
 const LOOKUP_DELAY_MS = 350;
-
-/** "Colegio San José de Calasanz" → "SJ" (para el monograma cuando no hay logo). */
-const monogram = (name = '') =>
-  name
-    .replace(/^(colegio|escuela|instituto|unidad educativa|u\.?e\.?)\s+/i, '')
-    .split(/\s+/)
-    .filter((w) => w.length > 2)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join('') || 'SE';
 
 /**
  * Busca la marca pública del colegio mientras se escribe el identificador y la
@@ -110,18 +101,9 @@ function useTenantBranding(slug) {
   return state;
 }
 
+/** Logo del colegio en el panel lateral; sin logo propio (o sin colegio aún), el de MoDo Educa. */
 function SchoolMark({ branding, size = 'lg' }) {
-  if (branding?.logoUrl) {
-    return <img src={branding.logoUrl} alt={`Logo de ${branding.name}`} className={`school-mark school-mark--${size} school-mark--img`} />;
-  }
-  if (branding) {
-    return <span className={`school-mark school-mark--${size}`}>{monogram(branding.name)}</span>;
-  }
-  return (
-    <span className={`school-mark school-mark--${size}`}>
-      <Icon name="school" size={size === 'lg' ? 28 : 20} />
-    </span>
-  );
+  return <SchoolLogo src={branding?.logoUrl} name={branding?.name} className={`school-mark school-mark--${size} school-mark--img`} />;
 }
 
 /** Producto y empresa creadora del software. */
@@ -145,21 +127,13 @@ function PlatformLogo() {
 
 /**
  * Identidad del COLEGIO cliente, separada de la marca MoDo Educa: su logo o
- * escudo grande (o un monograma si no subió uno) y su nombre con peso de
- * título. Si el logo no carga, se muestra el monograma.
+ * escudo grande y su nombre con peso de título. Si no subió logo (o no
+ * carga), se usa el logotipo de MoDo Educa.
  */
 function SchoolIdentity({ branding }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [branding?.logoUrl]);
   return (
     <div className="login-school">
-      {branding.logoUrl && !failed ? (
-        <img src={branding.logoUrl} alt={`Logo de ${branding.name}`} className="login-school__logo" onError={() => setFailed(true)} />
-      ) : (
-        <span className="school-mark login-school__mark" aria-hidden="true">
-          {monogram(branding.name)}
-        </span>
-      )}
+      <SchoolLogo src={branding.logoUrl} name={branding.name} className="login-school__logo" />
       <div className="login-school__text">
         <span className="login-school__label">Colegio</span>
         <strong>{branding.name}</strong>
@@ -216,7 +190,7 @@ function LoginPage() {
       <aside className="login-hero">
         <div className="login-hero__brand">
           <SchoolMark branding={branding} size="sm" />
-          {schoolName || 'Sistema Escolar'}
+          {schoolName || PLATFORM_NAME}
         </div>
 
         <div>

@@ -10,11 +10,15 @@ import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
 import { termLabel } from '../../evaluation-plans/terms';
 
-/** Gravedad: etiqueta, color e ícono (amarillo leve, rojo grave, rojo oscuro gravísima). */
+/**
+ * Gravedad, de menor a mayor (orden lógico, no alfabético): etiqueta, color e
+ * ícono (amarillo leve, naranja media, rojo grave). Se usa en el filtro, en
+ * el formulario y en los totales.
+ */
 export const SEVERITIES = {
   leve: { label: 'Leve', icon: 'info', hint: 'Falta menor (retardo, uso del teléfono, uniforme…).' },
-  grave: { label: 'Grave', icon: 'alertTriangle', hint: 'Afecta la convivencia (irrespeto, agresión verbal…).' },
-  gravisima: { label: 'Gravísima', icon: 'alertCircle', hint: 'Pone en riesgo a otros (agresión física, acoso…).' },
+  media: { label: 'Media', icon: 'alertTriangle', hint: 'Afecta la convivencia (irrespeto, agresión verbal…).' },
+  grave: { label: 'Grave', icon: 'alertCircle', hint: 'Pone en riesgo a otros (agresión física, acoso…).' },
 };
 export const SEVERITY_KEYS = Object.keys(SEVERITIES);
 

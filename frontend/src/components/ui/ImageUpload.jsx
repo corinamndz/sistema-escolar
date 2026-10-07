@@ -15,6 +15,8 @@ function formatBytes(bytes) {
  * - `currentUrl`: imagen ya guardada (se muestra si no hay archivo nuevo).
  * - `file`: archivo elegido (controlado por el padre), `onChange(file | null)`.
  * - `removed` / `onRemove`: para quitar la imagen guardada sin subir otra.
+ * - `placeholderUrl` / `placeholderLabel`: imagen que se usará si no hay
+ *   ninguna (p. ej. el logo de MoDo Educa por defecto).
  *
  * Valida tipo y peso en el navegador para dar feedback inmediato; el backend
  * vuelve a validar (incluida la firma binaria del archivo).
@@ -29,6 +31,8 @@ function ImageUpload({
   maxBytes = DEFAULT_MAX_BYTES,
   error,
   disabled,
+  placeholderUrl,
+  placeholderLabel,
 }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(null);
@@ -93,7 +97,13 @@ function ImageUpload({
         onDrop={handleDrop}
       >
         <div className="image-upload__preview">
-          {shownUrl ? <img src={shownUrl} alt="Vista previa del logo" /> : <Icon name="school" size={28} />}
+          {shownUrl ? (
+            <img src={shownUrl} alt="Vista previa del logo" />
+          ) : placeholderUrl ? (
+            <img src={placeholderUrl} alt={placeholderLabel || ''} />
+          ) : (
+            <Icon name="school" size={28} />
+          )}
         </div>
 
         <div className="image-upload__body">
@@ -106,7 +116,7 @@ function ImageUpload({
             </>
           ) : (
             <>
-              <div className="image-upload__title">{shownUrl ? 'Logo actual' : 'Sin logo'}</div>
+              <div className="image-upload__title">{shownUrl ? 'Logo actual' : placeholderLabel || 'Sin logo'}</div>
               <div className="image-upload__meta">
                 Arrastra una imagen aquí o elígela desde tu equipo. PNG o JPG, máx. {formatBytes(maxBytes)}.
               </div>

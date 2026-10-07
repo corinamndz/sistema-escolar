@@ -11,6 +11,7 @@ import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import ImageUpload from '../../../components/ui/ImageUpload';
+import { DEFAULT_SCHOOL_LOGO } from '../../../components/ui/SchoolLogo';
 import { useToast } from '../../../components/ui/Toast';
 import { notifyBrandingChanged } from '../../../lib/tenantSlug';
 import { useThemePreview } from '../../../theme/ThemeProvider';
@@ -23,9 +24,6 @@ function pickForm(settings) {
     name: settings.name || '',
     primaryColor: settings.primaryColor || '#2563EB',
     secondaryColor: settings.secondaryColor || '#1E293B',
-    menuGradient: settings.menuGradient || 'deep',
-    accentSecondaryColor: settings.accentSecondaryColor || '', // '' = automático
-    tableHeaderStyle: settings.tableHeaderStyle || 'subtle',
     contactPhone: settings.contactPhone || '',
     contactEmail: settings.contactEmail || '',
   };
@@ -68,23 +66,14 @@ function TenantSettingsPage() {
     if (file) setRemoveLogo(false);
   };
 
-  const colorsValid = HEX.test(form.primaryColor) && HEX.test(form.secondaryColor) && (!form.accentSecondaryColor || HEX.test(form.accentSecondaryColor));
+  const colorsValid = HEX.test(form.primaryColor) && HEX.test(form.secondaryColor);
 
   // Vista previa EN VIVO en toda la plataforma mientras se editan los colores
   // (sin guardar). Al salir de la página o descartar, vuelve a lo guardado.
   const { setPreview } = useThemePreview();
-  const themeKey = [form.primaryColor, form.secondaryColor, form.menuGradient, form.accentSecondaryColor, form.tableHeaderStyle].join('|');
   useEffect(() => {
-    if (!colorsValid) return;
-    setPreview({
-      menuColor: form.secondaryColor,
-      accentColor: form.primaryColor,
-      menuGradient: form.menuGradient,
-      accentSecondaryColor: form.accentSecondaryColor || null,
-      tableHeaderStyle: form.tableHeaderStyle,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themeKey, colorsValid]);
+    if (colorsValid) setPreview({ menuColor: form.secondaryColor, accentColor: form.primaryColor });
+  }, [form.secondaryColor, form.primaryColor, colorsValid, setPreview]);
   useEffect(() => () => setPreview(null), [setPreview]);
 
   const handleSubmit = async (e) => {
@@ -95,9 +84,8 @@ function TenantSettingsPage() {
     data.append('name', form.name.trim());
     data.append('primaryColor', form.primaryColor);
     data.append('secondaryColor', form.secondaryColor);
-    data.append('menuGradient', form.menuGradient);
-    data.append('tableHeaderStyle', form.tableHeaderStyle);
-    data.append('accentSecondaryColor', form.accentSecondaryColor || 'auto');
+    // Solo los dos colores: degradado, acento secundario y encabezados de
+    // tabla se calculan en automático y ya no se envían.
     data.append('contactPhone', form.contactPhone.trim());
     data.append('contactEmail', form.contactEmail.trim());
     if (logoFile) data.append('logo', logoFile);
@@ -142,7 +130,12 @@ function TenantSettingsPage() {
                 onRemove={() => setRemoveLogo(true)}
                 error={fieldErrors.logo}
                 disabled={!canEdit}
+                placeholderUrl={DEFAULT_SCHOOL_LOGO.compact}
+                placeholderLabel="Logo predeterminado (MoDo Educa)"
               />
+              {!logoFile && (!settings.logoUrl || removeLogo) && (
+                <span className="form-hint">Mientras el colegio no tenga logo propio, se muestra el de MoDo Educa en toda la plataforma.</span>
+              )}
               {removeLogo && (
                 <span className="form-hint">
                   El logo se quitará al guardar.{' '}
@@ -184,8 +177,8 @@ function TenantSettingsPage() {
             <div className="form-field--full appearance-section">
               <h3 className="appearance-section__title">Apariencia</h3>
               <p className="text-sm text-muted">
-                Elige dos colores: el resto (degradado del menú, tonos al pasar el cursor, textos legibles) se calcula solo. Los cambios se ven en
-                toda la plataforma mientras editas y se guardan al pulsar «Guardar cambios».
+                Solo dos colores: el del menú y el de acento. Todo lo demás se ajusta solo. Verás el cambio en toda la plataforma al instante y
+                se guarda con «Guardar cambios».
               </p>
               <AppearanceEditor form={form} setForm={setForm} onChange={handleChange} fieldErrors={fieldErrors} disabled={!canEdit} />
             </div>

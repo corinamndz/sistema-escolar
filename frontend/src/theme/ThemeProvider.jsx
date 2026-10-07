@@ -15,17 +15,15 @@ function ThemeProvider({ children }) {
   const { settings } = useTenant();
   const [preview, setPreview] = useState(null); // colores en edición (sin guardar)
 
+  // Solo dos colores (menú y acento): degradado, acento secundario y
+  // encabezados de tabla se calculan siempre en automático.
   const theme = useMemo(
     () =>
       buildTheme({
-        menuColor: settings.secondaryColor,
-        accentColor: settings.primaryColor,
-        menuGradient: settings.menuGradient,
-        accentSecondaryColor: settings.accentSecondaryColor,
-        tableHeaderStyle: settings.tableHeaderStyle,
-        ...(preview || {}),
+        menuColor: preview?.menuColor ?? settings.secondaryColor,
+        accentColor: preview?.accentColor ?? settings.primaryColor,
       }),
-    [settings.secondaryColor, settings.primaryColor, settings.menuGradient, settings.accentSecondaryColor, settings.tableHeaderStyle, preview]
+    [settings.secondaryColor, settings.primaryColor, preview]
   );
 
   useEffect(() => {

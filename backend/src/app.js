@@ -8,7 +8,8 @@ const { ApiError } = require('./utils/ApiError');
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
+// Content-Disposition expuesto: el frontend lee el nombre de los archivos descargados (PDF de horarios).
+app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true, exposedHeaders: ['Content-Disposition'] }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -82,7 +83,14 @@ app.use((err, req, res, next) => {
   }
 
   // eslint-disable-next-line no-console
-  console.error(err);
+  console.error(`[${req.method} ${req.originalUrl}]`, err);
+  // 42703 = columna inexistente, 42P01 = tabla inexistente: el código espera
+  // un esquema más nuevo que el de la base (falta correr migraciones).
+  if (err.code === '42703' || err.code === '42P01') {
+    return res.status(500).json({
+      error: { message: 'La base de datos no está actualizada con esta versión del sistema. Pide al administrador que ejecute las migraciones (npm run migrate).' },
+    });
+  }
   return res.status(500).json({ error: { message: 'Error interno del servidor.' } });
 });
 

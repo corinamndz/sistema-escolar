@@ -6,8 +6,11 @@ const { asyncHandler } = require('../../utils/asyncHandler');
 const uuid = z.string().uuid();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (AAAA-MM-DD).');
 
+// Gravedad: leve | media | grave (las mismas claves que la restricción CHECK de la base).
+const severity = z.enum(service.SEVERITY_KEYS, { errorMap: () => ({ message: 'Elige la gravedad: leve, media o grave.' }) });
+
 const sanctionSchema = z.object({
-  severity: z.enum(['leve', 'grave', 'gravisima'], { errorMap: () => ({ message: 'Elige la gravedad: leve, grave o gravísima.' }) }),
+  severity,
   faultType: z.string().trim().min(1, 'Indica el tipo de falta.').max(120),
   description: z.string().trim().min(1, 'Describe el motivo de la sanción.').max(2000),
   measure: z.string().trim().max(200).optional().nullable(),
@@ -19,7 +22,7 @@ const sanctionSchema = z.object({
 /** GET /discipline/sanctions?schoolPeriodId=&severity=&q= — docente: solo alumnos de su carga. */
 const list = asyncHandler(async (req, res) => {
   const q = z
-    .object({ schoolPeriodId: uuid.optional(), severity: z.enum(['leve', 'grave', 'gravisima']).optional(), studentId: uuid.optional(), q: z.string().max(100).optional() })
+    .object({ schoolPeriodId: uuid.optional(), severity: severity.optional(), studentId: uuid.optional(), q: z.string().max(100).optional() })
     .parse(req.query);
   const scope = await teacherScope.getTeacherScope(req);
   res.status(200).json(await service.listSanctions(req.db, req.tenantId, { ...q, scope }));

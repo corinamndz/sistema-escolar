@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const tenantService = require('./tenant.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
+const { ApiError } = require('../../utils/ApiError');
 const { saveLogo, deleteLogo } = require('../../services/storage/logoStorage');
 
 const getSettings = asyncHandler(async (req, res) => {
@@ -47,10 +48,29 @@ const updateSettings = asyncHandler(async (req, res) => {
     else if (newLogoPath) deleteLogo(newLogoPath);
   });
 
-  const result = await tenantService.updateSettings(req.db, req.tenantId, {
-    ...data,
-    logoPath: newLogoPath,
-  });
+  let result;
+  try {
+    result = await tenantService.updateSettings(req.db, req.tenantId, {
+      ...data,
+      logoPath: newLogoPath,
+    });
+  } catch (err) {
+    // Detalle exacto en la consola del servidor (código y columna/consulta de
+    // PostgreSQL) para diagnosticar; la respuesta la arma el manejador global.
+    if (!(err instanceof ApiError)) {
+      // eslint-disable-next-line no-console
+      console.error('[PUT /tenant/settings] Falló el guardado', {
+        tenantId: req.tenantId,
+        campos: Object.keys(data),
+        logoNuevo: Boolean(newLogoPath),
+        code: err.code,
+        column: err.column,
+        detail: err.detail,
+        message: err.message,
+      });
+    }
+    throw err;
+  }
   replacedLogo = result.replacedLogo;
 
   res.status(200).json(result.settings);

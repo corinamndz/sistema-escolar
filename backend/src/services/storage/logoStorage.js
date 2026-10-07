@@ -83,10 +83,22 @@ function resolveLogoFile(storedValue) {
   return require('fs').existsSync(absolute) ? absolute : null;
 }
 
+/** Logo oficial de MoDo Educa: el predeterminado cuando el colegio no tiene logo propio. */
+const DEFAULT_LOGO_FILE = path.join(__dirname, '..', '..', 'assets', 'modo-educa-logo.png');
+
+/**
+ * Logo para documentos (PDF): el del colegio si existe y es válido; si no lo
+ * subió, lo eliminó, o el archivo falta en disco, el de MoDo Educa. Así un
+ * comprobante nunca sale con el recuadro del logo vacío.
+ */
+function resolveLogoFileOrDefault(storedValue) {
+  return resolveLogoFile(storedValue) || DEFAULT_LOGO_FILE;
+}
+
 /** Ruta relativa en BD → URL servida por el backend. Las URLs externas antiguas se devuelven tal cual. */
 function toPublicUrl(storedValue) {
   if (!storedValue) return null;
   return isStoredLogo(storedValue) ? `/storage/${storedValue}` : storedValue;
 }
 
-module.exports = { LOGOS_DIR, saveLogo, deleteLogo, toPublicUrl, resolveLogoFile };
+module.exports = { LOGOS_DIR, DEFAULT_LOGO_FILE, saveLogo, deleteLogo, toPublicUrl, resolveLogoFile, resolveLogoFileOrDefault };

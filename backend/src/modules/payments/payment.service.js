@@ -7,7 +7,7 @@ const { ensureTuition } = require('./tuition.service');
 const exchange = require('./exchangeRate.service');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
 const { resolveProof } = require('../../services/storage/paymentProofStorage');
-const { resolveLogoFile } = require('../../services/storage/logoStorage');
+const { resolveLogoFileOrDefault } = require('../../services/storage/logoStorage');
 
 /**
  * Reúne desde la base todo lo que muestra el comprobante (marca del colegio,
@@ -37,7 +37,7 @@ async function buildReceiptData(trx, tenantId, paymentId) {
   return {
     tenant: {
       name: tenant.name,
-      logoPath: resolveLogoFile(settings?.logo_url),
+      logoPath: resolveLogoFileOrDefault(settings?.logo_url), // sin logo propio: el de MoDo Educa
       primaryColor: settings?.primary_color,
       contactEmail: settings?.contact_email,
       contactPhone: settings?.contact_phone,

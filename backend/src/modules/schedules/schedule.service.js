@@ -1,5 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const assignmentService = require('../academics/assignment.service');
+const { generateSchedulePdf } = require('../../services/pdf/scheduleGenerator');
+const { resolveLogoFileOrDefault } = require('../../services/storage/logoStorage');
 
 /**
  * Horarios de clase.
@@ -188,9 +190,18 @@ const conflictMessage = (c) =>
 /**
  * Coloca una materia en una celda (o mueve una clase existente si viene
  * `entryId`). Valida: año abierto, bloque del año y no recreo, materia del
- * plan de estudios con docente asignado, celda libre y SIN cruce del docente.
+ * plan de estudios con docente asignado y SIN cruce del docente.
+ *
+ * Si la celda ya tiene otra clase de la sección, `onOccupied` decide:
+ *   - (sin indicar) → 409 "Esa hora ya tiene…";
+ *   - 'replace'     → la clase que estaba se quita y entra la nueva;
+ *   - 'swap'        → solo al mover (`entryId`): la que estaba pasa a la celda
+ *                     de origen de la que se mueve (intercambio), con las
+ *                     mismas validaciones (p. ej. cruce de su profesor).
+ * Todo ocurre en la transacción del request: si algo falla, no queda nada a medias.
+ * Devuelve la clase guardada y, si hubo, `replaced` / `swapped` (la otra clase).
  */
-async function placeEntry(trx, tenantId, sectionId, { subjectId, dayOfWeek, timeSlotId }, { entryId = null } = {}) {
+async function placeEntry(trx, tenantId, sectionId, { subjectId, dayOfWeek, timeSlotId }, { entryId = null, onOccupied = null } = {}) {
   const section = await loadSection(trx, tenantId, sectionId);
   if (section.period_closed_at) throw ApiError.unprocessable(`El año escolar ${section.school_period_name} está finalizado: su horario es de solo lectura.`);
   if (!DAYS.some((d) => d.day === Number(dayOfWeek))) throw ApiError.badRequest('Día inválido (lunes a viernes).', [{ path: 'dayOfWeek', message: 'Día inválido.' }]);
@@ -214,11 +225,15 @@ async function placeEntry(trx, tenantId, sectionId, { subjectId, dayOfWeek, time
 
   const where = { 'cs.day_of_week': dayOfWeek, 'cs.time_slot_id': timeSlotId };
   const occupied = await entriesQuery(trx, tenantId).where({ ...where, 'cs.section_id': sectionId }).modify((q) => entryId && q.whereNot('cs.id', entryId)).first();
-  if (occupied) {
+  const origin = entryId ? await trx('class_schedules').where({ id: entryId, tenant_id: tenantId }).first() : null;
+  const action = occupied && (onOccupied === 'replace' || (onOccupied === 'swap' && origin) ? onOccupied : null);
+  if (occupied && !action) {
     throw ApiError.conflict(`Esa hora ya tiene ${occupied.subject_name} (${dayName(dayOfWeek)} ${hhmm(slot.start_time)}–${hhmm(slot.end_time)}). Muévela o quítala primero.`, [
       { path: 'cell', message: 'Celda ocupada.' },
     ]);
   }
+  // La clase que ocupaba la celda sale (se repone en el origen si es intercambio).
+  if (action) await trx('class_schedules').where({ id: occupied.id, tenant_id: tenantId }).delete();
   const clash = await entriesQuery(trx, tenantId).where({ ...where, 'cs.staff_id': subject.teacher.id }).modify((q) => entryId && q.whereNot('cs.id', entryId)).first();
   if (clash) {
     throw ApiError.conflict(conflictMessage(clash), [{ path: 'teacher', message: 'Cruce de horario del docente.' }]);
@@ -234,7 +249,21 @@ async function placeEntry(trx, tenantId, sectionId, { subjectId, dayOfWeek, time
     if (err.code === '23505') throw ApiError.conflict('Esa hora acaba de ocuparse (o el docente acaba de recibir otra clase a esa hora). Recarga el horario.');
     throw err;
   }
-  return formatEntry(await entriesQuery(trx, tenantId).where('cs.id', id).first());
+
+  const saved = formatEntry(await entriesQuery(trx, tenantId).where('cs.id', id).first());
+  if (action === 'replace') return { ...saved, replaced: formatEntry(occupied) };
+  if (action === 'swap') {
+    // La desplazada va a la celda de origen, con todas las validaciones.
+    let swapped;
+    try {
+      swapped = await placeEntry(trx, tenantId, sectionId, { subjectId: occupied.subject_id, dayOfWeek: origin.day_of_week, timeSlotId: origin.time_slot_id });
+    } catch (err) {
+      if (err instanceof ApiError) throw ApiError.conflict(`No se puede intercambiar con ${occupied.subject_name}: ${err.message}`, err.details);
+      throw err;
+    }
+    return { ...saved, swapped };
+  }
+  return saved;
 }
 
 async function loadEntry(trx, tenantId, entryId) {
@@ -244,9 +273,9 @@ async function loadEntry(trx, tenantId, entryId) {
 }
 
 /** Mueve una clase a otro día/bloque de la misma sección (mismas validaciones). */
-async function moveEntry(trx, tenantId, entryId, { dayOfWeek, timeSlotId }) {
+async function moveEntry(trx, tenantId, entryId, { dayOfWeek, timeSlotId, onOccupied = null }) {
   const entry = await loadEntry(trx, tenantId, entryId);
-  return placeEntry(trx, tenantId, entry.section_id, { subjectId: entry.subject_id, dayOfWeek, timeSlotId }, { entryId });
+  return placeEntry(trx, tenantId, entry.section_id, { subjectId: entry.subject_id, dayOfWeek, timeSlotId }, { entryId, onOccupied });
 }
 
 async function removeEntry(trx, tenantId, entryId) {
@@ -291,6 +320,33 @@ async function listTeachers(trx, tenantId, periodId) {
     active: r.status === 'active',
     classes: Number(r.classes || 0),
     sections: Number(r.sections || 0),
+  }));
+}
+
+/**
+ * Grados para el selector de Horarios: TODOS los del colegio (no solo los que
+ * ya tienen sección), en orden de la jerarquía escolar (Inicial → Primaria →
+ * Secundaria y, dentro, su orden), cada uno con sus secciones en el año
+ * elegido. Un grado sin secciones aparece igual (con `sections: []`) para que
+ * se vea que existe y se le pueda crear una.
+ */
+async function listGradesForSchedule(trx, tenantId, periodId) {
+  await loadPeriod(trx, tenantId, periodId);
+  const grades = await trx('grades as g')
+    .join('education_levels as el', 'el.code', 'g.level_code')
+    .where('g.tenant_id', tenantId)
+    .select('g.id', 'g.name', 'g.level_code', 'g.sort_order', 'el.name as level_name')
+    .orderBy([{ column: 'el.sort_order' }, { column: 'g.sort_order' }, { column: 'g.name' }]);
+  const sections = await trx('sections')
+    .where({ tenant_id: tenantId, school_period_id: periodId })
+    .select('id', 'name', 'grade_id')
+    .orderBy('name');
+  return grades.map((g) => ({
+    ...g,
+    sections: sections
+      .filter((s) => s.grade_id === g.id)
+      .map(({ id, name }) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true })),
   }));
 }
 
@@ -408,6 +464,90 @@ async function querySchedule(trx, tenantId, { schoolPeriodId = null, gradeId = n
   };
 }
 
+/** "3er Año · Sección A" → "3er-ano-seccion-a" (nombre de archivo sin acentos ni espacios). */
+const slugify = (s) =>
+  String(s)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+
+/**
+ * PDF del horario que se está viendo: por sección (materia + profesor en cada
+ * clase) o por docente (sección + materia, con sus huecos marcados). Lleva el
+ * logo del colegio (o el de MoDo Educa si no tiene) y sus colores.
+ * Devuelve { buffer, fileName }.
+ */
+async function schedulePdf(trx, tenantId, filters) {
+  if (!filters.sectionId && !filters.teacherId && !filters.gradeId) {
+    throw ApiError.badRequest('Elige una sección o un docente para descargar su horario.', [{ path: 'section_id', message: 'Requerido.' }]);
+  }
+  const data = await querySchedule(trx, tenantId, filters);
+  const tenant = await trx('tenants').where({ id: tenantId }).first();
+  const settings = await trx('tenant_settings').where({ tenant_id: tenantId }).first();
+
+  const byTeacher = Boolean(data.teacher);
+  const s = data.summary;
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  let kicker;
+  let title;
+  let subtitle = '';
+  let summary;
+  if (byTeacher) {
+    kicker = 'Horario del docente';
+    title = data.section ? `${data.teacher.name} · ${data.section.grade_name} ${data.section.name}` : data.teacher.name;
+    subtitle = s.sections.length ? `Secciones: ${s.sections.map((x) => x.label).join(' · ')}` : '';
+    summary = [
+      plural(s.classes, 'hora de clase por semana', 'horas de clase por semana'),
+      plural(s.sections.length, 'sección', 'secciones'),
+      plural(s.gaps.length, 'hueco', 'huecos'),
+      s.free_days.length ? `sin clases: ${s.free_days.join(', ').toLowerCase()}` : null,
+    ]
+      .filter(Boolean)
+      .join('  ·  ');
+  } else if (data.section) {
+    kicker = 'Horario de clases';
+    title = `${data.section.grade_name} · Sección ${data.section.name}`;
+    const subjects = new Set(data.entries.map((e) => e.subject_id)).size;
+    summary = `${plural(s.classes, 'hora de clase por semana', 'horas de clase por semana')}  ·  ${plural(subjects, 'materia', 'materias')}`;
+  } else {
+    kicker = 'Horario de clases';
+    title = data.grade.name;
+    subtitle = s.sections.length ? `Secciones: ${s.sections.map((x) => x.label).join(' · ')}` : '';
+    summary = plural(s.classes, 'hora de clase por semana', 'horas de clase por semana');
+  }
+
+  const buffer = await generateSchedulePdf({
+    tenant: {
+      name: tenant.name,
+      logoPath: resolveLogoFileOrDefault(settings?.logo_url), // sin logo propio: el de MoDo Educa
+      primaryColor: settings?.primary_color,
+      secondaryColor: settings?.secondary_color,
+    },
+    kicker,
+    title,
+    subtitle,
+    periodName: data.school_period.name,
+    days: data.days,
+    slots: data.slots,
+    entries: data.entries,
+    // Por docente: qué sección y qué materia; por sección: materia y profesor
+    // (si se ve un grado completo, también la sección).
+    entryText: byTeacher
+      ? (e) => ({ title: `${e.grade_name} ${e.section_name}`, sub: e.subject_name })
+      : data.section
+        ? (e) => ({ title: e.subject_name, sub: e.teacher_name })
+        : (e) => ({ title: `${e.subject_name} (${e.section_name})`, sub: e.teacher_name }),
+    colorKey: byTeacher ? (e) => e.section_id : (e) => e.subject_id,
+    gapKeys: byTeacher ? new Set(s.gaps.map((g) => `${g.day_of_week}|${g.time_slot_id}`)) : new Set(),
+    summary,
+  });
+  const fileName = `horario-${slugify(byTeacher ? data.teacher.name : title)}-${slugify(data.school_period.name)}.pdf`;
+  return { buffer, fileName };
+}
+
 // ---------------------------------------------------------------------------
 // Consultas de solo lectura: docente y representante
 // ---------------------------------------------------------------------------
@@ -453,6 +593,8 @@ module.exports = {
   getTeacherSchedule,
   getStudentSchedule,
   listTeachers,
+  listGradesForSchedule,
   querySchedule,
+  schedulePdf,
   summarize,
 };

@@ -26,6 +26,28 @@ async function getSettings(trx, tenantId) {
 }
 
 /**
+ * Columnas de apariencia agregadas por la migración 021. Si la base aún no
+ * la tiene aplicada, se omiten al guardar (con un aviso en la consola) en
+ * lugar de romper TODO el guardado con un 500: nombre, colores, logo y
+ * contacto viven en columnas que existen desde la 001.
+ */
+const OPTIONAL_COLUMNS = ['menu_gradient', 'accent2_color', 'table_header_style'];
+let settingsColumnsCache = null;
+
+async function settingsColumns(trx) {
+  // Se cachea solo cuando ya están todas: si falta alguna se vuelve a mirar,
+  // así basta con correr la migración (sin reiniciar el servidor).
+  if (settingsColumnsCache) return settingsColumnsCache;
+  const names = await trx('information_schema.columns')
+    .where({ table_name: 'tenant_settings' })
+    .whereRaw('table_schema = current_schema()')
+    .pluck('column_name');
+  const columns = new Set(names);
+  if (OPTIONAL_COLUMNS.every((c) => columns.has(c))) settingsColumnsCache = columns;
+  return columns;
+}
+
+/**
  * Actualiza la configuración del colegio. `logoPath` es la ruta relativa de un
  * logo recién guardado en disco; `removeLogo` lo quita sin reemplazarlo.
  * Devuelve `replacedLogo` (la ruta anterior) para que el controlador borre el
@@ -60,6 +82,18 @@ async function updateSettings(
   };
   // Solo pisa las columnas que vinieron en el request (permite updates parciales).
   Object.keys(payload).forEach((key) => payload[key] === undefined && delete payload[key]);
+
+  // Columnas opcionales que la base todavía no tiene (migración 021 pendiente).
+  const requested = OPTIONAL_COLUMNS.filter((c) => c in payload);
+  if (requested.length) {
+    const columns = await settingsColumns(trx);
+    const missing = requested.filter((c) => !columns.has(c));
+    if (missing.length) {
+      missing.forEach((c) => delete payload[c]);
+      // eslint-disable-next-line no-console
+      console.warn(`[tenant_settings] Faltan las columnas ${missing.join(', ')} (migración 021 pendiente: ejecuta "npm run migrate"). Se guardó el resto.`);
+    }
+  }
 
   if (existing) {
     await trx('tenant_settings').where({ tenant_id: tenantId }).update(payload);

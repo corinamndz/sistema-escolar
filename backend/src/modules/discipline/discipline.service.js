@@ -4,13 +4,15 @@ const teacherScope = require('../access/teacherScope');
 /**
  * Convivencia: sanciones disciplinarias de los alumnos.
  *
- * Gravedad: leve (amarillo), grave (rojo), gravísima (rojo oscuro).
+ * Gravedad: leve (amarillo), media (naranja), grave (rojo).
  * Cada sanción queda en un año escolar y, si se puede determinar, en un lapso
  * (el indicado, o el que contiene la fecha de la falta) y con la sección en que
  * el alumno cursaba. Se audita quién la registró y quién la editó por última vez.
  */
 
-const SEVERITIES = { leve: 'Leve', grave: 'Grave', gravisima: 'Gravísima' };
+/** Niveles de gravedad, de menor a mayor (migración 022). */
+const SEVERITIES = { leve: 'Leve', media: 'Media', grave: 'Grave' };
+const SEVERITY_KEYS = Object.keys(SEVERITIES);
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -45,9 +47,7 @@ const format = (r) => ({ ...r, occurred_on: r.occurred_on instanceof Date ? r.oc
 
 const totalsOf = (items) => ({
   total: items.length,
-  leve: items.filter((i) => i.severity === 'leve').length,
-  grave: items.filter((i) => i.severity === 'grave').length,
-  gravisima: items.filter((i) => i.severity === 'gravisima').length,
+  ...Object.fromEntries(SEVERITY_KEYS.map((k) => [k, items.filter((i) => i.severity === k).length])),
 });
 
 /** Listado general (módulo Convivencia). `scope`: docente → solo alumnos de su carga. */
@@ -215,4 +215,4 @@ async function getStudentSanctionsForGuardian(trx, tenantId, studentId) {
   };
 }
 
-module.exports = { getStudentSanctionsForGuardian, SEVERITIES, listSanctions, getStudentSanctions, loadSanction, createSanction, updateSanction, deleteSanction };
+module.exports = { getStudentSanctionsForGuardian, SEVERITIES, SEVERITY_KEYS, listSanctions, getStudentSanctions, loadSanction, createSanction, updateSanction, deleteSanction };

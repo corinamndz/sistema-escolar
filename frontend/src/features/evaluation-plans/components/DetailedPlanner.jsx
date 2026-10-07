@@ -3,6 +3,7 @@ import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
 import { getErrorMessage } from '../../../api/axiosClient';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
+import Field from '../../../components/ui/Field';
 import Modal from '../../../components/ui/Modal';
 import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
@@ -372,6 +373,7 @@ export function PlanSettings({ plan, canEdit, onChanged }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [editingSections, setEditingSections] = useState(false);
+  const [moving, setMoving] = useState(false);
 
   const changeFormat = async (format) => {
     if (format === plan.format) return;
@@ -437,15 +439,78 @@ export function PlanSettings({ plan, canEdit, onChanged }) {
               Editar secciones
             </Button>
           )}
+          {/* Plan creado en la sección equivocada: se puede mover mientras no tenga notas. */}
+          {canEdit && !plan.has_grades && plan.move_targets?.length > 0 && (
+            <Button size="sm" variant="ghost" icon="arrowRight" onClick={() => setMoving(true)}>
+              Mover a otra sección
+            </Button>
+          )}
         </div>
         <span className="form-hint">El plan se redacta una vez y se aplica a todas sus secciones; las notas siguen siendo por alumno.</span>
       </div>
       {editingSections && <SectionsModal plan={plan} onClose={() => setEditingSections(false)} onSaved={onChanged} />}
+      {moving && <MoveSectionModal plan={plan} onClose={() => setMoving(false)} onSaved={onChanged} />}
     </div>
   );
 }
 
 const sectionsTitle = (plan) => plan.sections.length > 1;
+
+/**
+ * Mueve el plan (con sus actividades) a otra sección del mismo año: para
+ * corregir un plan creado en la sección equivocada. Solo sin notas cargadas.
+ */
+function MoveSectionModal({ plan, onClose, onSaved }) {
+  const [target, setTarget] = useState('');
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+  const chosen = plan.move_targets.find((s) => s.id === target);
+  const current = plan.sections.map((s) => `${plan.grade_name} ${s.name}`).join(', ');
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await evaluationPlansApi.update(plan.id, { moveToSectionId: target });
+      toast.success('Plan movido', `${plan.subject} ahora es de ${chosen.grade_name} · Sección ${chosen.name}.`);
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Mover el plan a otra sección" onClose={onClose}>
+      <p style={{ marginTop: -6 }} className="text-sm">
+        Hoy el plan de <strong>{plan.subject}</strong> está en <strong>{current}</strong>. Pásalo a la sección correcta: conserva sus actividades y
+        ponderaciones, y lo verán los alumnos y representantes de esa sección. Solo es posible mientras no tenga notas cargadas.
+      </p>
+      <Alert>{error}</Alert>
+      <Field label="Sección destino" required hint="Solo aparecen secciones de este año cuyo grado incluye la materia.">
+        <select className="input" value={target} onChange={(e) => setTarget(e.target.value)} autoFocus aria-label="Sección destino">
+          <option value="">Elige la sección…</option>
+          {plan.move_targets.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.grade_name} · Sección {s.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <div className="form-actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button onClick={save} loading={saving} disabled={!target}>
+          Mover plan
+        </Button>
+      </div>
+    </Modal>
+  );
+}
 
 function SectionsModal({ plan, onClose, onSaved }) {
   const all = [...plan.sections, ...plan.available_sections.map((s) => ({ ...s, is_main: false }))].sort((a, b) => a.name.localeCompare(b.name));

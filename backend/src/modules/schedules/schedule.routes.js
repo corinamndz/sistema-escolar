@@ -18,6 +18,7 @@ router.get('/sections/:id', controller.getSectionSchedule); // docente: sus secc
 router.get('/', admin('read'), controller.querySchedule);
 router.get('/teachers', admin('read'), controller.listTeachers);
 router.get('/grades', admin('read'), controller.listGrades);
+router.get('/assignments', admin('read'), controller.listAssignments);
 router.get('/pdf', admin('read'), controller.downloadPdf);
 router.get('/sections', admin('read'), controller.listSections);
 router.get('/periods/:periodId/slots', admin('read'), controller.listSlots);

@@ -9,6 +9,7 @@ import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
 import { termLabel } from '../../evaluation-plans/terms';
+import StudentPicker from '../../students/components/StudentPicker';
 
 /**
  * Gravedad, de menor a mayor (orden lógico, no alfabético): etiqueta, color e
@@ -146,16 +147,15 @@ export function SanctionFormModal({ initial, studentId: fixedStudentId, students
       <Alert>{error}</Alert>
       <form onSubmit={submit} className="sanction-form">
         {students && !isEdit && (
-          <Field label="Alumno" error={fieldErrors.studentId} required>
-            <Select sorted value={form.studentId} onChange={set('studentId')} required>
-              <option value="">Selecciona…</option>
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.first_name} {s.last_name}
-                  {s.grade_name ? ` · ${s.grade_name} ${s.section_name}` : ''}
-                </option>
-              ))}
-            </Select>
+          <Field label="Alumno" error={fieldErrors.studentId} required hint={`${students.length} alumnos activos · busca por nombre, apellido, cédula o grado`}>
+            <StudentPicker
+              students={students}
+              value={form.studentId}
+              onChange={(id) => setForm((f) => ({ ...f, studentId: id }))}
+              invalid={Boolean(fieldErrors.studentId)}
+              required
+              autoFocus
+            />
           </Field>
         )}
 

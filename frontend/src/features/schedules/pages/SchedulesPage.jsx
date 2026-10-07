@@ -15,6 +15,8 @@ import { useToast } from '../../../components/ui/Toast';
 import ScheduleGrid, { hueOf } from '../components/ScheduleGrid';
 import SlotsEditorModal from '../components/SlotsEditorModal';
 import TeacherScheduleView from '../components/TeacherScheduleView';
+import AssignmentsView from '../components/AssignmentsView';
+import QuickAssign from '../components/QuickAssign';
 import { blobErrorMessage, saveBlob } from '../../../utils/download';
 
 /**
@@ -38,6 +40,7 @@ function defaultPeriod(periods) {
 const VIEWS = [
   { key: 'section', label: 'Por grado / sección', icon: 'layers' },
   { key: 'teacher', label: 'Por docente', icon: 'user' },
+  { key: 'assignments', label: 'Asignaciones', icon: 'users' },
 ];
 
 /**
@@ -75,10 +78,14 @@ function SchedulesPage() {
   const [gradeId, setGradeId] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [teacherId, setTeacherId] = useState('');
-  const { data: teachers, loading: loadingTeachers } = useFetch(
-    () => (periodId && view === 'teacher' ? schedulesApi.listTeachers(periodId) : Promise.resolve(null)),
-    [periodId, view],
-  );
+  // Docentes A-Z del año: para "Ver por docente" y para asignar profesores al instante.
+  const {
+    data: teachers,
+    loading: loadingTeachers,
+    refetch: refetchTeachers,
+  } = useFetch(() => (periodId ? schedulesApi.listTeachers(periodId) : Promise.resolve(null)), [periodId]);
+  const activeTeachers = useMemo(() => (teachers || []).filter((t) => t.active), [teachers]);
+  const canAssign = can('academics', 'update');
   // Bloques del año: si no tiene, se avisa ANTES de elegir sección y se busca
   // otro año con bloques para ofrecer copiarlos.
   const { data: periodSlots, refetch: refetchPeriodSlots } = useFetch(
@@ -310,7 +317,36 @@ function SchedulesPage() {
   const pdfFilters =
     view === 'section'
       ? sectionId && { section_id: sectionId }
-      : teacherId && periodId && { teacher_id: teacherId, school_period_id: periodId };
+      : view === 'teacher'
+        ? teacherId && periodId && { teacher_id: teacherId, school_period_id: periodId }
+        : null;
+
+  /**
+   * Asignación rápida del profesor de una materia en una sección (sin ir a
+   * Estructura académica). En Primaria deja a ese docente como especialista.
+   */
+  const assignSubjectTeacher = async (secId, subjectId, teacherId) => {
+    try {
+      await academicsApi.setSectionTeachers(secId, { subjects: [{ subjectId, teacherId }] });
+      const who = activeTeachers.find((t) => t.id === teacherId)?.name;
+      toast.success(teacherId ? 'Profesor asignado' : 'Profesor quitado', who ? `Prof. ${who}` : undefined);
+      refetchTeachers();
+      if (secId === sectionId) await refresh();
+    } catch (err) {
+      toast.error('No se pudo asignar', getErrorMessage(err));
+    }
+  };
+  /** Primaria: docente titular de la sección (dicta todas las materias sin especialista). */
+  const assignLeadTeacher = async (teacherId) => {
+    try {
+      await academicsApi.setSectionTeachers(sectionId, { leadTeacherId: teacherId });
+      toast.success('Docente titular asignado', `Prof. ${activeTeachers.find((t) => t.id === teacherId)?.name || ''}`);
+      refetchTeachers();
+      await refresh();
+    } catch (err) {
+      toast.error('No se pudo asignar', getErrorMessage(err));
+    }
+  };
   const downloadPdf = async () => {
     setDownloading(true);
     try {
@@ -341,7 +377,15 @@ function SchedulesPage() {
               loading={downloading}
               loadingText="Generando PDF…"
               disabled={!pdfFilters || downloading}
-              title={pdfFilters ? 'Descargar el horario que estás viendo' : view === 'teacher' ? 'Elige un docente' : 'Elige un grado y su sección'}
+              title={
+                pdfFilters
+                  ? 'Descargar el horario que estás viendo'
+                  : view === 'teacher'
+                    ? 'Elige un docente'
+                    : view === 'assignments'
+                      ? 'Abre el horario de una sección o de un docente para descargarlo'
+                      : 'Elige un grado y su sección'
+              }
             >
               Descargar PDF
             </Button>
@@ -410,7 +454,7 @@ function SchedulesPage() {
                   </Select>
                 </label>
               </>
-            ) : (
+            ) : view === 'assignments' ? null : (
               <label className="schedule-filters__teacher">
                 <span className="student-card__label">Docente</span>
                 <Select sorted value={teacherId} onChange={(e) => setTeacherId(e.target.value)} disabled={loadingTeachers}>
@@ -435,6 +479,17 @@ function SchedulesPage() {
         ) : (
           <p className="text-muted">Elige un docente para ver su semana completa en todas sus secciones, con sus huecos y su carga por día.</p>
         ))}
+
+      {view === 'assignments' && periodId && (
+        <AssignmentsView
+          periodId={periodId}
+          grades={grades || []}
+          teachers={activeTeachers}
+          canAssign={canAssign}
+          onAssign={assignSubjectTeacher}
+          onOpenSection={openSection}
+        />
+      )}
 
       {view === 'section' && (
         <>
@@ -521,6 +576,24 @@ function SchedulesPage() {
                   {data.bank.length === 0 && (
                     <p className="text-sm text-muted">El grado no tiene plan de estudios: agrégale materias en Grados y secciones.</p>
                   )}
+                  {/* Primaria sin docente titular: nadie dicta las materias sin especialista. */}
+                  {data.assignment?.mode === 'homeroom' && !data.assignment.lead && data.bank.length > 0 && (
+                    <div className="schedule-bank__lead">
+                      <span className="teacher-chip teacher-chip--missing">
+                        <Icon name="alertTriangle" size={12} /> Sin docente titular
+                      </span>
+                      <span className="text-sm text-muted">El titular dicta todas las materias que no tienen especialista.</span>
+                      {canAssign && <QuickAssign teachers={activeTeachers} onAssign={assignLeadTeacher} label="Asignar titular" />}
+                    </div>
+                  )}
+                  {(() => {
+                    const missing = data.bank.filter((b) => !b.teacher_id).length;
+                    return missing > 0 ? (
+                      <p className="schedule-bank__missing">
+                        <Icon name="alertTriangle" size={14} /> {missing} materia{missing === 1 ? '' : 's'} sin profesor: no se pueden poner en el horario hasta asignarlo.
+                      </p>
+                    ) : null;
+                  })()}
                   <ul className="schedule-bank__list">
                     {data.bank.map((b) => {
                       const done = b.weekly_hours && b.placed >= b.weekly_hours;
@@ -552,10 +625,43 @@ function SchedulesPage() {
                                 setSelected(isSelected ? null : itemOfSubject(b));
                               }
                             }}
-                            title={b.teacher ? 'Arrástrala a la grilla, o tócala y luego toca la celda' : 'Asigna un profesor en la carga docente'}
+                            title={b.teacher ? 'Arrástrala a la grilla, o tócala y luego toca la celda' : 'Asígnale un profesor para poder ponerla en el horario'}
                           >
                             <span className="schedule-bank__name">{b.subject_name}</span>
-                            <span className="schedule-bank__teacher">{b.teacher ? b.teacher.name : 'Sin profesor asignado'}</span>
+                            {/* Profesor SIEMPRE visible; sin profesor: aviso + asignación al instante. */}
+                            <span className="schedule-bank__teacher">
+                              {b.teacher_id ? (
+                                <>
+                                  <span className="teacher-chip">
+                                    <Icon name="user" size={12} /> Prof. {b.teacher_name}
+                                  </span>
+                                  {b.teacher_source === 'homeroom' && (
+                                    <span className="teacher-chip__note" title="Primaria: la dicta el docente titular porque no tiene especialista.">
+                                      titular
+                                    </span>
+                                  )}
+                                  {canAssign && (
+                                    <QuickAssign
+                                      teachers={activeTeachers}
+                                      currentId={b.teacher_source === 'subject' ? b.teacher_id : null}
+                                      onAssign={(id) => assignSubjectTeacher(sectionId, b.subject_id, id)}
+                                      label="Cambiar"
+                                      variant="ghost"
+                                      allowClear={b.teacher_source === 'subject'}
+                                    />
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <span className="teacher-chip teacher-chip--missing">
+                                    <Icon name="alertTriangle" size={12} /> Sin profesor asignado
+                                  </span>
+                                  {canAssign && (
+                                    <QuickAssign teachers={activeTeachers} onAssign={(id) => assignSubjectTeacher(sectionId, b.subject_id, id)} />
+                                  )}
+                                </>
+                              )}
+                            </span>
                             <span className={`schedule-bank__hours ${done ? 'is-done' : ''}`}>
                               {b.placed}
                               {b.weekly_hours ? ` / ${b.weekly_hours}` : ''} h

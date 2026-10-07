@@ -93,9 +93,10 @@ function StudentGrades({ studentId }) {
     return <EmptyGrades title="Sin inscripciones" text="El alumno todavía no está inscrito en ninguna sección." />;
   }
 
-  const visible = subjects
-    .map((s) => ({ ...s, plans: s.plans.filter((p) => !termId || p.term_id === termId) }))
-    .filter((s) => s.plans.length > 0);
+  // TODAS las materias se muestran, también las que aún no tienen plan (en
+  // general o en el lapso elegido): se ven con "Sin plan de evaluación".
+  const visible = subjects.map((s) => ({ ...s, plans: s.plans.filter((p) => !termId || p.term_id === termId) }));
+  const termName = terms.find((t) => t.id === termId)?.name || null;
 
   // Promedio del lapso: media de lo evaluado en cada materia con notas (orientativo).
   const averages = visible.flatMap((s) => s.plans.map((p) => p.current_average)).filter((v) => v !== null);
@@ -181,6 +182,7 @@ function StudentGrades({ studentId }) {
                 scale={scale}
                 passing={passing}
                 showTerm={!termId}
+                termName={termName}
               />
             ))}
           </div>
@@ -192,6 +194,16 @@ function StudentGrades({ studentId }) {
 
 /** Resumen de una materia para la cabecera: una etiqueta por lapso con su nota. */
 function SubjectSummary({ plans, passing }) {
+  if (!plans.length) {
+    return (
+      <span className="subject-card__summary">
+        <span className="grade-chip grade--none" title="Aún no hay plan de evaluación">
+          <strong>—</strong>
+          <span className="grade-chip__kind">Sin plan</span>
+        </span>
+      </span>
+    );
+  }
   return (
     <span className="subject-card__summary">
       {plans.map((plan) => {
@@ -215,7 +227,7 @@ function SubjectSummary({ plans, passing }) {
  * contenido se anima con grid-template-rows y queda `inert` (fuera del orden
  * de tabulación) mientras no se ve.
  */
-export function SubjectCard({ subject, collapsed, onToggle, scale, passing, showTerm }) {
+export function SubjectCard({ subject, collapsed, onToggle, scale, passing, showTerm, termName = null }) {
   const bodyId = `subject-body-${String(subject.key).replace(/[^a-z0-9-]/gi, '-')}`;
   return (
     <section className={`subject-card ${collapsed ? 'is-collapsed' : ''}`}>
@@ -231,6 +243,18 @@ export function SubjectCard({ subject, collapsed, onToggle, scale, passing, show
       </h3>
       <div id={bodyId} className="subject-card__body" aria-hidden={collapsed} {...(collapsed ? { inert: '' } : {})}>
         <div className="subject-card__inner">
+          {subject.plans.length === 0 && (
+            <div className="plan-grades plan-grades--pending">
+              <div className="plan-grades__head">
+                <div className="cell-person__sub">
+                  {termName
+                    ? `Aún no hay plan de evaluación de ${subject.name} para ${termName}.`
+                    : `Aún no hay plan de evaluación de ${subject.name}: cuando el docente lo publique, aquí verás sus actividades y notas.`}
+                </div>
+                <Badge variant="neutral">Sin plan</Badge>
+              </div>
+            </div>
+          )}
           {subject.plans.map((plan) => (
             <PlanGrades key={plan.plan_id} plan={plan} scale={scale} passing={passing} showTerm={showTerm} />
           ))}
@@ -250,7 +274,7 @@ function PlanGrades({ plan, scale, passing, showTerm }) {
         <div>
           {showTerm && <div className="plan-grades__term">{plan.term_name}</div>}
           <div className="cell-person__sub">
-            Prof. {plan.teacher_name} · {plan.section}
+            {plan.teacher_name ? `Prof. ${plan.teacher_name}` : 'Docente por asignar'} · {plan.section}
             {plan.section_withdrawn && ' (sección anterior)'}
           </div>
         </div>

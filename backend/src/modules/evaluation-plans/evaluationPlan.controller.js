@@ -119,12 +119,15 @@ const updatePlan = asyncHandler(async (req, res) => {
       sectionIds: z.array(z.string().uuid()).min(1).max(20).optional(),
       termNumber: z.coerce.number().int().min(1).max(3).optional(),
       termId: z.string().uuid().optional(),
+      // Mover el plan (sin notas) a otra sección: se creó en la sección equivocada.
+      moveToSectionId: z.string().uuid().optional(),
     })
     .parse(req.body);
   const scope = await teacherScope.getTeacherScope(req);
-  if (scope && data.sectionIds) {
+  const targets = [...(data.sectionIds || []), ...(data.moveToSectionId ? [data.moveToSectionId] : [])];
+  if (scope && targets.length) {
     const plan = await req.db('evaluation_plans').where({ id: req.params.planId, tenant_id: req.tenantId }).select('subject_id').first();
-    if (plan && data.sectionIds.some((id) => !teacherScope.coversSubject(scope, id, plan.subject_id))) {
+    if (plan && targets.some((id) => !teacherScope.coversSubject(scope, id, plan.subject_id))) {
       throw ApiError.forbidden('Solo puedes aplicar el plan a secciones de tu carga docente.', [{ path: 'sectionIds', message: 'Fuera de tu carga.' }]);
     }
   }

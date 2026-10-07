@@ -125,7 +125,8 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
     ? await trx('evaluation_plans as ep')
         .join('evaluation_plan_sections as eps', 'eps.plan_id', 'ep.id')
         .join('terms as t', 't.id', 'ep.term_id')
-        .join('staff as st', 'st.id', 'ep.teacher_id')
+        // LEFT: un plan cuyo docente se eliminó del personal debe seguir viéndose.
+        .leftJoin('staff as st', 'st.id', 'ep.teacher_id')
         .leftJoin('subjects as sub', 'sub.id', 'ep.subject_id')
         .where('ep.tenant_id', tenantId)
         .whereIn('eps.section_id', sections.map((s) => s.id))
@@ -138,7 +139,7 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
           't.id as term_id',
           't.name as term_name',
           't.start_date as term_start',
-          trx.raw("st.first_name || ' ' || st.last_name AS teacher_name")
+          trx.raw("NULLIF(concat_ws(' ', st.first_name, st.last_name), '') AS teacher_name")
         )
         .orderByRaw('t.term_number NULLS LAST, t.start_date NULLS LAST, t.name, ep.subject')
     : [];
@@ -236,6 +237,23 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
     }
     subject.plans.push(plan);
   });
+
+  // TODAS las materias del plan de estudios del grado del alumno se listan,
+  // aunque aún no tengan plan de evaluación en su sección (`pending: true`):
+  // así el representante ve la materia (y la escuela detecta el plan que falta)
+  // en vez de que desaparezca.
+  const current = sections.find((s) => s.enrollment_status === 'active') || sections[0];
+  if (current) {
+    const curriculum = await trx('grade_subjects as gs')
+      .join('sections as sec', 'sec.grade_id', 'gs.grade_id')
+      .join('subjects as sub', 'sub.id', 'gs.subject_id')
+      .where('sec.id', current.id)
+      .select('sub.id', 'sub.name', 'sub.code')
+      .orderBy([{ column: 'gs.sort_order' }, { column: 'sub.name' }]);
+    curriculum.forEach((c) => {
+      if (!subjects.some((s) => s.key === c.id)) subjects.push({ key: c.id, name: c.name, code: c.code, plans: [], pending: true });
+    });
+  }
   subjects.sort((a, b) => a.name.localeCompare(b.name, 'es'));
 
   const terms = [...new Map(plans.map((p) => [p.term_id, { id: p.term_id, name: p.term_name }])).values()];

@@ -55,9 +55,11 @@ const termRange = (t) => (t?.start_date && t?.end_date ? `${formatShort(t.start_
 const formatShort = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
 /**
- * Planes de evaluación agrupados por lapso académico (Lapso I, II, III) del
- * año escolar elegido. Cada bloque se puede contraer y muestra cuántos planes
- * tiene y cuántos están cerrados o listos para cerrar.
+ * Planes de evaluación del año escolar elegido, en dos niveles plegables:
+ *   1. Materia (A-Z): docentes, lapsos con plan, cerrados / listos para cerrar.
+ *   2. Lapso (I, II, III) dentro de cada materia, con sus planes por sección.
+ * Los lapsos sin plan de la materia se ofrecen para crearlo en un clic, y las
+ * fechas de los lapsos se editan en la barra superior.
  */
 function EvaluationPlansPage() {
   const { can } = useAuth();
@@ -90,58 +92,81 @@ function EvaluationPlansPage() {
     return q ? yearPlans.filter((p) => searchText(p).toLowerCase().includes(q)) : yearPlans;
   }, [yearPlans, query]);
 
-  // Los 3 lapsos siempre (aunque estén vacíos, para poder crear planes en ellos);
-  // un bloque extra si hubiera planes en un lapso sin número.
-  const groups = useMemo(() => {
-    const list = TERM_OPTIONS.map((t) => ({
-      key: String(t.number),
-      number: t.number,
-      label: t.label,
-      term: (terms || []).find((x) => Number(x.term_number) === t.number) || null,
-      plans: filtered.filter((p) => Number(p.term_number) === t.number),
-    }));
-    const other = filtered.filter((p) => !TERM_OPTIONS.some((t) => t.number === Number(p.term_number)));
-    if (other.length) list.push({ key: NO_TERM, number: null, label: 'Otros lapsos', term: null, plans: other });
-    return query ? list.filter((g) => g.plans.length) : list;
-  }, [filtered, terms, query]);
+  /**
+   * Jerarquía Materia → Lapso → planes. Las materias van de la A a la Z (el
+   * backend ya entrega los planes en ese orden); dentro de cada materia, sus
+   * lapsos en orden (I, II, III, y "Otros" si hubiera alguno sin número).
+   */
+  const subjectGroups = useMemo(() => {
+    const map = new Map();
+    filtered.forEach((p) => {
+      const key = p.subject_key || `txt:${String(p.subject).trim().toLowerCase()}`;
+      if (!map.has(key)) map.set(key, { key, name: p.subject_name || p.subject, code: p.subject_code, plans: [] });
+      map.get(key).plans.push(p);
+    });
+    return [...map.values()]
+      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base', numeric: true }))
+      .map((s) => {
+        const termGroups = TERM_OPTIONS.map((t) => ({
+          key: String(t.number),
+          number: t.number,
+          label: t.label,
+          term: (terms || []).find((x) => Number(x.term_number) === t.number) || null,
+          plans: s.plans.filter((p) => Number(p.term_number) === t.number),
+        }));
+        const other = s.plans.filter((p) => !TERM_OPTIONS.some((t) => t.number === Number(p.term_number)));
+        if (other.length) termGroups.push({ key: NO_TERM, number: null, label: 'Otros lapsos', term: null, plans: other });
+        return {
+          ...s,
+          termGroups: termGroups.filter((t) => t.plans.length),
+          missingTerms: termGroups.filter((t) => t.number && !t.plans.length),
+          teachers: [...new Set(s.plans.map((p) => p.teacher_name))].sort((a, b) => a.localeCompare(b, 'es')),
+          closed: s.plans.filter((p) => p.status === 'closed').length,
+          ready: s.plans.filter((p) => p.status !== 'closed' && Number(p.total_weight) === 100).length,
+        };
+      });
+  }, [filtered, terms]);
 
-  const toggle = (key) =>
-    setCollapsed((c) => {
+  // Acordeones: materias (clave de la materia) y lapsos dentro (materia|lapso).
+  // Al buscar se abre todo para ver los resultados.
+  const [collapsedTerms, setCollapsedTerms] = useState(new Set());
+  const toggleIn = (setter) => (key) =>
+    setter((c) => {
       const next = new Set(c);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+  const toggle = toggleIn(setCollapsed);
+  const toggleTerm = toggleIn(setCollapsedTerms);
 
+  // Dentro de una materia la columna "Asignatura" sobra: se muestra sección y docente.
   const planColumns = [
     {
-      key: 'subject',
-      header: 'Asignatura',
+      key: 'section_name',
+      header: 'Grado y sección',
       render: (p) => (
         <div>
           <Link to={`/evaluation-plans/${p.id}`} className="cell-person__name">
-            {p.subject}
+            {p.grade_name} · {p.section_names && p.section_names.includes(',') ? `Secciones ${p.section_names}` : `Sección ${p.section_names || p.section_name}`}
           </Link>
           <div className="cell-person__sub">
-            {p.teacher_name}
-            {p.format === 'detailed' && <> · {FORMATS.detailed.label}</>}
+            <LevelBadge code={p.level_code} />
           </div>
-        </div>
-      ),
-      sortValue: (p) => p.subject,
-    },
-    {
-      key: 'section_name',
-      header: 'Sección',
-      render: (p) => (
-        <div>
-          <div>
-            {p.grade_name} · {p.section_names && p.section_names.includes(',') ? `Secciones ${p.section_names}` : p.section_names || p.section_name}
-          </div>
-          <LevelBadge code={p.level_code} />
         </div>
       ),
       sortValue: (p) => `${p.grade_name} ${p.section_name}`,
+    },
+    {
+      key: 'teacher_name',
+      header: 'Docente',
+      render: (p) => (
+        <div>
+          <div>{p.teacher_name}</div>
+          <div className="cell-person__sub">{p.format === 'detailed' ? FORMATS.detailed.label : FORMATS.simple.label}</div>
+        </div>
+      ),
+      sortValue: (p) => p.teacher_name,
     },
     { key: 'total_weight', header: 'Ponderación', render: (p) => <PlanWeight plan={p} />, sortValue: (p) => Number(p.total_weight) },
   ];
@@ -153,13 +178,13 @@ function EvaluationPlansPage() {
 
   return (
     <div>
-      <PageHeader title="Planes de evaluación" subtitle="Planes y actividades de cada sección, organizados por lapso académico" />
+      <PageHeader title="Planes de evaluación" subtitle="Organizados por materia y, dentro de cada una, por lapso académico" />
 
       <div className="card data-table student-groups__toolbar">
         <div className="data-table__header">
           <div>
             <h3 className="card__title">
-              Planes por lapso
+              Planes por materia
               {!loadingPlans && <span className="data-table__count">{yearPlans.length}</span>}
             </h3>
             <p className="card__subtitle">Abre un plan para cargar sus actividades y porcentajes. Debe sumar exactamente 100% para poder cerrarlo.</p>
@@ -197,20 +222,60 @@ function EvaluationPlansPage() {
                 </option>
               ))}
             </Select>
-            <Button variant="ghost" size="sm" icon="chevronDown" onClick={() => setCollapsed(new Set())} disabled={Boolean(query)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="chevronDown"
+              onClick={() => {
+                setCollapsed(new Set());
+                setCollapsedTerms(new Set());
+              }}
+              disabled={Boolean(query)}
+            >
               Expandir todo
             </Button>
-            <Button variant="ghost" size="sm" icon="chevronRight" onClick={() => setCollapsed(new Set(groups.map((g) => g.key)))} disabled={Boolean(query)}>
+            <Button variant="ghost" size="sm" icon="chevronRight" onClick={() => setCollapsed(new Set(subjectGroups.map((g) => g.key)))} disabled={Boolean(query)}>
               Contraer todo
             </Button>
           </div>
         </div>
         <Alert>{plansError}</Alert>
+
+        {/* Lapsos del año con sus fechas (antes eran los grupos principales). */}
+        <div className="term-bar" aria-label="Lapsos del año escolar">
+          {TERM_OPTIONS.map((t) => {
+            const term = (terms || []).find((x) => Number(x.term_number) === t.number);
+            return (
+              <span key={t.number} className="term-bar__item">
+                <strong>{t.label}</strong>
+                <span className="text-sm text-muted">{termRange(term) || 'Sin fechas'}</span>
+                {canCreate && term && (
+                  <button type="button" className="link-button term-bar__edit" onClick={() => setEditingTerm(term)} title={`Fechas del ${t.label}`}>
+                    <Icon name="calendar" size={13} /> Fechas
+                  </button>
+                )}
+              </span>
+            );
+          })}
+        </div>
       </div>
 
       {loadingPlans ? (
         <Spinner />
-      ) : query && groups.length === 0 ? (
+      ) : !query && subjectGroups.length === 0 ? (
+        <div className="card empty-state">
+          <div className="empty-state__icon">
+            <Icon name="clipboard" size={24} />
+          </div>
+          <div className="empty-state__title">Aún no hay planes en este año escolar</div>
+          <div className="text-sm">Crea el primero: elige la sección, la materia y el lapso.</div>
+          {canCreate && (
+            <Button icon="plus" onClick={() => setCreateFor({})} style={{ marginTop: 12 }}>
+              Nuevo plan
+            </Button>
+          )}
+        </div>
+      ) : query && subjectGroups.length === 0 ? (
         <div className="card empty-state">
           <div className="empty-state__icon">
             <Icon name="search" size={24} />
@@ -220,46 +285,82 @@ function EvaluationPlansPage() {
         </div>
       ) : (
         <div className="student-groups">
-          {groups.map((g) => {
-            const open = Boolean(query) || !collapsed.has(g.key);
-            const bodyId = `term-group-${g.key}`;
-            const closed = g.plans.filter((p) => p.status === 'closed').length;
-            const ready = g.plans.filter((p) => p.status !== 'closed' && Number(p.total_weight) === 100).length;
-            const range = termRange(g.term);
+          {subjectGroups.map((s) => {
+            const open = Boolean(query) || !collapsed.has(s.key);
+            const bodyId = `subject-group-${s.key.replace(/[^a-z0-9-]/gi, '-')}`;
             return (
-              <section key={g.key} className={`student-group term-group ${open ? 'is-open' : ''} ${g.plans.length ? '' : 'student-group--none'}`}>
+              <section key={s.key} className={`student-group subject-group ${open ? 'is-open' : ''}`}>
+                {/* Nivel 1: la materia */}
                 <div className="student-group__header">
-                  <button type="button" className="student-group__toggle" onClick={() => toggle(g.key)} aria-expanded={open} aria-controls={bodyId} disabled={Boolean(query)}>
+                  <button type="button" className="student-group__toggle" onClick={() => toggle(s.key)} aria-expanded={open} aria-controls={bodyId} disabled={Boolean(query)}>
                     <Icon name="chevronDown" size={18} className="student-group__chevron" />
-                    <span className="student-group__title">{g.label}</span>
-                    {g.term && g.term.name !== `Lapso ${g.number}` && <span className="text-sm text-muted">{g.term.name}</span>}
+                    <span className="student-group__title">{s.name}</span>
+                    {s.code && <span className="chip">{s.code}</span>}
                     <span className="student-group__meta">
-                      {range || 'Sin fechas registradas'}
-                      {g.plans.length > 0 && ` · ${closed} cerrado${closed === 1 ? '' : 's'} · ${ready} listo${ready === 1 ? '' : 's'} para cerrar`}
+                      {s.teachers.length ? `Prof. ${s.teachers.join(', ')}` : ''}
+                      {` · ${s.termGroups.map((t) => t.label).join(', ')}`}
+                      {s.closed > 0 && ` · ${s.closed} cerrado${s.closed === 1 ? '' : 's'}`}
+                      {s.ready > 0 && ` · ${s.ready} listo${s.ready === 1 ? '' : 's'} para cerrar`}
                     </span>
                   </button>
                   <div className="student-group__side">
                     <span className="student-group__count">
-                      {g.plans.length} plan{g.plans.length === 1 ? '' : 'es'}
+                      {s.plans.length} plan{s.plans.length === 1 ? '' : 'es'}
                     </span>
-                    {canCreate && g.term && (
-                      <Button size="sm" variant="ghost" icon="calendar" onClick={() => setEditingTerm(g.term)} title={`Fechas del ${g.label}`}>
-                        Fechas
-                      </Button>
-                    )}
-                    {canCreate && g.number && (
-                      <Button size="sm" variant="secondary" icon="plus" onClick={() => setCreateFor({ termNumber: g.number })}>
-                        Plan
-                      </Button>
-                    )}
                   </div>
                 </div>
+
                 {open && (
-                  <div id={bodyId} className="student-group__body">
-                    {g.plans.length === 0 ? (
-                      <p className="text-muted term-group__empty">Aún no hay planes en el {g.label}.</p>
-                    ) : (
-                      <DataTable bare searchable={false} paginated={false} columns={planColumns} rows={g.plans} rowActions={rowActions} emptyMessage="Sin planes." />
+                  <div id={bodyId} className="student-group__body subject-group__body">
+                    {/* Nivel 2: los lapsos de la materia */}
+                    {s.termGroups.map((t) => {
+                      const termKey = `${s.key}|${t.key}`;
+                      const termOpen = Boolean(query) || !collapsedTerms.has(termKey);
+                      const termBodyId = `${bodyId}-${t.key}`;
+                      const closed = t.plans.filter((p) => p.status === 'closed').length;
+                      return (
+                        <div key={t.key} className={`term-subgroup ${termOpen ? 'is-open' : ''}`}>
+                          <div className="term-subgroup__header">
+                            <button
+                              type="button"
+                              className="term-subgroup__toggle"
+                              onClick={() => toggleTerm(termKey)}
+                              aria-expanded={termOpen}
+                              aria-controls={termBodyId}
+                              disabled={Boolean(query)}
+                            >
+                              <Icon name="chevronDown" size={16} className="term-subgroup__chevron" />
+                              <span className="term-subgroup__title">{t.label}</span>
+                              {t.term && t.term.name !== `Lapso ${t.number}` && <span className="text-sm text-muted">{t.term.name}</span>}
+                              <span className="term-subgroup__meta">
+                                {termRange(t.term) || 'Sin fechas'} · {t.plans.length} plan{t.plans.length === 1 ? '' : 'es'}
+                                {closed > 0 && ` · ${closed} cerrado${closed === 1 ? '' : 's'}`}
+                              </span>
+                            </button>
+                            {canCreate && t.number && (
+                              <Button size="sm" variant="ghost" icon="plus" onClick={() => setCreateFor({ termNumber: t.number })}>
+                                Plan
+                              </Button>
+                            )}
+                          </div>
+                          {termOpen && (
+                            <div id={termBodyId} className="term-subgroup__body">
+                              <DataTable bare searchable={false} paginated={false} columns={planColumns} rows={t.plans} rowActions={rowActions} emptyMessage="Sin planes." />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {!query && s.missingTerms.length > 0 && (
+                      <div className="subject-group__missing">
+                        <span className="text-sm text-muted">Sin plan en: {s.missingTerms.map((t) => t.label).join(', ')}</span>
+                        {canCreate &&
+                          s.missingTerms.map((t) => (
+                            <Button key={t.key} size="sm" variant="ghost" icon="plus" onClick={() => setCreateFor({ termNumber: t.number })}>
+                              {t.label}
+                            </Button>
+                          ))}
+                      </div>
                     )}
                   </div>
                 )}

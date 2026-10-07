@@ -6088,3 +6088,157 @@ button.link-icon:disabled { opacity: 0.6; cursor: progress; }
 .schedule-entry[draggable='true']:active { cursor: grabbing; }
 
 .empty-state__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; }
+
+/* ==========================================================================
+   Profesores por materia: chips, asignación rápida y vista "Asignaciones"
+   ========================================================================== */
+
+.teacher-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border-radius: 999px; background: var(--color-primary-softer, var(--color-surface-muted)); color: var(--color-primary-text); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.teacher-chip--missing { background: var(--color-warning-soft); color: #b45309; box-shadow: inset 0 0 0 1px var(--color-warning-border, var(--color-warning)); }
+.teacher-chip__note { padding: 1px 6px; border-radius: 999px; background: var(--color-surface-muted); color: var(--color-text-muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.teacher-cell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+.quick-assign { display: inline-flex; flex-direction: column; gap: 4px; min-width: 0; }
+.quick-assign__select { height: 30px; padding: 2px 8px; font-size: 12.5px; min-width: 180px; max-width: 100%; }
+.quick-assign__empty { font-size: 11.5px; color: var(--color-danger); }
+.quick-assign__btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid transparent; border-radius: 999px; font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.quick-assign__btn--warning { background: var(--color-warning); color: #fff; }
+.quick-assign__btn--warning:hover { filter: brightness(0.95); }
+.quick-assign__btn--ghost { background: none; color: var(--color-text-muted); }
+.quick-assign__btn--ghost:hover { border-color: var(--color-border); color: var(--color-text); }
+.quick-assign__btn:disabled { cursor: not-allowed; opacity: 0.6; }
+
+/* Panel de materias del horario: el profesor ocupa su propia línea, destacado */
+.schedule-bank__teacher { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; font-size: 12px; }
+.schedule-bank__item.is-disabled .schedule-bank__card { opacity: 1; cursor: default; border-style: dashed; border-color: var(--color-warning); background: var(--color-surface); }
+.schedule-bank__item.is-disabled .schedule-bank__name { color: var(--color-text-secondary); }
+.schedule-bank__lead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border: 1px dashed var(--color-warning); border-radius: var(--radius-md); background: var(--color-warning-soft); }
+.schedule-bank__missing { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 12.5px; font-weight: 600; color: #b45309; }
+
+/* Vista "Asignaciones" */
+.assignments { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.assignments__stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.assignments__stat { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); font: inherit; font-size: 13px; color: var(--color-text-secondary); }
+.assignments__stat strong { font-size: 16px; color: var(--color-text); }
+.assignments__stat--ok { border-color: var(--color-success-border, var(--color-border)); background: var(--color-success-soft); color: var(--color-success); }
+.assignments__stat--warn { border-color: var(--color-warning); background: var(--color-warning-soft); color: #b45309; cursor: pointer; }
+.assignments__stat--warn.is-active { box-shadow: 0 0 0 3px var(--color-primary-ring); }
+.assignments__stat--warn.is-zero { border-color: var(--color-border); background: var(--color-surface); color: var(--color-text-muted); }
+.assignments__filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 12px; }
+.assignments__search { flex: 1 1 240px; }
+.assignments__filters .select, .assignments__filters select { max-width: 220px; }
+.assignments__toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; white-space: nowrap; }
+.assignments__empty { margin: 8px 0 0; }
+.assignments__table tbody + tbody { border-top: 2px solid var(--color-border); }
+.assignments__section { vertical-align: top; min-width: 160px; background: var(--color-surface) !important; }
+.assignments__section .link-button { display: block; font-weight: 700; text-align: left; }
+.assignments__hours { width: 70px; text-align: center; }
+.assignments__table tr.is-missing td:not(.assignments__section) { background: color-mix(in srgb, var(--color-warning-soft) 55%, transparent); }
+
+/* ==========================================================================
+   Planes de evaluación: Materia → Lapso (acordeones anidados)
+   ========================================================================== */
+
+.term-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.term-bar__item { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-muted); font-size: 13px; }
+.term-bar__edit { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; }
+
+.subject-group .student-group__title { font-size: 16px; }
+.subject-group__body { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; }
+
+.term-subgroup { border: 1px solid var(--color-border); border-left: 3px solid var(--color-primary); border-radius: var(--radius-md); background: var(--color-surface); overflow: hidden; }
+.term-subgroup__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 8px 2px 0; background: var(--color-surface-muted); }
+.term-subgroup.is-open .term-subgroup__header { border-bottom: 1px solid var(--color-border); }
+.term-subgroup__toggle { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; padding: 8px 12px; border: none; background: none; font: inherit; text-align: left; cursor: pointer; }
+.term-subgroup__toggle:disabled { cursor: default; }
+.term-subgroup__toggle:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-primary-ring); }
+.term-subgroup__chevron { color: var(--color-text-muted); transform: rotate(-90deg); transition: transform var(--transition-fast); }
+.term-subgroup.is-open .term-subgroup__chevron { transform: rotate(0deg); }
+.term-subgroup__title { font-weight: 700; color: var(--color-primary-text); }
+.term-subgroup__meta { font-size: 12.5px; color: var(--color-text-muted); }
+.term-subgroup__body { padding: 0 8px 4px; }
+.term-subgroup__body .data-table .table-wrap { border: none; box-shadow: none; }
+
+.subject-group__missing { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 10px; border: 1px dashed var(--color-border); border-radius: var(--radius-md); }
+
+/* ==========================================================================
+   Menú lateral: grupos plegables (chevron + altura animada, 300 ms)
+   ========================================================================== */
+
+.sidebar__section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 4px 12px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+.sidebar__section-toggle > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sidebar__section-toggle:hover { color: var(--sb-fg-muted); }
+.sidebar__section-toggle:focus-visible { outline: 2px solid rgba(var(--color-primary-rgb), 0.7); outline-offset: 1px; }
+.sidebar__section-chevron { flex: none; opacity: 0.7; transition: transform 300ms ease; }
+.sidebar__section.is-closed .sidebar__section-chevron { transform: rotate(-90deg); }
+.sidebar__section-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 8px rgba(var(--color-primary-rgb), 0.9); }
+
+/* Altura animada: la fila pasa de 0fr a 1fr (sin medir el contenido). */
+.sidebar__section-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 300ms ease, opacity 300ms ease; }
+.sidebar__section.is-closed .sidebar__section-body { grid-template-rows: 0fr; opacity: 0; }
+.sidebar__section-items { min-height: 0; }
+/* Solo con etiquetas (en modo íconos no se pliega, y así no se recortan los tooltips).
+   El margen negativo deja dentro del recorte el indicador del enlace activo (left: -12px). */
+.sidebar:not(.sidebar--collapsed) .sidebar__section-items { overflow: hidden; margin: 0 -12px; padding: 0 12px; }
+.sidebar__section.is-closed + .sidebar__section { margin-top: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar__section-body, .sidebar__section-chevron { transition: none; }
+}
+
+/* ==========================================================================
+   Selector de alumno con búsqueda (combobox)
+   ========================================================================== */
+
+.student-picker { position: relative; }
+.student-picker__control { position: relative; display: flex; align-items: center; }
+.student-picker__icon { position: absolute; left: 12px; color: var(--color-text-muted); pointer-events: none; }
+.student-picker__input { padding-left: 36px; padding-right: 34px; }
+.student-picker__input::placeholder { color: var(--color-text-muted); }
+.student-picker.is-invalid .student-picker__input { border-color: var(--color-danger); }
+.student-picker__clear { position: absolute; right: 8px; display: inline-flex; padding: 4px; border: none; border-radius: 6px; background: none; color: var(--color-text-muted); cursor: pointer; }
+.student-picker__clear:hover { background: var(--color-surface-muted); color: var(--color-text); }
+/* Campo oculto para la validación "requerido" del formulario (no display:none, para que el navegador lo valide). */
+.student-picker__required { position: absolute; left: 50%; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+
+.student-picker__list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg, 0 12px 32px -12px rgba(15, 23, 42, 0.35));
+  list-style: none;
+  animation: fade-in 120ms ease;
+}
+.student-picker__option { position: relative; display: flex; flex-direction: column; gap: 1px; padding: 7px 34px 7px 10px; border-radius: 7px; cursor: pointer; }
+.student-picker__option.is-active { background: var(--color-primary-soft); }
+.student-picker__option.is-selected .student-picker__name { color: var(--color-primary-text); }
+.student-picker__name { font-size: 14px; font-weight: 600; color: var(--color-text); }
+.student-picker__meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--color-text-muted); }
+.student-picker__course { font-weight: 600; color: var(--color-text-secondary); }
+.student-picker__course.is-none { font-weight: 400; font-style: italic; color: var(--color-text-muted); }
+.student-picker__check { position: absolute; right: 10px; top: 50%; color: var(--color-primary-text); transform: translateY(-50%); }
+.student-picker__empty, .student-picker__more { padding: 10px; font-size: 13px; color: var(--color-text-muted); }
+.student-picker__more { border-top: 1px solid var(--color-border); font-size: 12px; }

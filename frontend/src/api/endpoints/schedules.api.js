@@ -6,6 +6,11 @@ const get = (url, params) => axiosClient.get(url, { params }).then((r) => r.data
 const schedulesApi = {
   /** TODOS los grados (jerarquía escolar) con sus secciones del año: [{ id, name, level_name, sections: [{ id, name }] }]. */
   listGrades: (schoolPeriodId) => get('/schedules/grades', { school_period_id: schoolPeriodId }),
+  /**
+   * Tabla plana Grado/Sección → Materia → Profesor del año (incluye las materias sin profesor):
+   * { rows: [{ grade_name, section_name, subject_name, teacher_id, teacher_name, teacher_source… }], summary }
+   */
+  listAssignments: (filters) => get('/schedules/assignments', filters),
   /** Secciones para elegir (administración). */
   listSections: (params) => get('/schedules/sections', params),
   /** Bloques horarios del año escolar. */

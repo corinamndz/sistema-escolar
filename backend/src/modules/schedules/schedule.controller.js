@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const service = require('./schedule.service');
 const academicService = require('../academics/academic.service');
+const assignmentService = require('../academics/assignment.service');
 const teacherScope = require('../access/teacherScope');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
 const { asyncHandler } = require('../../utils/asyncHandler');
@@ -133,6 +134,17 @@ const listGrades = asyncHandler(async (req, res) => {
   res.status(200).json(await service.listGradesForSchedule(req.db, req.tenantId, periodId));
 });
 
+/**
+ * GET /schedules/assignments?school_period_id=&grade_id=&section_id=&teacher_id=
+ * Tabla plana Grado/Sección → Materia → Profesor (incluye las materias SIN
+ * profesor) + resumen. Ver assignmentService.listAssignmentMatrix.
+ */
+const listAssignments = asyncHandler(async (req, res) => {
+  const f = parseFilters(req.query);
+  if (!f.schoolPeriodId) throw ApiError.badRequest('Indica el año escolar (school_period_id).', [{ path: 'school_period_id', message: 'Requerido.' }]);
+  res.status(200).json(await assignmentService.listAssignmentMatrix(req.db, req.tenantId, f));
+});
+
 /** GET /schedules/mine — horario semanal del docente autenticado (solo lectura). */
 const mySchedule = asyncHandler(async (req, res) => {
   const staff = await req.db('staff').where({ tenant_id: req.tenantId, user_id: req.user.id }).select('id').first();
@@ -140,4 +152,4 @@ const mySchedule = asyncHandler(async (req, res) => {
   res.status(200).json(await service.getTeacherSchedule(req.db, req.tenantId, staff.id));
 });
 
-module.exports = { listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers, listGrades, downloadPdf };
+module.exports = { listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers, listGrades, listAssignments, downloadPdf };

@@ -445,6 +445,67 @@ async function applySubjectTeachers(trx, tenantId, section, list) {
   }
 }
 
+// ---------- Matriz plana: grado/sección → materia → profesor ----------
+
+/**
+ * Una fila por (sección, materia del plan de estudios) del año, con su
+ * profesor en campos PLANOS, en una sola consulta:
+ *   { level_name, grade_id, grade_name, section_id, section_name, subject_id,
+ *     subject_name, weekly_hours, teacher_id, teacher_name, teacher_source }
+ * teacher_source: 'subject'  profesor asignado a esa materia (o especialista en Primaria)
+ *                 'homeroom' Primaria sin especialista: la dicta el docente titular
+ *                 null       SIN profesor (vacante)
+ * Filtros opcionales: gradeId, sectionId, teacherId. Orden de la jerarquía escolar.
+ */
+async function listAssignmentMatrix(trx, tenantId, { schoolPeriodId, gradeId = null, sectionId = null, teacherId = null }) {
+  const rows = await trx('sections as sec')
+    .join('grades as g', 'g.id', 'sec.grade_id')
+    .join('education_levels as el', 'el.code', 'g.level_code')
+    .join('grade_subjects as gs', 'gs.grade_id', 'g.id')
+    .join('subjects as s', 's.id', 'gs.subject_id')
+    .leftJoin('teacher_subject_sections as t', function onSubject() {
+      this.on('t.section_id', 'sec.id').andOn('t.subject_id', 's.id');
+    })
+    .leftJoin('staff as st', 'st.id', 't.staff_id')
+    .leftJoin('teacher_sections as ts', function onLead() {
+      this.on('ts.section_id', 'sec.id').andOn('ts.role', trx.raw('?', ['lead'])).andOn('el.assignment_mode', trx.raw('?', ['homeroom']));
+    })
+    .leftJoin('staff as lead', 'lead.id', 'ts.staff_id')
+    .where({ 'sec.tenant_id': tenantId, 'sec.school_period_id': schoolPeriodId })
+    .modify((q) => {
+      if (gradeId) q.andWhere('g.id', gradeId);
+      if (sectionId) q.andWhere('sec.id', sectionId);
+      if (teacherId) q.andWhere(trx.raw('COALESCE(st.id, lead.id)'), teacherId);
+    })
+    .select(
+      'el.code as level_code',
+      'el.name as level_name',
+      'g.id as grade_id',
+      'g.name as grade_name',
+      'sec.id as section_id',
+      'sec.name as section_name',
+      's.id as subject_id',
+      's.name as subject_name',
+      'gs.weekly_hours',
+      trx.raw('COALESCE(st.id, lead.id) AS teacher_id'),
+      trx.raw("COALESCE(st.first_name || ' ' || st.last_name, lead.first_name || ' ' || lead.last_name) AS teacher_name"),
+      trx.raw("CASE WHEN st.id IS NOT NULL THEN 'subject' WHEN lead.id IS NOT NULL THEN 'homeroom' END AS teacher_source")
+    )
+    .orderBy([{ column: 'el.sort_order' }, { column: 'g.sort_order' }, { column: 'g.name' }, { column: 'sec.name' }, { column: 'gs.sort_order' }, { column: 's.name' }]);
+
+  const unassigned = rows.filter((r) => !r.teacher_id).length;
+  return {
+    rows,
+    summary: {
+      total: rows.length,
+      assigned: rows.length - unassigned,
+      unassigned,
+      teachers: new Set(rows.map((r) => r.teacher_id).filter(Boolean)).size,
+      sections: new Set(rows.map((r) => r.section_id)).size,
+    },
+  };
+}
+
 // ---------- Carga docente ----------
 
 /**
@@ -559,6 +620,7 @@ async function getGradePanel(trx, tenantId, gradeId, { schoolPeriodId }) {
 }
 
 module.exports = {
+  listAssignmentMatrix,
   getGradePanel,
   listLevels,
   assertTeachers,

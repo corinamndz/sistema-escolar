@@ -71,9 +71,15 @@ async function listPlans(trx, tenantId, { sectionId, termId, termNumber, teacher
     .join('education_levels as el', 'el.code', 'g.level_code')
     .join('terms as t', 't.id', 'ep.term_id')
     .join('staff as st', 'st.id', 'ep.teacher_id')
+    .leftJoin('subjects as sub', 'sub.id', 'ep.subject_id')
     .where('ep.tenant_id', tenantId)
     .select(
       'ep.*',
+      // Clave y nombre de la materia para agrupar (Materia → Lapso → planes):
+      // la del catálogo si el plan tiene subject_id; si no (Inicial), el área escrita.
+      trx.raw("COALESCE(ep.subject_id::text, 'txt:' || lower(trim(ep.subject))) AS subject_key"),
+      trx.raw('COALESCE(sub.name, ep.subject) AS subject_name'),
+      'sub.code as subject_code',
       'sec.name as section_name',
       'g.name as grade_name',
       'g.level_code',
@@ -91,7 +97,8 @@ async function listPlans(trx, tenantId, { sectionId, termId, termNumber, teacher
       trx.raw('(SELECT count(*)::int FROM evaluation_activities a WHERE a.evaluation_plan_id = ep.id) AS activity_count'),
       trx.raw('(SELECT COALESCE(sum(a.weight_percent), 0)::float FROM evaluation_activities a WHERE a.evaluation_plan_id = ep.id) AS total_weight')
     )
-    .orderBy('ep.created_at', 'desc');
+    // Orden lógico: Materia (A-Z) → Lapso (I, II, III) → grado (jerarquía escolar) → sección.
+    .orderByRaw('lower(COALESCE(sub.name, ep.subject)), t.term_number NULLS LAST, el.sort_order, g.sort_order, sec.name, ep.created_at');
   // Filtrar por sección incluye los planes compartidos en los que participa.
   if (sectionId) {
     query.whereExists(trx('evaluation_plan_sections as x').whereRaw('x.plan_id = ep.id').andWhere('x.section_id', sectionId));
@@ -181,10 +188,30 @@ async function getPlanWithActivities(trx, tenantId, planId) {
     .select('id', 'name')
     .orderBy('name');
 
+  // Para "Mover a otra sección" (plan creado en la sección equivocada): solo
+  // mientras no tenga notas; destinos = secciones del mismo año cuyo grado
+  // incluye la materia (o, sin materia del catálogo, las del mismo grado).
+  const hasGrades = await planHasGrades(trx, planId);
+  const moveTargets = hasGrades
+    ? []
+    : await trx('sections as s')
+        .join('grades as g', 'g.id', 's.grade_id')
+        .join('education_levels as el', 'el.code', 'g.level_code')
+        .where({ 's.tenant_id': tenantId, 's.school_period_id': plan.school_period_id })
+        .whereNot('s.id', plan.section_id)
+        .modify((q) => {
+          if (plan.subject_id) q.whereExists(trx('grade_subjects as gs').whereRaw('gs.grade_id = g.id').andWhere('gs.subject_id', plan.subject_id));
+          else q.andWhere('s.grade_id', plan.grade_id);
+        })
+        .select('s.id', 's.name', 'g.name as grade_name')
+        .orderBy([{ column: 'el.sort_order' }, { column: 'g.sort_order' }, { column: 's.name' }]);
+
   return {
     ...plan,
     sections,
     available_sections: candidates,
+    has_grades: hasGrades,
+    move_targets: moveTargets,
     activities,
     totalWeight,
     pedagogicalProject: project ? { ...project, competencies } : null,
@@ -403,9 +430,66 @@ async function createPlan(trx, tenantId, { sectionId, sectionIds, termId: reques
  *  - Quitar una sección: solo si sus alumnos no tienen notas en el plan.
  *  - Agregar: mismas reglas que al crear (grado, docente, sin plan duplicado).
  */
-async function updatePlan(trx, tenantId, planId, { format, sectionIds, termNumber, termId }) {
+/** true si algún alumno ya tiene nota (o evaluación de competencias) en el plan. */
+async function planHasGrades(trx, planId) {
+  const score = await trx('activity_scores as sc')
+    .join('evaluation_activities as a', 'a.id', 'sc.evaluation_activity_id')
+    .where('a.evaluation_plan_id', planId)
+    .first('sc.student_id');
+  if (score) return true;
+  const assessment = await trx('competency_assessments as ca')
+    .join('project_competencies as pc', 'pc.id', 'ca.project_competency_id')
+    .join('pedagogical_projects as pp', 'pp.id', 'pc.pedagogical_project_id')
+    .where('pp.evaluation_plan_id', planId)
+    .first('ca.student_id');
+  return Boolean(assessment);
+}
+
+/**
+ * Mueve un plan a OTRA sección (p. ej. se creó por error en 1er Año A en vez
+ * de 3er Año A). Conserva actividades, ponderaciones y proyecto; solo se
+ * permite mientras ningún alumno tenga notas en él. Valida el destino con las
+ * mismas reglas que al crear: mismo año escolar, materia en el plan de
+ * estudios del grado, docente de la materia en esa sección y sin otro plan de
+ * la misma materia, lapso y docente. El plan queda solo en esa sección.
+ */
+async function movePlanToSection(trx, tenantId, plan, targetSectionId) {
+  const current = await trx('evaluation_plan_sections').where({ plan_id: plan.id }).pluck('section_id');
+  if (plan.section_id === targetSectionId && current.length === 1) return;
+  if (await planHasGrades(trx, plan.id)) {
+    throw ApiError.conflict('El plan ya tiene notas cargadas: no se puede mover a otra sección.', [{ path: 'moveToSectionId', message: 'Tiene notas.' }]);
+  }
+  const origin = await loadSection(trx, tenantId, plan.section_id);
+  const target = await loadSection(trx, tenantId, targetSectionId);
+  if (target.school_period_id !== origin.school_period_id) {
+    throw ApiError.unprocessable('Solo se puede mover a una sección del mismo año escolar.', [{ path: 'moveToSectionId', message: 'Otro año escolar.' }]);
+  }
+  // Mismo docente si lo dicta en la sección destino; si no, resolvePlanSections explica el motivo.
+  const resolved = await resolvePlanSections(
+    trx,
+    tenantId,
+    [targetSectionId],
+    { teacherId: plan.teacher_id, subject: plan.subject, subjectId: plan.subject_id },
+    { termId: plan.term_id, excludePlanId: plan.id }
+  );
+  const activityIds = trx('evaluation_activities').where({ evaluation_plan_id: plan.id }).select('id');
+  await trx('activity_section_dates').whereIn('activity_id', activityIds).delete();
+  await trx('evaluation_plan_sections').where({ plan_id: plan.id }).delete();
+  await trx('evaluation_plans')
+    .where({ id: plan.id })
+    .update({ section_id: targetSectionId, teacher_id: resolved.teacherId, subject: resolved.subject, subject_id: resolved.subjectId ?? plan.subject_id });
+  await trx('evaluation_plan_sections').insert({ tenant_id: tenantId, plan_id: plan.id, section_id: targetSectionId });
+  plan.section_id = targetSectionId;
+}
+
+async function updatePlan(trx, tenantId, planId, { format, sectionIds, termNumber, termId, moveToSectionId }) {
   const plan = await trx('evaluation_plans').where({ id: planId, tenant_id: tenantId }).forUpdate().first();
   if (!plan) throw ApiError.notFound('Plan de evaluación no encontrado.');
+
+  if (moveToSectionId) {
+    await movePlanToSection(trx, tenantId, plan, moveToSectionId);
+    return getPlanWithActivities(trx, tenantId, planId);
+  }
 
   if (termNumber || termId) {
     const period = (await trx('terms').where({ id: plan.term_id }).first()).school_period_id;

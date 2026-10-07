@@ -139,12 +139,17 @@ function entriesQuery(trx, tenantId) {
 const formatEntry = (e) => ({ ...e, start_time: hhmm(e.start_time), end_time: hhmm(e.end_time) });
 
 /** Materias del plan de estudios de la sección con su docente según la carga docente. */
-async function sectionSubjects(trx, tenantId, sectionId) {
-  const a = await assignmentService.getSectionAssignments(trx, tenantId, sectionId);
+async function sectionSubjects(trx, tenantId, sectionId, assignment = null) {
+  const a = assignment || (await assignmentService.getSectionAssignments(trx, tenantId, sectionId));
   return (a.subjects || []).map((s) => ({
     subject_id: s.id,
     subject_name: s.name,
     weekly_hours: s.weekly_hours ?? null,
+    // Profesor en campos planos (quién la dicta de verdad) y de dónde sale:
+    // 'subject' asignado a la materia, 'homeroom' el titular (Primaria), null sin profesor.
+    teacher_id: s.effectiveTeacher?.id || null,
+    teacher_name: s.effectiveTeacher?.name || null,
+    teacher_source: s.teacher ? 'subject' : s.effectiveTeacher ? 'homeroom' : null,
     teacher: s.effectiveTeacher ? { id: s.effectiveTeacher.id, name: s.effectiveTeacher.name } : null,
   }));
 }
@@ -161,7 +166,11 @@ async function getSectionSchedule(trx, tenantId, sectionId, { editable = false }
   const result = { section, days: DAYS, slots, entries, read_only: !editable || Boolean(section.period_closed_at) };
   if (!editable) return result;
 
-  const subjects = await sectionSubjects(trx, tenantId, sectionId);
+  const assignment = await assignmentService.getSectionAssignments(trx, tenantId, sectionId);
+  const subjects = await sectionSubjects(trx, tenantId, sectionId, assignment);
+  // Cómo se asignan los docentes en la sección (para la asignación rápida desde el panel):
+  // 'homeroom' (Primaria: titular que dicta lo que no tiene especialista) o 'subjects' (Secundaria).
+  result.assignment = { mode: assignment.mode, lead: assignment.homeroom?.lead || null };
   const teacherOf = new Map(subjects.map((s) => [s.subject_id, s.teacher?.id || null]));
   // Clase cuyo docente ya no coincide con la carga docente actual (se cambió la asignación).
   result.entries = entries.map((e) => ({ ...e, teacher_changed: teacherOf.has(e.subject_id) && teacherOf.get(e.subject_id) !== e.staff_id }));

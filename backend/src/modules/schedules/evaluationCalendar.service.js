@@ -213,4 +213,38 @@ async function getEvaluationCalendar(trx, tenantId, { sectionId, termNumber = nu
   };
 }
 
-module.exports = { getEvaluationCalendar, isHeavy, CATEGORY_LABELS };
+/**
+ * Cronograma de evaluaciones para el PORTAL DEL REPRESENTANTE: el de la
+ * sección en que cursa el alumno (inscripción activa, año en curso primero).
+ * Se adapta a la familia:
+ *   - sin estadísticas de la sección (cuántos compañeros tienen nota);
+ *   - el estado es el del ALUMNO: "calificada" si él ya tiene nota en esa
+ *     actividad (sin mostrar la nota: eso vive en Calificaciones).
+ * El controlador valida antes que el alumno sea representado del usuario.
+ */
+async function getStudentEvaluationCalendar(trx, tenantId, studentId, { termNumber = null } = {}) {
+  const enrollment = await trx('enrollments as e')
+    .join('sections as sec', 'sec.id', 'e.section_id')
+    .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
+    .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId, 'e.status': 'active' })
+    .orderByRaw('sp.is_active DESC, sp.start_date DESC NULLS LAST')
+    .select('e.section_id')
+    .first();
+  if (!enrollment) return { section: null, terms: [], term: null, slots: [], evaluations: [], undated: [], days: [], summary: null, audience: 'guardian' };
+
+  const cal = await getEvaluationCalendar(trx, tenantId, { sectionId: enrollment.section_id, termNumber });
+  const ids = [...cal.evaluations, ...cal.undated].map((e) => e.activity_id);
+  const mine = new Set(
+    ids.length ? await trx('activity_scores').where({ student_id: studentId }).whereIn('evaluation_activity_id', ids).pluck('evaluation_activity_id') : []
+  );
+  const today = ymd(new Date());
+  const forStudent = (e) => {
+    const graded = mine.has(e.activity_id);
+    const status = graded ? 'graded' : !e.date ? 'unscheduled' : e.date < today ? 'pending' : 'scheduled';
+    const { graded_count: _g, student_count: _s, ...rest } = e;
+    return { ...rest, status, student_graded: graded };
+  };
+  return { ...cal, evaluations: cal.evaluations.map(forStudent), undated: cal.undated.map(forStudent), audience: 'guardian' };
+}
+
+module.exports = { getEvaluationCalendar, getStudentEvaluationCalendar, isHeavy, CATEGORY_LABELS };

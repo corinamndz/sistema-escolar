@@ -139,17 +139,31 @@ function EvaluationDetailModal({ evaluation: e, section, onClose }) {
           </div>
         )}
 
-        <div className="eval-detail__progress">
-          <div className="coverage__head">
-            <span>
-              Calificación: <strong>{e.graded_count}</strong> de {e.student_count} alumno{e.student_count === 1 ? '' : 's'}
-            </span>
-            <span className="text-muted">{progress}%</span>
+        {/* Portal del representante: el estado de SU alumno (sin estadísticas de la sección). */}
+        {e.student_graded !== undefined ? (
+          <div className={`eval-detail__mine ${e.student_graded ? 'is-graded' : ''}`}>
+            <Icon name={e.student_graded ? 'checkCircle' : e.date ? 'clock' : 'calendar'} size={16} />
+            {e.student_graded
+              ? 'Tu representado ya tiene nota en esta evaluación: consúltala en la pestaña Calificaciones.'
+              : e.status === 'pending'
+                ? 'La fecha ya pasó y la nota aún no está cargada.'
+                : e.date
+                  ? 'Evaluación programada: aún no tiene nota.'
+                  : 'El docente todavía no le asignó fecha.'}
           </div>
-          <div className="progress-bar">
-            <div className="progress-bar__fill" style={{ width: `${progress}%` }} />
+        ) : (
+          <div className="eval-detail__progress">
+            <div className="coverage__head">
+              <span>
+                Calificación: <strong>{e.graded_count}</strong> de {e.student_count} alumno{e.student_count === 1 ? '' : 's'}
+              </span>
+              <span className="text-muted">{progress}%</span>
+            </div>
+            <div className="progress-bar">
+              <div className="progress-bar__fill" style={{ width: `${progress}%` }} />
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="form-actions eval-detail__actions">
           {can('evaluation_plans', 'read') && (

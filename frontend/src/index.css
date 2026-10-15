@@ -6502,3 +6502,9 @@ button.evalcal__chip:focus-visible { outline: 2px solid var(--color-primary-ring
 .eval-detail__actions { flex-wrap: wrap; margin-top: 0; }
 .eval-detail__actions .btn { display: inline-flex; align-items: center; gap: 6px; }
 @media (max-width: 560px) { .eval-detail__facts { grid-template-columns: minmax(0, 1fr); } }
+
+/* Portal del representante: cronograma de evaluaciones del alumno */
+.portal-evals { display: flex; flex-direction: column; gap: 4px; }
+.portal-evals__terms { align-self: flex-start; flex-wrap: wrap; }
+.eval-detail__mine { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--color-surface-muted); font-size: 13.5px; color: var(--color-text-secondary); }
+.eval-detail__mine.is-graded { background: var(--color-success-soft); color: var(--color-success); }

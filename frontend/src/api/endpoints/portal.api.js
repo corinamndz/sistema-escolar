@@ -14,6 +14,9 @@ const portalApi = {
   getStudentSanctions: (studentId) => axiosClient.get(`/portal/students/${studentId}/sanctions`).then((r) => r.data),
   /** Horario semanal (solo lectura) de la sección del alumno. */
   getStudentSchedule: (studentId) => axiosClient.get(`/portal/students/${studentId}/schedule`).then((r) => r.data),
+  /** Cronograma de evaluaciones de la sección del alumno (404 si no es su representado). */
+  getStudentEvaluations: (studentId, termNumber) =>
+    axiosClient.get(`/portal/students/${studentId}/evaluations`, { params: { term_number: termNumber || undefined } }).then((r) => r.data),
   /** Historial académico de un alumno del representante. */
   getStudentHistory: (studentId) => axiosClient.get(`/portal/students/${studentId}/history`).then((r) => r.data),
   getStudentGrades: (studentId, params) =>

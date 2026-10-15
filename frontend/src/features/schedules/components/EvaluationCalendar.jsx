@@ -34,8 +34,16 @@ const todayStr = () => {
  *   - Resumen: programadas, pesadas, días cargados, sin fecha y sin bloque.
  *   - Al hacer clic en una evaluación se abre su detalle (EvaluationDetailModal).
  */
-function EvaluationCalendar({ sectionId, termNumber }) {
-  const { data, loading, error } = useFetch(() => schedulesApi.getEvaluations(sectionId, termNumber), [sectionId, termNumber]);
+/**
+ * `fetcher` / `fetchKey` (opcionales): de dónde cargar el cronograma. Por
+ * defecto, el de la sección (administración/docentes); el portal del
+ * representante pasa el de su alumno (GET /portal/students/:id/evaluations).
+ */
+function EvaluationCalendar({ sectionId, termNumber, fetcher, fetchKey }) {
+  const { data, loading, error } = useFetch(
+    () => (fetcher ? fetcher() : schedulesApi.getEvaluations(sectionId, termNumber)),
+    [fetchKey ?? sectionId, termNumber],
+  );
   const [mode, setMode] = useState('month'); // 'month' | 'week'
   const [anchor, setAnchor] = useState(null); // fecha de referencia (mes o semana mostrados)
   const [showUndated, setShowUndated] = useState(false);
@@ -43,7 +51,7 @@ function EvaluationCalendar({ sectionId, termNumber }) {
 
   // Al cargar: el mes/semana de hoy si cae en el lapso; si no, el de la primera evaluación o el inicio del lapso.
   useEffect(() => {
-    if (!data) return;
+    if (!data?.summary) return; // sin sección (alumno no inscrito): nada que ubicar
     const { from, to } = data.summary;
     const today = todayStr();
     const inRange = from && to && today >= from && today <= to;
@@ -62,6 +70,9 @@ function EvaluationCalendar({ sectionId, termNumber }) {
 
   if (loading) return <Spinner label="Sincronizando con los planes de evaluación…" />;
   if (error) return <Alert>{error}</Alert>;
+  if (data && !data.section) {
+    return <p className="text-muted">El alumno no está inscrito en una sección este año: aún no hay evaluaciones que mostrar.</p>;
+  }
   if (!data || !anchor) return null;
 
   const { summary } = data;

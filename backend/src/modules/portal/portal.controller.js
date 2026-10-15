@@ -3,6 +3,7 @@ const service = require('./portal.service');
 const grades = require('./grades.service');
 const academicRecord = require('../academics/academicRecord.service');
 const schedules = require('../schedules/schedule.service');
+const evaluationCalendar = require('../schedules/evaluationCalendar.service');
 const discipline = require('../discipline/discipline.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 
@@ -46,5 +47,20 @@ const getStudentGrades = asyncHandler(async (req, res) => {
   res.status(200).json(await grades.getStudentGrades(req.db, req.tenantId, req.user.id, studentId, { schoolPeriodId }));
 });
 
+/**
+ * GET /portal/students/:studentId/evaluations?term_number= — cronograma de
+ * evaluaciones de la sección del alumno. SOLO de los alumnos vinculados a la
+ * cuenta del representante (404 si no es su representado).
+ */
+const getStudentEvaluations = asyncHandler(async (req, res) => {
+  const studentId = z.string().uuid().parse(req.params.studentId);
+  const { termNumber } = z
+    .object({ termNumber: z.coerce.number().int().min(1).max(3).optional() })
+    .parse({ termNumber: req.query.term_number ?? req.query.termNumber ?? undefined });
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
+  res.status(200).json(await evaluationCalendar.getStudentEvaluationCalendar(req.db, req.tenantId, studentId, { termNumber }));
+});
+
 module.exports = {
+  getStudentEvaluations,
   getStudentHistory, getStudentSchedule, getStudentSanctions, getMyPortal, getStudentGrades };

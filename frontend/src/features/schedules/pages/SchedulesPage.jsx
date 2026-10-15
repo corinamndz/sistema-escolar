@@ -16,6 +16,8 @@ import ScheduleGrid, { hueOf } from '../components/ScheduleGrid';
 import SlotsEditorModal from '../components/SlotsEditorModal';
 import TeacherScheduleView from '../components/TeacherScheduleView';
 import AssignmentsView from '../components/AssignmentsView';
+import EvaluationCalendar from '../components/EvaluationCalendar';
+import { TERM_OPTIONS } from '../../evaluation-plans/terms';
 import QuickAssign from '../components/QuickAssign';
 import { blobErrorMessage, saveBlob } from '../../../utils/download';
 
@@ -41,6 +43,8 @@ const VIEWS = [
   { key: 'section', label: 'Por grado / sección', icon: 'layers' },
   { key: 'teacher', label: 'Por docente', icon: 'user' },
   { key: 'assignments', label: 'Asignaciones', icon: 'users' },
+  // Horario de evaluaciones: generado desde los planes de evaluación (fechas) y el horario de clases (horas).
+  { key: 'evaluations', label: 'Horario de evaluaciones', icon: 'clipboard' },
 ];
 
 /**
@@ -78,6 +82,7 @@ function SchedulesPage() {
   const [gradeId, setGradeId] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [teacherId, setTeacherId] = useState('');
+  const [termNumber, setTermNumber] = useState(''); // horario de evaluaciones: lapso ('' = todos)
   // Docentes A-Z del año: para "Ver por docente" y para asignar profesores al instante.
   const {
     data: teachers,
@@ -319,7 +324,9 @@ function SchedulesPage() {
       ? sectionId && { section_id: sectionId }
       : view === 'teacher'
         ? teacherId && periodId && { teacher_id: teacherId, school_period_id: periodId }
-        : null;
+        : view === 'evaluations'
+          ? sectionId && { evaluations: true, section_id: sectionId }
+          : null;
 
   /**
    * Asignación rápida del profesor de una materia en una sección (sin ir a
@@ -350,7 +357,9 @@ function SchedulesPage() {
   const downloadPdf = async () => {
     setDownloading(true);
     try {
-      const { blob, fileName } = await schedulesApi.downloadPdf(pdfFilters);
+      const { blob, fileName } = pdfFilters.evaluations
+        ? await schedulesApi.downloadEvaluationPdf(sectionId, termNumber ? Number(termNumber) : null)
+        : await schedulesApi.downloadPdf(pdfFilters);
       saveBlob(blob, fileName);
     } catch (err) {
       toast.error('No se pudo generar el PDF', await blobErrorMessage(err));
@@ -423,7 +432,7 @@ function SchedulesPage() {
               </Select>
             </label>
 
-            {view === 'section' ? (
+            {view === 'section' || view === 'evaluations' ? (
               <>
                 <label>
                   <span className="student-card__label">Grado</span>
@@ -453,6 +462,19 @@ function SchedulesPage() {
                     ))}
                   </Select>
                 </label>
+                {view === 'evaluations' && (
+                  <label>
+                    <span className="student-card__label">Lapso</span>
+                    <Select value={termNumber} onChange={(e) => setTermNumber(e.target.value)}>
+                      <option value="">Todos los lapsos</option>
+                      {TERM_OPTIONS.map((t) => (
+                        <option key={t.number} value={t.number}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                )}
               </>
             ) : view === 'assignments' ? null : (
               <label className="schedule-filters__teacher">
@@ -478,6 +500,16 @@ function SchedulesPage() {
           <TeacherScheduleView periodId={periodId} teacherId={teacherId} onOpenSection={openSection} />
         ) : (
           <p className="text-muted">Elige un docente para ver su semana completa en todas sus secciones, con sus huecos y su carga por día.</p>
+        ))}
+
+      {view === 'evaluations' &&
+        (sectionId ? (
+          <EvaluationCalendar sectionId={sectionId} termNumber={termNumber ? Number(termNumber) : null} />
+        ) : (
+          <p className="text-muted">
+            Elige un grado y su sección para ver su horario de evaluaciones: se arma solo con las fechas de los planes de evaluación y la hora
+            del horario de clases.
+          </p>
         ))}
 
       {view === 'assignments' && periodId && (

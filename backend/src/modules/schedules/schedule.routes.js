@@ -13,6 +13,9 @@ const admin = (action) => [denyTeachers, requirePermission('schedules', action)]
 // Consulta de solo lectura (sin permiso de módulo: se filtra por el usuario).
 router.get('/mine', controller.mySchedule);
 router.get('/sections/:id', controller.getSectionSchedule); // docente: sus secciones; administración: todas
+// Horario de evaluaciones (sincronizado con los planes): mismo acceso que el horario de la sección.
+router.get('/evaluations', controller.getEvaluationCalendar);
+router.get('/evaluations/pdf', controller.downloadEvaluationPdf);
 
 // Consulta filtrada por grado/sección o por docente (auditoría de carga).
 router.get('/', admin('read'), controller.querySchedule);

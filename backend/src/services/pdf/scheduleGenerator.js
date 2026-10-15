@@ -220,4 +220,4 @@ function generateSchedulePdf({ tenant, kicker, title, subtitle, periodName, days
   });
 }
 
-module.exports = { generateSchedulePdf, hueOf };
+module.exports = { generateSchedulePdf, hueOf, hslToHex, mix, textOn, validHex };

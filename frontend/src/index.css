@@ -6420,3 +6420,85 @@ button.link-icon:disabled { opacity: 0.6; cursor: progress; }
 .pay-accounts .card { margin: 0; }
 .pay-accounts__empty { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); font-size: 13.5px; }
 @media (max-width: 480px) { .pay-info__row { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* ==========================================================================
+   Horario de evaluaciones (calendario mensual / semanal por sección)
+   ========================================================================== */
+
+.evalcal { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.evalcal__stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.evalcal__stat { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); font: inherit; font-size: 13px; color: var(--color-text-secondary); }
+.evalcal__stat strong { font-size: 15px; color: var(--color-text); }
+.evalcal__stat--ok { border-color: var(--color-success-border, var(--color-border)); background: var(--color-success-soft); color: var(--color-success); }
+.evalcal__stat--danger { border-color: var(--color-danger); background: var(--color-danger-soft); color: var(--color-danger); }
+.evalcal__stat--warn { border-color: var(--color-warning); background: var(--color-warning-soft); color: #b45309; }
+button.evalcal__stat { cursor: pointer; }
+.evalcal__undated { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.evalcal__heavy-dot { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-danger); }
+
+.evalcal__toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 12px; }
+.evalcal__nav { display: flex; align-items: center; gap: 6px; }
+.evalcal__label { min-width: 190px; font-size: 15px; text-align: center; text-transform: capitalize; }
+
+/* Mensual */
+.evalcal__month { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
+.evalcal__weekday { padding: 7px; background: var(--table-head-bg); color: var(--table-head-fg); font-size: 12.5px; font-weight: 700; text-align: center; }
+.evalcal__day { display: flex; flex-direction: column; gap: 3px; min-height: 92px; padding: 4px 5px 6px; border-top: 1px solid var(--color-border); border-left: 1px solid var(--color-border); background: var(--color-surface); min-width: 0; }
+.evalcal__day:nth-child(5n + 1) { border-left: none; }
+.evalcal__day.is-outside { background: var(--color-surface-muted); opacity: 0.55; }
+.evalcal__day.is-off-term:not(.is-outside) { background: repeating-linear-gradient(45deg, var(--color-surface), var(--color-surface) 6px, var(--color-surface-muted) 6px, var(--color-surface-muted) 12px); }
+.evalcal__day.is-overloaded { background: var(--color-danger-soft); box-shadow: inset 0 0 0 1px var(--color-danger); }
+.evalcal__day.is-today .evalcal__date { background: var(--color-primary); color: var(--color-on-primary); }
+.evalcal__date { display: inline-flex; align-self: flex-start; align-items: center; gap: 6px; padding: 1px 7px; border: none; border-radius: 999px; background: none; color: var(--color-text-secondary); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.evalcal__date:hover { background: var(--color-surface-muted); }
+.evalcal__flag { padding: 0 6px; border-radius: 999px; background: var(--color-danger); color: #fff; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.evalcal__more { font-size: 11.5px; color: var(--color-text-muted); }
+
+.evalcal__chip { display: flex; flex-direction: column; min-width: 0; padding: 3px 6px; border-left: 3px solid hsl(var(--entry-hue, 220) 65% 50%); border-radius: 5px; background: hsl(var(--entry-hue, 220) 80% 95%); font-size: 11.5px; line-height: 1.25; }
+.evalcal__chip.is-heavy { box-shadow: inset 0 0 0 1px hsl(var(--entry-hue, 220) 60% 70%); }
+.evalcal__chip-head { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.evalcal__chip-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.evalcal__chip-sub { overflow: hidden; color: var(--color-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.evalcal__time { flex: none; font-weight: 600; color: var(--color-text-secondary); }
+
+/* Semanal */
+.evalcal__week { display: flex; flex-direction: column; gap: 10px; }
+.evalcal__unplaced { padding: 10px 12px; border: 1px dashed var(--color-warning); border-radius: var(--radius-md); background: var(--color-warning-soft); }
+.evalcal__unplaced-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.evalcal__unplaced-item { display: flex; flex-direction: column; gap: 2px; min-width: 160px; }
+.schedule-grid__cell.is-overloaded { background: var(--color-danger-soft); }
+.evalcal__empty { margin: 0; }
+.evalcal__legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 10px; }
+
+@media (max-width: 720px) {
+  .evalcal__day { min-height: 70px; }
+  .evalcal__chip-sub { display: none; }
+}
+
+/* Horario de evaluaciones: tarjeta clicable y modal de detalle */
+button.evalcal__chip { position: relative; width: 100%; margin: 0; border-top: none; border-right: none; border-bottom: none; font: inherit; font-size: 11.5px; text-align: left; color: var(--color-text); cursor: pointer; transition: transform var(--transition-fast), box-shadow var(--transition-fast); }
+button.evalcal__chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+button.evalcal__chip:focus-visible { outline: 2px solid var(--color-primary-ring); outline-offset: 1px; }
+.evalcal__chip--graded { opacity: 0.8; }
+.evalcal__chip--pending { box-shadow: inset 0 0 0 1px var(--color-warning); }
+.evalcal__chip-check { position: absolute; top: 4px; right: 5px; color: var(--color-success); }
+.schedule-entry.is-clickable strong { padding-right: 4px; }
+
+.eval-detail { display: flex; flex-direction: column; gap: 14px; }
+.eval-detail__hero { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-left: 5px solid hsl(var(--entry-hue, 220) 65% 50%); border-radius: var(--radius-md); background: hsl(var(--entry-hue, 220) 80% 96%); }
+.eval-detail__subject { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 16px; font-weight: 700; }
+.eval-detail__badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.eval-detail__badges .badge { display: inline-flex; align-items: center; gap: 4px; }
+.eval-detail__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+.eval-detail__fact { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.eval-detail__fact-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: var(--color-surface-muted); color: var(--color-text-secondary); }
+.eval-detail__fact-label { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); }
+.eval-detail__fact-value { font-size: 14px; color: var(--color-text); overflow-wrap: anywhere; }
+.eval-detail__note { font-size: 12px; color: var(--color-text-muted); }
+.eval-detail__body { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--radius-md); background: var(--color-surface-muted); }
+.eval-detail__body p { margin: 4px 0 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+.eval-detail__topics { margin: 4px 0 0; padding-left: 18px; font-size: 13.5px; }
+.eval-detail__progress .progress-bar { margin-top: 6px; }
+.eval-detail__actions { flex-wrap: wrap; margin-top: 0; }
+.eval-detail__actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 560px) { .eval-detail__facts { grid-template-columns: minmax(0, 1fr); } }

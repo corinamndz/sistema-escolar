@@ -39,6 +39,16 @@ const schedulesApi = {
     axiosClient
       .get('/schedules/pdf', { params: filters, responseType: 'blob' })
       .then((r) => ({ blob: r.data, fileName: fileNameFrom(r.headers, 'horario.pdf') })),
+  /**
+   * Horario de evaluaciones de una sección (sincronizado con los planes y el horario de clases):
+   * { section, terms, term, slots, evaluations, undated, days, summary }.
+   */
+  getEvaluations: (sectionId, termNumber) => get('/schedules/evaluations', { section_id: sectionId, term_number: termNumber || undefined }),
+  /** PDF del calendario de evaluaciones → { blob, fileName }. */
+  downloadEvaluationPdf: (sectionId, termNumber) =>
+    axiosClient
+      .get('/schedules/evaluations/pdf', { params: { section_id: sectionId, term_number: termNumber || undefined }, responseType: 'blob' })
+      .then((r) => ({ blob: r.data, fileName: fileNameFrom(r.headers, 'evaluaciones.pdf') })),
   /** Horario semanal del docente autenticado. */
   mine: () => get('/schedules/mine'),
 };

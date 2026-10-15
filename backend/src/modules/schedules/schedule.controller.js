@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const service = require('./schedule.service');
+const evaluationCalendar = require('./evaluationCalendar.service');
 const academicService = require('../academics/academic.service');
 const assignmentService = require('../academics/assignment.service');
 const teacherScope = require('../access/teacherScope');
@@ -48,6 +49,45 @@ const getSectionSchedule = asyncHandler(async (req, res) => {
   const perms = await getEffectivePermissions(req.db, req.tenantId, req.user.id);
   if (!perms.schedules?.can_read) throw ApiError.forbidden('No tienes permiso de "read" sobre "schedules".');
   return res.status(200).json(await service.getSectionSchedule(req.db, req.tenantId, sectionId, { editable: Boolean(perms.schedules.can_update) }));
+});
+
+/** Acceso a la sección: docente solo las suyas; si no, permiso de lectura de Horarios. */
+async function assertSectionRead(req, sectionId) {
+  const scope = await teacherScope.getTeacherScope(req);
+  if (scope) return teacherScope.assertSectionAccess(req, sectionId);
+  const perms = await getEffectivePermissions(req.db, req.tenantId, req.user.id);
+  if (!perms.schedules?.can_read) throw ApiError.forbidden('No tienes permiso de "read" sobre "schedules".');
+  return null;
+}
+
+const evaluationQuery = (q) =>
+  z
+    .object({ sectionId: uuid, termNumber: z.coerce.number().int().min(1).max(3).optional() })
+    .parse({ sectionId: q.section_id ?? q.sectionId, termNumber: q.term_number ?? q.termNumber ?? undefined });
+
+/**
+ * GET /schedules/evaluations?section_id=&term_number=
+ * Horario de evaluaciones de la sección, sincronizado con los planes de
+ * evaluación (fechas) y el horario de clases (horas). Ver evaluationCalendar.service.
+ */
+const getEvaluationCalendar = asyncHandler(async (req, res) => {
+  const f = evaluationQuery(req.query);
+  await assertSectionRead(req, f.sectionId);
+  res.status(200).json(await evaluationCalendar.getEvaluationCalendar(req.db, req.tenantId, f));
+});
+
+/** GET /schedules/evaluations/pdf?section_id=&term_number= — el calendario en PDF. */
+const downloadEvaluationPdf = asyncHandler(async (req, res) => {
+  const f = evaluationQuery(req.query);
+  await assertSectionRead(req, f.sectionId);
+  const { buffer, fileName } = await service.evaluationCalendarPdf(req.db, req.tenantId, f);
+  res.set({
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `attachment; filename="${fileName}"`,
+    'Content-Length': buffer.length,
+    'Cache-Control': 'private, no-store',
+  });
+  res.status(200).send(buffer);
 });
 
 const cellSchema = z.object({ dayOfWeek: z.coerce.number().int().min(1).max(5), timeSlotId: uuid });
@@ -152,4 +192,4 @@ const mySchedule = asyncHandler(async (req, res) => {
   res.status(200).json(await service.getTeacherSchedule(req.db, req.tenantId, staff.id));
 });
 
-module.exports = { listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers, listGrades, listAssignments, downloadPdf };
+module.exports = { listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers, listGrades, listAssignments, downloadPdf, getEvaluationCalendar, downloadEvaluationPdf };

@@ -1,6 +1,8 @@
 const { ApiError } = require('../../utils/ApiError');
 const assignmentService = require('../academics/assignment.service');
 const { generateSchedulePdf } = require('../../services/pdf/scheduleGenerator');
+const { generateEvaluationCalendarPdf } = require('../../services/pdf/evaluationCalendarGenerator');
+const evaluationCalendar = require('./evaluationCalendar.service');
 const { resolveLogoFileOrDefault } = require('../../services/storage/logoStorage');
 
 /**
@@ -557,6 +559,34 @@ async function schedulePdf(trx, tenantId, filters) {
   return { buffer, fileName };
 }
 
+/** PDF del calendario de evaluaciones de una sección (y lapso). Devuelve { buffer, fileName }. */
+async function evaluationCalendarPdf(trx, tenantId, { sectionId, termNumber }) {
+  const cal = await evaluationCalendar.getEvaluationCalendar(trx, tenantId, { sectionId, termNumber });
+  const tenant = await trx('tenants').where({ id: tenantId }).first();
+  const settings = await trx('tenant_settings').where({ tenant_id: tenantId }).first();
+  const s = cal.summary;
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const buffer = await generateEvaluationCalendarPdf({
+    tenant: {
+      name: tenant.name,
+      logoPath: resolveLogoFileOrDefault(settings?.logo_url),
+      primaryColor: settings?.primary_color,
+      secondaryColor: settings?.secondary_color,
+    },
+    title: `${cal.section.grade_name} · Sección ${cal.section.name}`,
+    subtitle: [cal.term ? cal.term.name : 'Todos los lapsos', s.undated ? `${plural(s.undated, 'evaluación', 'evaluaciones')} sin fecha (no ${s.undated === 1 ? 'aparece' : 'aparecen'})` : null].filter(Boolean).join('  ·  '),
+    periodName: cal.school_period.name,
+    termName: cal.term ? cal.term.name : null,
+    from: s.from,
+    to: s.to,
+    evaluations: cal.evaluations.filter((e) => !e.weekend),
+    overloadedDates: new Set(s.overloaded_days),
+    summary: [plural(s.scheduled, 'evaluación programada', 'evaluaciones programadas'), plural(s.heavy, 'pesada', 'pesadas'), s.overloaded_days.length ? plural(s.overloaded_days.length, 'día cargado', 'días cargados') : 'sin días cargados'].join('  ·  '),
+  });
+  const term = cal.term ? `-lapso-${cal.term.term_number}` : '';
+  return { buffer, fileName: `evaluaciones-${slugify(`${cal.section.grade_name} ${cal.section.name}`)}${term}-${slugify(cal.school_period.name)}.pdf` };
+}
+
 // ---------------------------------------------------------------------------
 // Consultas de solo lectura: docente y representante
 // ---------------------------------------------------------------------------
@@ -605,5 +635,6 @@ module.exports = {
   listGradesForSchedule,
   querySchedule,
   schedulePdf,
+  evaluationCalendarPdf,
   summarize,
 };

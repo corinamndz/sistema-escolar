@@ -6389,3 +6389,34 @@ button.link-icon:disabled { opacity: 0.6; cursor: progress; }
   .advanced-settings { grid-template-columns: minmax(0, 1fr); }
   .settings-tabs__long { display: none; }
 }
+
+/* ==========================================================================
+   Datos de pago del colegio (pago móvil / cuentas) — reporte y Configuración
+   ========================================================================== */
+
+.pay-info { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--color-border-active); border-radius: var(--radius-lg); background: var(--color-primary-softer); animation: fade-in 180ms ease; }
+.pay-info__title { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--color-primary-text); }
+.pay-info__lead { margin: 0; }
+.pay-info__list { display: flex; flex-direction: column; gap: 8px; }
+.pay-info__list--grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.pay-info__card { padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.pay-info__card.is-inactive { opacity: 0.6; border-style: dashed; }
+.pay-info__head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.pay-info__head > div:nth-child(2) { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.pay-info__icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: var(--color-primary-soft); color: var(--color-primary-text); }
+.pay-info__method { font-size: 12px; color: var(--color-text-muted); }
+.pay-info__actions { display: inline-flex; gap: 2px; }
+.pay-info__card dl { display: flex; flex-direction: column; gap: 2px; margin: 0; }
+.pay-info__row { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 8px; padding: 3px 0; border-top: 1px dashed var(--color-border); }
+.pay-info__row:first-child { border-top: none; }
+.pay-info__row dt { font-size: 12px; color: var(--color-text-muted); }
+.pay-info__row dd { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin: 0; }
+.pay-info__value { font-family: var(--font-mono, ui-monospace, monospace); font-size: 13.5px; font-weight: 600; color: var(--color-text); overflow-wrap: anywhere; }
+.pay-info__copy { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text-secondary); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.pay-info__copy:hover { border-color: var(--color-border-active); color: var(--color-primary-text); }
+.pay-info__notes { display: flex; align-items: flex-start; gap: 6px; margin: 6px 0 0; font-size: 12.5px; color: var(--color-text-secondary); }
+
+.pay-accounts { display: flex; flex-direction: column; gap: 16px; }
+.pay-accounts .card { margin: 0; }
+.pay-accounts__empty { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); font-size: 13.5px; }
+@media (max-width: 480px) { .pay-info__row { grid-template-columns: minmax(0, 1fr); gap: 2px; } }

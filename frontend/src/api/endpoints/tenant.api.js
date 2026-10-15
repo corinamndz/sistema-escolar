@@ -18,6 +18,11 @@ const tenantApi = {
   getGradingScales: () => axiosClient.get('/tenant/grading-scales').then((r) => r.data),
   /** [{ gradeId, gradingScale: 'quantitative' | 'qualitative' }] */
   setGradingScales: (grades) => axiosClient.put('/tenant/grading-scales', { grades }).then((r) => r.data),
+  /** Datos de pago del colegio (pago móvil / cuentas bancarias). */
+  listPaymentAccounts: () => axiosClient.get('/tenant/payment-accounts').then((r) => r.data),
+  createPaymentAccount: (data) => axiosClient.post('/tenant/payment-accounts', data).then((r) => r.data),
+  updatePaymentAccount: (id, data) => axiosClient.put(`/tenant/payment-accounts/${id}`, data).then((r) => r.data),
+  deletePaymentAccount: (id) => axiosClient.delete(`/tenant/payment-accounts/${id}`).then((r) => r.data),
 };
 
 export default tenantApi;

@@ -15,6 +15,8 @@ import { ConversionBreakdown, REPORT_METHODS, formatDate, formatMoney } from '..
 import { BASE_CURRENCY, CurrencySelect, currencyLabel } from '../currency';
 import FileDropzone from '../../../components/ui/FileDropzone';
 import { ProofButton } from './ProofViewer';
+import PaymentInstructions from './PaymentInstructions';
+import portalApi from '../../../api/endpoints/portal.api';
 
 // Formatos de comprobante permitidos (el backend valida además la firma binaria real).
 const PROOF_ACCEPT = { 'image/jpeg': ['.jpg', '.jpeg'], 'image/png': ['.png'], 'application/pdf': ['.pdf'] };
@@ -72,6 +74,11 @@ export function PaymentFormModal({ payment, mode = 'report', onClose, onDone }) 
   const toast = useToast();
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
   const needsReference = form.method !== 'cash';
+  // Datos de pago del colegio: el representante los ve según el método que elige.
+  const { data: accounts, loading: loadingAccounts } = useFetch(
+    () => (mode === 'report' ? portalApi.getPaymentAccounts() : Promise.resolve([])),
+    [mode],
+  );
 
   // ---- Moneda de pago y cotización ----
   const { data: rates } = useFetch(() => paymentsApi.currentRate(), []);
@@ -193,6 +200,12 @@ export function PaymentFormModal({ payment, mode = 'report', onClose, onDone }) 
           <Field label="Fecha de pago" error={fieldErrors.paidOn} required>
             <Input type="date" value={form.paidOn} max={todayStr} onChange={set('paidOn')} required />
           </Field>
+          {/* Al elegir pago móvil / transferencia / depósito: a dónde pagar (datos del colegio). */}
+          {mode === 'report' && (
+            <div className="form-field--full">
+              <PaymentInstructions method={form.method} accounts={accounts} loading={loadingAccounts} />
+            </div>
+          )}
           <Field label="Número de referencia" error={fieldErrors.reference} full required={needsReference} hint="Aparece en el comprobante del banco.">
             <Input value={form.reference} onChange={set('reference')} maxLength={60} required={needsReference} placeholder="Ej. 000123456789" />
           </Field>

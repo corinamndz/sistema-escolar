@@ -18,6 +18,8 @@ const portalApi = {
   getStudentHistory: (studentId) => axiosClient.get(`/portal/students/${studentId}/history`).then((r) => r.data),
   getStudentGrades: (studentId, params) =>
     axiosClient.get(`/portal/students/${studentId}/grades`, { params }).then((r) => r.data),
+  /** Datos de pago del colegio (pago móvil y cuentas) para reportar un pago: solo los activos. */
+  getPaymentAccounts: () => axiosClient.get('/portal/payment-accounts').then((r) => r.data),
 };
 
 export default portalApi;

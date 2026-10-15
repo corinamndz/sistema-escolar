@@ -20,6 +20,7 @@ import { useThemePreview } from '../../../theme/ThemeProvider';
 import AppearanceEditor, { ThemePreview } from '../components/AppearanceEditor';
 import GradingScalesCard from '../components/GradingScalesCard';
 import AdvancedSettings from '../components/AdvancedSettings';
+import PaymentAccountsSettings from '../components/PaymentAccountsSettings';
 import SchoolPeriodsTab from '../../academics/components/SchoolPeriodsTab';
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -40,6 +41,12 @@ const TABS = [
     can: (can) => can('academics', 'read'),
   },
   { key: 'escalas', label: 'Escalas de calificación', icon: 'star', hint: 'Escala cuantitativa (0–20) o cualitativa (A–E) de cada grado.' },
+  {
+    key: 'pagos',
+    label: 'Datos de pago',
+    icon: 'wallet',
+    hint: 'Pago móvil y cuentas bancarias del colegio: los representantes los ven al reportar un pago.',
+  },
   { key: 'avanzado', label: 'Otros', long: '/ Avanzado', icon: 'settings', hint: 'Acceso a la plataforma y otros ajustes del sistema.' },
 ];
 const FORM_TABS = ['general', 'apariencia'];
@@ -315,6 +322,8 @@ function TenantSettingsPage() {
 
         {/* Escala de calificación de cada grado: se guarda al instante, aparte del formulario. */}
         {tab === 'escalas' && <GradingScalesCard canEdit={canEdit} />}
+
+        {tab === 'pagos' && <PaymentAccountsSettings canEdit={canEdit} />}
 
         {tab === 'avanzado' && <AdvancedSettings settings={settings} />}
       </div>

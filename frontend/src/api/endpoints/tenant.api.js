@@ -14,6 +14,10 @@ const tenantApi = {
     axiosClient
       .put('/tenant/settings', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       .then((r) => r.data),
+  /** Grados con su escala de calificación: { grades: [{ id, name, level_name, grading_scale }], qualitative_levels, max }. */
+  getGradingScales: () => axiosClient.get('/tenant/grading-scales').then((r) => r.data),
+  /** [{ gradeId, gradingScale: 'quantitative' | 'qualitative' }] */
+  setGradingScales: (grades) => axiosClient.put('/tenant/grading-scales', { grades }).then((r) => r.data),
 };
 
 export default tenantApi;

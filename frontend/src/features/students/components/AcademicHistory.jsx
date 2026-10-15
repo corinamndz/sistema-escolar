@@ -18,7 +18,8 @@ const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleSt
  * `data` viene de GET /students/:id/academic-history o /portal/students/:id/history.
  */
 function AcademicHistory({ data }) {
-  const [open, setOpen] = useState(() => new Set(data?.years?.[0] ? [data.years[0].enrollment_id] : []));
+  // Años CERRADOS por defecto: la cabecera resume cada uno (grado, resultado, promedio); se abre el que se quiere ver.
+  const [open, setOpen] = useState(() => new Set());
   if (!data?.years?.length) {
     return (
       <div className="empty-state">

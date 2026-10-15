@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import portalApi from '../../../api/endpoints/portal.api';
 import { useFetch } from '../../../hooks/useFetch';
+import { useExpandedSet } from '../../../hooks/useExpandedSet';
 import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
 import Select from '../../../components/ui/Select';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { formatDate } from '../../payments/paymentStatus';
+import { isQualitative, literalFor } from '../../grading/gradingScale';
+import LiteralBadge from '../../grading/components/LiteralBadge';
 
 const CATEGORY_LABELS = { formative: 'Formativa', exam: 'Examen', project: 'Proyecto', homework: 'Tarea', other: 'Otra' };
 
@@ -29,51 +32,6 @@ const PLAN_STATUS = {
  * por materia y lapso, con cada actividad del plan de evaluación, su nota y
  * el acumulado actual. Los cálculos vienen del backend (grades.service.js).
  */
-/**
- * Materias colapsadas del alumno (por defecto todas expandidas). Se recuerda
- * por alumno en este navegador; si el almacenamiento no está disponible
- * (modo privado), simplemente no se recuerda.
- */
-function useCollapsedSubjects(studentId) {
-  const storageKey = `ui.grades.collapsed.${studentId}`;
-  const read = () => {
-    try {
-      return new Set(JSON.parse(localStorage.getItem(storageKey) || '[]'));
-    } catch {
-      return new Set();
-    }
-  };
-  const [collapsed, setCollapsed] = useState(read);
-
-  // Al cambiar de alumno, cargar su propia preferencia.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => setCollapsed(read()), [storageKey]);
-
-  const persist = useCallback(
-    (next) => {
-      setCollapsed(next);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify([...next]));
-      } catch {
-        // sin almacenamiento: solo dura mientras la página esté abierta
-      }
-    },
-    [storageKey]
-  );
-
-  const toggle = useCallback(
-    (key) => {
-      const next = new Set(collapsed);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      persist(next);
-    },
-    [collapsed, persist]
-  );
-
-  return { collapsed, toggle, setAll: persist };
-}
-
 function StudentGrades({ studentId }) {
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
   const [termId, setTermId] = useState('');
@@ -81,7 +39,8 @@ function StudentGrades({ studentId }) {
     () => portalApi.getStudentGrades(studentId, schoolPeriodId ? { schoolPeriodId } : undefined),
     [studentId, schoolPeriodId]
   );
-  const { collapsed, toggle, setAll } = useCollapsedSubjects(studentId);
+  // Materias CERRADAS por defecto; se recuerda (por alumno, en este navegador) cuáles abrió.
+  const { isOpen, toggle, expandAll, collapseAll } = useExpandedSet(`ui.grades.expanded.${studentId}`);
 
   if (loading) return <Spinner label="Cargando calificaciones…" />;
   if (error) return <Alert>{error}</Alert>;
@@ -102,7 +61,7 @@ function StudentGrades({ studentId }) {
   const averages = visible.flatMap((s) => s.plans.map((p) => p.current_average)).filter((v) => v !== null);
   const overall = averages.length ? averages.reduce((a, b) => a + b, 0) / averages.length : null;
   const finals = visible.flatMap((s) => s.plans).filter((p) => p.status === 'final').length;
-  const allCollapsed = visible.length > 0 && visible.every((s) => collapsed.has(s.key));
+  const allCollapsed = visible.length > 0 && visible.every((s) => !isOpen(s.key));
 
   return (
     <div>
@@ -135,7 +94,7 @@ function StudentGrades({ studentId }) {
           <button
             type="button"
             className="btn btn--ghost btn--sm grades-toolbar__toggle"
-            onClick={() => setAll(allCollapsed ? new Set() : new Set(visible.map((s) => s.key)))}
+            onClick={() => (allCollapsed ? expandAll(visible.map((s) => s.key)) : collapseAll())}
           >
             <Icon name="chevronDown" size={15} className={allCollapsed ? '' : 'is-flipped'} />
             {allCollapsed ? 'Expandir todas' : 'Contraer todas'}
@@ -153,9 +112,15 @@ function StudentGrades({ studentId }) {
           <div className="grades-summary">
             <div>
               <span className="student-card__label">Promedio de lo evaluado</span>
-              <span className={`grades-summary__value ${gradeTone(overall, passing)}`}>
-                {fmt(overall)} <small>/ {scale}</small>
-              </span>
+              {isQualitative(data.grading_scale) ? (
+                <span className="grades-summary__value">
+                  <LiteralBadge level={literalFor(overall)} showLabel size="lg" />
+                </span>
+              ) : (
+                <span className={`grades-summary__value ${gradeTone(overall, passing)}`}>
+                  {fmt(overall)} <small>/ {scale}</small>
+                </span>
+              )}
             </div>
             <div>
               <span className="student-card__label">Materias</span>
@@ -168,7 +133,9 @@ function StudentGrades({ studentId }) {
               </span>
             </div>
             <p className="grades-summary__note">
-              Escala de 0 a {scale}; se aprueba con {passing}. El promedio general es orientativo: se calcula con lo evaluado hasta hoy.
+              {isQualitative(data.grading_scale)
+                ? `Escala cualitativa: ${(data.scale_def?.qualitative_levels || []).map((l) => `${l.code} ${l.label.toLowerCase()}`).join(' · ')}. El promedio es orientativo: se calcula con lo evaluado hasta hoy.`
+                : `Escala de 0 a ${scale}; se aprueba con ${passing}. El promedio general es orientativo: se calcula con lo evaluado hasta hoy.`}
             </p>
           </div>
 
@@ -177,7 +144,7 @@ function StudentGrades({ studentId }) {
               <SubjectCard
                 key={subject.key}
                 subject={subject}
-                collapsed={collapsed.has(subject.key)}
+                collapsed={!isOpen(subject.key)}
                 onToggle={() => toggle(subject.key)}
                 scale={scale}
                 passing={passing}
@@ -209,10 +176,12 @@ function SubjectSummary({ plans, passing }) {
       {plans.map((plan) => {
         const value = plan.final_grade ?? (plan.graded_count ? plan.accumulated : null);
         const tone = gradeTone(plan.status === 'final' ? plan.final_grade : plan.current_average, passing);
+        // Cualitativa: el literal del promedio (definitiva o de lo evaluado hasta hoy).
+        const literal = isQualitative(plan.grading_scale) ? literalFor(plan.status === 'final' ? plan.final_grade : plan.current_average) : null;
         return (
-          <span key={plan.plan_id} className={`grade-chip ${value === null ? 'grade--none' : tone}`} title={PLAN_STATUS[plan.status].label}>
+          <span key={plan.plan_id} className={`grade-chip ${value === null ? 'grade--none' : tone}`} title={literal ? `${literal.code} · ${literal.label}` : PLAN_STATUS[plan.status].label}>
             <span className="grade-chip__term">{plan.term_name}</span>
-            <strong>{fmt(value)}</strong>
+            <strong>{literal ? literal.code : fmt(value)}</strong>
             <span className="grade-chip__kind">{plan.status === 'final' ? 'Def.' : value === null ? 'Sin notas' : 'Acum.'}</span>
           </span>
         );
@@ -267,6 +236,8 @@ export function SubjectCard({ subject, collapsed, onToggle, scale, passing, show
 function PlanGrades({ plan, scale, passing, showTerm }) {
   const status = PLAN_STATUS[plan.status];
   const headline = plan.final_grade ?? plan.accumulated;
+  const qualitative = isQualitative(plan.grading_scale);
+  const headLiteral = qualitative ? literalFor(plan.status === 'final' ? plan.final_grade : plan.current_average) : null;
 
   return (
     <div className="plan-grades">
@@ -288,17 +259,26 @@ function PlanGrades({ plan, scale, passing, showTerm }) {
       ) : (
         <>
           <div className="plan-grades__metrics">
-            <div className={`grade-big ${gradeTone(plan.status === 'final' ? headline : plan.current_average, passing)}`}>
-              <span className="grade-big__value">{fmt(headline)}</span>
-              <span className="grade-big__scale">/ {scale}</span>
-              <span className="grade-big__label">{plan.status === 'final' ? 'Nota definitiva' : 'Acumulado'}</span>
-            </div>
+            {qualitative ? (
+              <div className="grade-big grade-big--literal">
+                <LiteralBadge level={headLiteral} size="xl" />
+                <span className="grade-big__label">
+                  {headLiteral ? headLiteral.label : 'Sin notas'} · {plan.status === 'final' ? 'Nota definitiva' : 'Lo evaluado hasta hoy'}
+                </span>
+              </div>
+            ) : (
+              <div className={`grade-big ${gradeTone(plan.status === 'final' ? headline : plan.current_average, passing)}`}>
+                <span className="grade-big__value">{fmt(headline)}</span>
+                <span className="grade-big__scale">/ {scale}</span>
+                <span className="grade-big__label">{plan.status === 'final' ? 'Nota definitiva' : 'Acumulado'}</span>
+              </div>
+            )}
             <div className="plan-grades__progress">
               <div className="coverage__head">
                 <span>
                   Evaluado <strong>{fmt(plan.evaluated_weight, 0)}%</strong> del plan
                 </span>
-                {plan.current_average !== null && plan.status !== 'final' && (
+                {!qualitative && plan.current_average !== null && plan.status !== 'final' && (
                   <span className={gradeTone(plan.current_average, passing)}>
                     Promedio de lo evaluado: <strong>{fmt(plan.current_average)}</strong>
                   </span>
@@ -307,7 +287,7 @@ function PlanGrades({ plan, scale, passing, showTerm }) {
               <div className="progress-bar">
                 <div className="progress-bar__fill" style={{ width: `${Math.min(100, plan.evaluated_weight)}%` }} />
               </div>
-              {plan.status !== 'final' && plan.evaluated_weight > 0 && (
+              {!qualitative && plan.status !== 'final' && plan.evaluated_weight > 0 && (
                 <p className="form-hint" style={{ margin: '6px 0 0' }}>
                   Lleva {fmt(plan.accumulated)} de los {fmt((plan.evaluated_weight / 100) * scale)} puntos evaluados hasta ahora; quedan{' '}
                   {fmt(((100 - plan.evaluated_weight) / 100) * scale)} por evaluar.
@@ -324,7 +304,7 @@ function PlanGrades({ plan, scale, passing, showTerm }) {
                   <th>Tipo</th>
                   <th style={{ textAlign: 'right' }}>Vale</th>
                   <th style={{ textAlign: 'right' }}>Nota</th>
-                  <th style={{ textAlign: 'right' }}>Puntos</th>
+                  {!qualitative && <th style={{ textAlign: 'right' }}>Puntos</th>}
                 </tr>
               </thead>
               <tbody>
@@ -339,6 +319,8 @@ function PlanGrades({ plan, scale, passing, showTerm }) {
                     <td data-label="Nota" style={{ textAlign: 'right' }}>
                       {a.raw_score === null ? (
                         <span className="text-muted">Sin nota</span>
+                      ) : qualitative ? (
+                        <LiteralBadge level={literalFor(a.scaled_score)} showLabel />
                       ) : (
                         <span className={gradeTone(a.scaled_score, passing)}>
                           <strong>{fmt(a.raw_score, 2)}</strong>/{fmt(a.max_score, 0)}
@@ -346,9 +328,11 @@ function PlanGrades({ plan, scale, passing, showTerm }) {
                         </span>
                       )}
                     </td>
-                    <td data-label="Puntos" style={{ textAlign: 'right' }}>
-                      {a.raw_score === null ? '—' : `${fmt((a.earned_percent / 100) * scale, 2)} de ${fmt((a.weight_percent / 100) * scale, 2)}`}
-                    </td>
+                    {!qualitative && (
+                      <td data-label="Puntos" style={{ textAlign: 'right' }}>
+                        {a.raw_score === null ? '—' : `${fmt((a.earned_percent / 100) * scale, 2)} de ${fmt((a.weight_percent / 100) * scale, 2)}`}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

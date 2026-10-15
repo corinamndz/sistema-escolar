@@ -10,6 +10,10 @@ const academicsApi = {
 
   listSchoolPeriods: () => get('/academics/school-periods'),
   createSchoolPeriod: (data) => post('/academics/school-periods', data),
+  /** Qué se eliminaría al borrar el año: { school_period, impact: { sections, enrollments, evaluation_plans, … }, is_last }. */
+  getPeriodDeletionImpact: (id) => get(`/academics/school-periods/${id}/deletion-impact`),
+  /** Borra el año y todo lo asociado. `confirmName`: el nombre exacto del año. */
+  deleteSchoolPeriod: (id, confirmName) => axiosClient.delete(`/academics/school-periods/${id}`, { data: { confirmName } }).then((r) => r.data),
   /** Finaliza el año (exige que no queden alumnos cursando) / lo reabre para corregir. */
   closeSchoolPeriod: (id) => post(`/academics/school-periods/${id}/close`),
   reopenSchoolPeriod: (id) => post(`/academics/school-periods/${id}/reopen`),

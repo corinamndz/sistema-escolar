@@ -6,12 +6,14 @@ const { asyncHandler } = require('../../utils/asyncHandler');
  * Actividad simple: { studentId, rawScore, maxScore? } (maxScore por defecto el de la actividad).
  * Actividad con indicadores (formato detallado): { studentId, indicatorScores: [{ indicatorId, points }] }
  * con TODOS sus indicadores; la nota es la suma.
+ * Grado cualitativo: { studentId, literal: 'A' … 'E' } (se guarda su valor representativo).
  */
 const scoreSchema = z
   .object({
     studentId: z.string().uuid(),
     rawScore: z.number().min(0).optional(),
     maxScore: z.number().positive().optional(),
+    literal: z.preprocess((v) => (typeof v === 'string' ? v.trim().toUpperCase() : v), z.enum(['A', 'B', 'C', 'D', 'E'], { errorMap: () => ({ message: 'Literal inválido: usa A, B, C, D o E.' }) })).optional(),
     indicatorScores: z
       .array(
         z.object({
@@ -25,7 +27,7 @@ const scoreSchema = z
       .max(100)
       .optional(),
   })
-  .refine((b) => b.rawScore !== undefined || b.indicatorScores, { message: 'Envía la nota (rawScore) o las notas por indicador.' });
+  .refine((b) => b.rawScore !== undefined || b.indicatorScores || b.literal, { message: 'Envía la nota (rawScore), el literal o las notas por indicador.' });
 
 const upsertScore = asyncHandler(async (req, res) => {
   const data = scoreSchema.parse(req.body);

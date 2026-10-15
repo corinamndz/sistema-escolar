@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { scaleDefinition, scoreForLiteral } = require('./gradingScale');
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
@@ -12,9 +13,14 @@ const round2 = (n) => Math.round(Number(n) * 100) / 100;
  *    nota de CADA indicador (0 ≤ nota ≤ puntaje del indicador); raw_score es su
  *    suma y max_score el de la actividad (= suma de puntajes).
  *
+ * Grados con escala cualitativa: en vez de `rawScore` puede venir `literal`
+ * (A–E): se guarda el valor representativo de ese literal (sobre el máximo de
+ * la actividad), así los cálculos siguen siendo numéricos.
+ *
  * El alumno debe estar inscrito en alguna de las secciones del plan.
  */
-async function upsertScore(trx, tenantId, { activityId, studentId, rawScore, maxScore, indicatorScores }) {
+async function upsertScore(trx, tenantId, { activityId, studentId, rawScore: givenRaw, maxScore, indicatorScores, literal }) {
+  let rawScore = givenRaw;
   const activity = await trx('evaluation_activities').where({ id: activityId, tenant_id: tenantId }).first();
   if (!activity) throw ApiError.notFound('Actividad no encontrada.');
 
@@ -65,6 +71,11 @@ async function upsertScore(trx, tenantId, { activityId, studentId, rawScore, max
     max = Number(activity.max_score);
   } else {
     if (indicatorScores?.length) throw ApiError.badRequest('Esta actividad no tiene indicadores: envía una sola nota.');
+    if (literal) {
+      maxScore = maxScore ?? Number(activity.max_score);
+      rawScore = scoreForLiteral(literal, maxScore);
+      if (rawScore === null) throw ApiError.badRequest('Literal inválido: usa A, B, C, D o E.', [{ path: 'literal', message: 'Literal inválido.' }]);
+    }
     if (rawScore === undefined || rawScore === null) throw ApiError.badRequest('Indica la nota.', [{ path: 'rawScore', message: 'Requerida.' }]);
     max = maxScore ?? Number(activity.max_score);
     raw = rawScore;
@@ -161,7 +172,9 @@ async function getPlanGradebook(trx, tenantId, planId, { sectionId } = {}) {
     return { student, scores: studentScores, accumulated: Number(accumulated.toFixed(2)) };
   });
 
-  return { plan, sections, activities, rows };
+  // Escala del grado del plan (migración 023): la libreta carga y muestra literales si es cualitativa.
+  const grade = await trx('sections as sec').join('grades as g', 'g.id', 'sec.grade_id').where('sec.id', plan.section_id).first('g.grading_scale');
+  return { plan, sections, activities, rows, grading_scale: grade?.grading_scale || 'quantitative', scale: scaleDefinition() };
 }
 
 /** Registra si el alumno alcanzó o no cada competencia de un proyecto pedagógico. */

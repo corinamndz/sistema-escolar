@@ -4,25 +4,11 @@ import DataTable from '../../../components/ui/DataTable';
 import Icon from '../../../components/ui/Icon';
 import { LEVELS, LevelBadge } from '../../academics/levels';
 import { useAuth } from '../../../context/AuthContext';
+import { useExpandedSet } from '../../../hooks/useExpandedSet';
 
-const STORAGE_KEY = 'students.collapsedGroups';
+// Grupos que el usuario abrió (por defecto, todos cerrados), recordados en este navegador.
+const STORAGE_KEY = 'students.expandedGroups';
 const NO_SECTION = 'none';
-
-function readCollapsed() {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'));
-  } catch {
-    return new Set();
-  }
-}
-
-function saveCollapsed(set) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
-  } catch {
-    // sin almacenamiento: el estado solo dura mientras la página está abierta
-  }
-}
 
 const byText = (a, b) => (a || '').localeCompare(b || '', 'es', { numeric: true });
 
@@ -66,40 +52,31 @@ export function groupStudents(rows) {
 
 /**
  * Vista de la matrícula agrupada por grado y sección, con grupos colapsables.
- * Los grupos colapsados se recuerdan en el navegador; mientras hay una
- * búsqueda activa se muestran todos abiertos para no esconder resultados.
+ * Los grupos empiezan CERRADOS; los que el usuario abre se recuerdan en el
+ * navegador. Mientras hay una búsqueda activa se muestran todos abiertos para
+ * no esconder resultados.
  */
 function StudentGroups({ rows, columns, searching, showCapacity, onView, onEdit, canEdit, collapseSignal }) {
   // El docente no accede al detalle de secciones (módulo de Grados y secciones).
   const { user } = useAuth();
   const canOpenSection = !user?.isRestrictedTeacher;
   const groups = useMemo(() => groupStudents(rows), [rows]);
-  const [collapsed, setCollapsed] = useState(readCollapsed);
+  // Grupos CERRADOS por defecto: se abre solo el grado/sección que se quiere ver.
+  const { isOpen, toggle, expandAll, collapseAll } = useExpandedSet(STORAGE_KEY);
 
   // "Expandir todo" / "Contraer todo" desde la barra: { action, nonce }.
   const [lastSignal, setLastSignal] = useState(collapseSignal);
   if (collapseSignal !== lastSignal) {
     setLastSignal(collapseSignal);
-    const next = collapseSignal?.action === 'collapse' ? new Set(groups.map((g) => g.key)) : new Set();
-    setCollapsed(next);
-    saveCollapsed(next);
+    if (collapseSignal?.action === 'collapse') collapseAll();
+    else expandAll(groups.map((g) => g.key));
   }
-
-  const toggle = (key) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      saveCollapsed(next);
-      return next;
-    });
-  };
 
   let currentLevel = null;
   return (
     <div className="student-groups">
       {groups.map((g) => {
-        const open = searching || !collapsed.has(g.key);
+        const open = searching || isOpen(g.key);
         const bodyId = `student-group-${g.key}`;
         const count = g.students.length;
         const isNone = g.key === NO_SECTION;

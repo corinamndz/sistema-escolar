@@ -12,12 +12,16 @@ import Spinner from '../../../components/ui/Spinner';
 import Badge from '../../../components/ui/Badge';
 import HelpTip from '../../../components/ui/HelpTip';
 import ImportActions from '../../../components/import/ImportActions';
+import { useAuth } from '../../../context/AuthContext';
+import DeleteSchoolPeriodModal from './DeleteSchoolPeriodModal';
 
 /** `onChanged` avisa al asistente de configuración para recalcular el progreso. */
 function SchoolPeriodsTab({ onChanged }) {
   const { data: rows, loading, error, refetch } = useFetch(() => academicsApi.listSchoolPeriods(), []);
   const [form, setForm] = useState({ name: '', startDate: '', endDate: '' });
   const { run, loading: saving, error: saveError, fieldErrors } = useMutation(academicsApi.createSchoolPeriod);
+  const { can } = useAuth();
+  const [deleting, setDeleting] = useState(null); // año escolar a eliminar (abre el modal de advertencia)
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -58,7 +62,27 @@ function SchoolPeriodsTab({ onChanged }) {
           </RequirePermission>
         </div>
         <Alert>{error}</Alert>
-        {loading ? <Spinner /> : <Table columns={columns} rows={rows} emptyMessage="Aún no hay años escolares." />}
+        {loading ? (
+          <Spinner />
+        ) : (
+          <Table
+            columns={columns}
+            rows={rows}
+            emptyMessage="Aún no hay años escolares."
+            // Nunca borra directo: abre el modal con la advertencia y la confirmación por nombre.
+            rowActions={can('academics', 'delete') ? [{ key: 'delete', icon: 'trash', label: 'Eliminar año escolar', tone: 'delete', onClick: (r) => setDeleting(r) }] : []}
+          />
+        )}
+        {deleting && (
+          <DeleteSchoolPeriodModal
+            period={deleting}
+            onClose={() => setDeleting(null)}
+            onDeleted={() => {
+              refetch();
+              onChanged?.();
+            }}
+          />
+        )}
       </div>
 
       <RequirePermission module="academics" action="create">

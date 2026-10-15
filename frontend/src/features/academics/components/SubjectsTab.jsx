@@ -12,8 +12,9 @@ import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
 import { useToast } from '../../../components/ui/Toast';
 import ImportActions from '../../../components/import/ImportActions';
+import GradeMultiPicker from './GradeMultiPicker';
 
-/** Catálogo de materias del colegio (se usan en los planes de estudio de Primaria y Secundaria). */
+/** Catálogo de materias del colegio; cada una indica en qué grados se dicta (su plan de estudios). */
 function SubjectsTab({ onChanged }) {
   const { can } = useAuth();
   const { data: rows, loading, error, refetch } = useFetch(() => academicsApi.listSubjects(), []);
@@ -22,6 +23,9 @@ function SubjectsTab({ onChanged }) {
     onChanged?.();
   };
   const [editing, setEditing] = useState(null);
+  // Grados del colegio (jerarquía escolar) para el selector múltiple y la columna de la tabla.
+  const { data: grades } = useFetch(() => academicsApi.listGrades(), []);
+  const gradeName = new Map((grades || []).map((g) => [g.id, g.name]));
 
   const columns = [
     {
@@ -38,7 +42,21 @@ function SubjectsTab({ onChanged }) {
       ),
       sortValue: (s) => s.name,
     },
-    { key: 'grade_count', header: 'Grados', render: (s) => (s.grade_count ? `${s.grade_count} grado(s)` : '—'), sortValue: (s) => s.grade_count },
+    {
+      key: 'grade_count',
+      header: 'Grados donde se dicta',
+      render: (s) => {
+        const names = (s.grade_ids || []).map((id) => gradeName.get(id)).filter(Boolean);
+        if (!names.length) return <span className="text-muted">—</span>;
+        return (
+          <span className="subject-grades" title={names.join(', ')}>
+            {names.slice(0, 4).join(', ')}
+            {names.length > 4 && <span className="text-muted"> y {names.length - 4} más</span>}
+          </span>
+        );
+      },
+      sortValue: (s) => s.grade_count,
+    },
     {
       key: 'assignment_count',
       header: 'Secciones con profesor',
@@ -73,7 +91,7 @@ function SubjectsTab({ onChanged }) {
             <ImportActions
               type="subjects"
               noun="materias"
-              description="Nombre, abreviatura, descripción y, si quieres, los grados de Primaria o Secundaria que la ven (se agrega a su plan de estudios)."
+              description="Nombre, abreviatura, descripción y, si quieres, los grados que la ven (Inicial, Primaria o Secundaria): se agrega a su plan de estudios."
               onImported={reload}
             />
           )
@@ -92,18 +110,19 @@ function SubjectsTab({ onChanged }) {
         })}
         onDeleted={reload}
       />
-      {editing !== null && <SubjectFormModal initial={editing} onClose={() => setEditing(null)} onSaved={reload} />}
+      {editing !== null && <SubjectFormModal initial={editing} grades={(grades || []).filter((g) => g.has_curriculum)} onClose={() => setEditing(null)} onSaved={reload} />}
     </>
   );
 }
 
-function SubjectFormModal({ initial, onClose, onSaved }) {
+function SubjectFormModal({ initial, grades, onClose, onSaved }) {
   const isEdit = Boolean(initial.id);
   const [form, setForm] = useState({
     name: initial.name || '',
     code: initial.code || '',
     description: initial.description || '',
     isActive: initial.is_active ?? true,
+    gradeIds: initial.grade_ids || [],
   });
   const { run, loading, error, fieldErrors } = useMutation(
     isEdit ? (data) => academicsApi.updateSubject(initial.id, data) : academicsApi.createSubject
@@ -113,7 +132,7 @@ function SubjectFormModal({ initial, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const data = { name: form.name, code: form.code.trim(), description: form.description.trim() };
+    const data = { name: form.name, code: form.code.trim(), description: form.description.trim(), gradeIds: form.gradeIds };
     try {
       await run(isEdit ? { ...data, isActive: form.isActive } : { ...data, code: data.code || undefined, description: data.description || undefined });
       toast.success(isEdit ? 'Materia actualizada' : 'Materia creada', form.name);
@@ -137,6 +156,14 @@ function SubjectFormModal({ initial, onClose, onSaved }) {
           </Field>
           <Field label="Descripción" error={fieldErrors.description} full>
             <textarea className="input" rows={2} value={form.description} onChange={set('description')} maxLength={500} />
+          </Field>
+          <Field
+            label="Grados donde se dicta"
+            error={fieldErrors.gradeIds}
+            full
+            hint="Marca todos los grados que ven esta materia: aparecerá en su plan de estudios y en el selector de materia de sus planes de evaluación."
+          >
+            <GradeMultiPicker grades={grades} value={form.gradeIds} onChange={(gradeIds) => setForm((f) => ({ ...f, gradeIds }))} />
           </Field>
           {isEdit && (
             <Field label="Estado" full hint="Una materia inactiva no se puede agregar a nuevos planes de estudio.">

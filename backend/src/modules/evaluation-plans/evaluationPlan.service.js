@@ -157,7 +157,7 @@ async function getPlanWithActivities(trx, tenantId, planId) {
     .join('sections as sec', 'sec.id', 'ep.section_id')
     .join('grades as g', 'g.id', 'sec.grade_id')
     .where({ 'ep.id': planId, 'ep.tenant_id': tenantId })
-    .select('ep.*', 't.name as term_name', 't.term_number', 't.school_period_id', 't.start_date as term_start', 't.end_date as term_end', 'g.name as grade_name', 'sec.grade_id')
+    .select('ep.*', 't.name as term_name', 't.term_number', 't.school_period_id', 't.start_date as term_start', 't.end_date as term_end', 'g.name as grade_name', 'g.grading_scale', 'sec.grade_id')
     .first();
   if (!plan) throw ApiError.notFound('Plan de evaluación no encontrado.');
 

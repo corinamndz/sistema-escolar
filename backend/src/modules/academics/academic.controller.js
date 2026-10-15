@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const service = require('./academic.service');
+const periodDeletion = require('./periodDeletion.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 
 // ---- Periodos escolares ----
@@ -10,6 +11,20 @@ const createSchoolPeriod = asyncHandler(async (req, res) => {
   const schema = z.object({ name: z.string().min(1), startDate: z.string().optional(), endDate: z.string().optional() });
   const data = schema.parse(req.body);
   res.status(201).json(await service.createSchoolPeriod(req.db, req.tenantId, data));
+});
+
+/** GET /academics/school-periods/:id/deletion-impact — qué se eliminaría al borrar el año (para el modal). */
+const getPeriodDeletionImpact = asyncHandler(async (req, res) => {
+  res.status(200).json(await periodDeletion.getDeletionImpact(req.db, req.tenantId, z.string().uuid().parse(req.params.id)));
+});
+
+/**
+ * DELETE /academics/school-periods/:id — { confirmName } (el nombre exacto del año).
+ * Borra el año y todo lo que depende de él, en la transacción del request.
+ */
+const deleteSchoolPeriod = asyncHandler(async (req, res) => {
+  const { confirmName } = z.object({ confirmName: z.string().trim().min(1, 'Escribe el nombre del año escolar para confirmar.') }).parse(req.body || {});
+  res.status(200).json(await periodDeletion.deleteSchoolPeriod(req.db, req.tenantId, z.string().uuid().parse(req.params.id), { confirmName }));
 });
 
 // ---- Aulas ----
@@ -87,6 +102,8 @@ const withdraw = asyncHandler(async (req, res) => {
 
 module.exports = {
   deleteSection,
+  getPeriodDeletionImpact,
+  deleteSchoolPeriod,
   listSchoolPeriods,
   createSchoolPeriod,
   listClassrooms,

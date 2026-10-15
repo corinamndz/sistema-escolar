@@ -61,7 +61,9 @@ async function listSubjects(trx, tenantId, { activeOnly } = {}) {
     .select(
       's.*',
       trx.raw('(SELECT count(*)::int FROM grade_subjects gs WHERE gs.subject_id = s.id) AS grade_count'),
-      trx.raw('(SELECT count(*)::int FROM teacher_subject_sections t WHERE t.subject_id = s.id) AS assignment_count')
+      trx.raw('(SELECT count(*)::int FROM teacher_subject_sections t WHERE t.subject_id = s.id) AS assignment_count'),
+      // Grados donde se dicta (para el selector múltiple del formulario de la materia).
+      trx.raw("COALESCE((SELECT array_agg(gs.grade_id) FROM grade_subjects gs WHERE gs.subject_id = s.id), '{}') AS grade_ids")
     )
     .orderBy('s.name');
   if (activeOnly) query.andWhere('s.is_active', true);
@@ -141,6 +143,66 @@ async function deleteSubject(trx, tenantId, id) {
   }
 
   await trx('subjects').where({ id }).delete();
+}
+
+// ---------- Grados de una materia (selector múltiple de la materia) ----------
+
+/**
+ * Define en qué grados se dicta una materia: agrega la materia al plan de
+ * estudios (grade_subjects) de los grados nuevos, al final de su lista, y la
+ * quita de los que ya no vienen. Mismas reglas que al editar el plan de un
+ * grado: no se quita de un grado donde ya tiene planes de evaluación, y una
+ * materia inactiva no se agrega a grados nuevos.
+ */
+async function setSubjectGrades(trx, tenantId, subjectId, gradeIds) {
+  const subject = await getSubjectById(trx, tenantId, subjectId);
+  const ids = [...new Set(gradeIds)];
+  const grades = ids.length
+    ? await trx('grades as g')
+        .join('education_levels as el', 'el.code', 'g.level_code')
+        .where('g.tenant_id', tenantId)
+        .whereIn('g.id', ids)
+        .select('g.id', 'g.name', 'el.name as level_name', 'el.has_curriculum')
+    : [];
+  if (grades.length !== ids.length) throw ApiError.badRequest('Hay grados que no existen en el colegio.', [{ path: 'gradeIds', message: 'Grado inválido.' }]);
+  const noCurriculum = grades.filter((g) => !g.has_curriculum);
+  if (noCurriculum.length) {
+    throw ApiError.unprocessable(`Los grados de ${noCurriculum[0].level_name} no se organizan por materias.`, [{ path: 'gradeIds', message: 'Nivel sin plan de estudios.' }]);
+  }
+
+  const current = await trx('grade_subjects').where({ subject_id: subjectId }).pluck('grade_id');
+  const added = ids.filter((id) => !current.includes(id));
+  const removed = current.filter((id) => !ids.includes(id));
+  if (added.length && !subject.is_active) {
+    throw ApiError.unprocessable(`${subject.name} está inactiva: actívala antes de agregarla a más grados.`, [{ path: 'gradeIds', message: 'Materia inactiva.' }]);
+  }
+
+  if (removed.length) {
+    const withPlans = await trx('evaluation_plans as ep')
+      .join('sections as sec', 'sec.id', 'ep.section_id')
+      .join('grades as g', 'g.id', 'sec.grade_id')
+      .where('ep.subject_id', subjectId)
+      .whereIn('sec.grade_id', removed)
+      .distinct('g.name')
+      .pluck('g.name');
+    if (withPlans.length) {
+      throw ApiError.conflict(`No se puede quitar ${subject.name} de ${withPlans.join(', ')}: ya tiene planes de evaluación registrados.`, [
+        { path: 'gradeIds', message: 'Grado con planes.' },
+      ]);
+    }
+    // Las asignaciones docentes y clases del horario de esa materia en esos grados se van en cascada.
+    await trx('grade_subjects').where({ subject_id: subjectId }).whereIn('grade_id', removed).delete();
+  }
+  for (const gradeId of added) {
+    const { max } = await trx('grade_subjects').where({ grade_id: gradeId }).max('sort_order as max').first();
+    await trx('grade_subjects').insert({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId, sort_order: max === null ? 0 : Number(max) + 1 });
+  }
+  return { added: added.length, removed: removed.length };
+}
+
+/** Materia con sus grados (la misma forma que una fila de listSubjects). */
+async function getSubjectWithGrades(trx, tenantId, subjectId) {
+  return (await listSubjects(trx, tenantId)).find((x) => x.id === subjectId);
 }
 
 // ---------- Plan de estudios del grado (primaria y secundaria) ----------
@@ -620,6 +682,8 @@ async function getGradePanel(trx, tenantId, gradeId, { schoolPeriodId }) {
 }
 
 module.exports = {
+  setSubjectGrades,
+  getSubjectWithGrades,
   listAssignmentMatrix,
   getGradePanel,
   listLevels,

@@ -82,4 +82,25 @@ const getProfile = asyncHandler(async (req, res) => {
   res.status(200).json(await tenantService.getProfile(req.db, req.tenantId));
 });
 
-module.exports = { getSettings, getProfile, updateSettings };
+
+
+/** GET /tenant/grading-scales — grados con su escala de calificación. */
+const getGradingScales = asyncHandler(async (req, res) => {
+  res.status(200).json(await tenantService.listGradingScales(req.db, req.tenantId));
+});
+
+/** PUT /tenant/grading-scales — { grades: [{ gradeId, gradingScale: 'quantitative' | 'qualitative' }] } */
+const updateGradingScales = asyncHandler(async (req, res) => {
+  const { grades } = z
+    .object({
+      grades: z
+        .array(z.object({ gradeId: z.string().uuid(), gradingScale: z.enum(['quantitative', 'qualitative'], { errorMap: () => ({ message: 'Escala inválida: cuantitativa o cualitativa.' }) }) }))
+        .min(1)
+        .max(100),
+    })
+    .parse(req.body);
+  res.status(200).json(await tenantService.setGradingScales(req.db, req.tenantId, grades));
+});
+
+
+module.exports = { getSettings, getProfile, updateSettings, getGradingScales, updateGradingScales };

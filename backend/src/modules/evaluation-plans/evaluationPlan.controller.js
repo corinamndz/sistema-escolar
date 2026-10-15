@@ -33,7 +33,13 @@ const listSectionOptions = asyncHandler(async (req, res) => {
  */
 const getSectionAssignmentOptions = asyncHandler(async (req, res) => {
   await teacherScope.assertSectionAccess(req, req.params.id);
-  const data = await assignmentService.getSectionAssignments(req.db, req.tenantId, req.params.id);
+  const assignment = await assignmentService.getSectionAssignments(req.db, req.tenantId, req.params.id);
+  // Para que el selector de materia NUNCA quede vacío ni como texto libre:
+  //   curriculum_size  materias del plan de estudios del grado (antes del filtro del docente);
+  //   catalog          materias activas del colegio, para elegir el área cuando el
+  //                    grado aún no tiene materias marcadas (Inicial / Primaria).
+  const catalog = (await assignmentService.listSubjects(req.db, req.tenantId, { activeOnly: true })).map((s) => ({ id: s.id, name: s.name, code: s.code }));
+  const data = { ...assignment, curriculum_size: (assignment.subjects || []).length, catalog };
   const scope = await teacherScope.getTeacherScope(req);
   if (!scope) return res.status(200).json(data);
   const self = (t) => (t && t.id === scope.staffId ? t : null);

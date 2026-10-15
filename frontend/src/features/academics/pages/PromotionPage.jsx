@@ -173,9 +173,9 @@ function PromotionPage() {
   const applySuggestions = () => suggestMany(students);
 
   const groups = useMemo(() => groupStudents(students, preview?.grades || []), [students, preview]);
-  // Al cargar por primera vez: con pocos grupos se muestran abiertos; con muchos, contraídos (la cabecera ya resume).
+  // Al cargar: todos los grupos CERRADOS (la cabecera ya resume cada grado/sección); se abre el que se quiere revisar.
   useEffect(() => {
-    if (collapsed === null && groups.length) setCollapsed(new Set(groups.length > 2 ? groups.map((g) => g.key) : []));
+    if (collapsed === null && groups.length) setCollapsed(new Set(groups.map((g) => g.key)));
   }, [groups, collapsed]);
   const isOpen = (key) => !collapsed?.has(key);
   const toggleGroup = (key) =>

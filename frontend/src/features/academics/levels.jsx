@@ -10,7 +10,7 @@ export const LEVELS = {
     short: 'Inicial',
     name: 'Educación Inicial',
     icon: 'sparkles',
-    rule: 'Cada sección tiene un docente titular y un docente auxiliar.',
+    rule: 'Cada sección tiene un docente titular y un docente auxiliar, que dictan las áreas del grado (opcional: puedes marcar las áreas en Materias).',
   },
   primary: {
     short: 'Primaria',

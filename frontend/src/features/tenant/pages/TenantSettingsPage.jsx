@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTenant } from '../../../context/TenantContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useMutation } from '../../../hooks/useMutation';
@@ -10,14 +11,38 @@ import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
+import Icon from '../../../components/ui/Icon';
 import ImageUpload from '../../../components/ui/ImageUpload';
 import { DEFAULT_SCHOOL_LOGO } from '../../../components/ui/SchoolLogo';
 import { useToast } from '../../../components/ui/Toast';
 import { notifyBrandingChanged } from '../../../lib/tenantSlug';
 import { useThemePreview } from '../../../theme/ThemeProvider';
 import AppearanceEditor, { ThemePreview } from '../components/AppearanceEditor';
+import GradingScalesCard from '../components/GradingScalesCard';
+import AdvancedSettings from '../components/AdvancedSettings';
+import SchoolPeriodsTab from '../../academics/components/SchoolPeriodsTab';
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
+
+/**
+ * Pestañas de Configuración. `can`: quién la ve (por defecto, quien entra a
+ * Configuración). General y Apariencia comparten un mismo formulario y se
+ * guardan juntas; Años escolares y Escalas se guardan al instante.
+ */
+const TABS = [
+  { key: 'general', label: 'General', long: '/ Institución', icon: 'building', hint: 'Nombre, logo y datos de contacto del colegio.' },
+  { key: 'apariencia', label: 'Apariencia', long: 'y colores', icon: 'sparkles', hint: 'Color del menú lateral y color de acento de la plataforma.' },
+  {
+    key: 'anios',
+    label: 'Años escolares',
+    icon: 'calendar',
+    hint: 'Crea, consulta o elimina los periodos académicos del colegio.',
+    can: (can) => can('academics', 'read'),
+  },
+  { key: 'escalas', label: 'Escalas de calificación', icon: 'star', hint: 'Escala cuantitativa (0–20) o cualitativa (A–E) de cada grado.' },
+  { key: 'avanzado', label: 'Otros', long: '/ Avanzado', icon: 'settings', hint: 'Acceso a la plataforma y otros ajustes del sistema.' },
+];
+const FORM_TABS = ['general', 'apariencia'];
 
 function pickForm(settings) {
   return {
@@ -44,6 +69,13 @@ function useObjectUrl(file) {
   return url;
 }
 
+/**
+ * Configuración del colegio organizada en pestañas (General, Apariencia,
+ * Años escolares, Escalas de calificación, Otros). La pestaña activa vive en
+ * la URL (?tab=…): se puede enlazar y se mantiene al recargar. Los cambios sin
+ * guardar del formulario se conservan al cambiar de pestaña y se marcan con
+ * un punto en la pestaña correspondiente.
+ */
 function TenantSettingsPage() {
   const { settings, refreshTenant } = useTenant();
   const { can } = useAuth();
@@ -105,110 +137,186 @@ function TenantSettingsPage() {
 
   // Lo que se ve en la vista previa: archivo nuevo > logo guardado (si no se quitó).
   const previewLogo = logoPreview || (!removeLogo ? settings.logoUrl : null);
-  const dirty =
-    Boolean(logoFile) || removeLogo || JSON.stringify(form) !== JSON.stringify(pickForm(settings));
+  const saved = pickForm(settings);
+  // Cambios sin guardar por pestaña (se marcan con un punto en su pestaña).
+  const dirtyGeneral = Boolean(logoFile) || removeLogo || ['name', 'contactPhone', 'contactEmail'].some((k) => form[k] !== saved[k]);
+  const dirtyAppearance = form.primaryColor !== saved.primaryColor || form.secondaryColor !== saved.secondaryColor;
+  const dirty = dirtyGeneral || dirtyAppearance;
+  const dirtyOf = { general: dirtyGeneral, apariencia: dirtyAppearance };
+
+  // Pestaña activa en la URL (?tab=…).
+  const [params, setParams] = useSearchParams();
+  const tabs = TABS.filter((t) => !t.can || t.can(can));
+  const tab = tabs.find((t) => t.key === params.get('tab'))?.key || 'general';
+  const active = tabs.find((t) => t.key === tab);
+  const otherDirty = tab === 'general' ? dirtyAppearance : dirtyGeneral;
+  const tabRefs = useRef({});
+
+  const selectTab = (key, focus = false) => {
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        if (key === 'general') next.delete('tab');
+        else next.set('tab', key);
+        return next;
+      },
+      { replace: true },
+    );
+    if (focus) tabRefs.current[key]?.focus();
+  };
+  // Teclado (patrón de pestañas accesible): ← → recorren, Inicio/Fin van a los extremos.
+  const onTabKeyDown = (e) => {
+    const i = tabs.findIndex((t) => t.key === tab);
+    const go = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (go === undefined) return;
+    e.preventDefault();
+    selectTab(tabs[(go + tabs.length) % tabs.length].key, true);
+  };
 
   return (
     <div>
-      <PageHeader title="Configuración del colegio" subtitle="Nombre, logo, colores y datos de contacto" />
+      <PageHeader title="Configuración del colegio" subtitle="Institución, apariencia, años escolares y escalas de calificación" />
 
-      <div className="grid settings-layout">
-        <form onSubmit={handleSubmit} className="card">
-          <Alert>{error}</Alert>
+      <div className="settings-tabs" role="tablist" aria-label="Secciones de configuración" onKeyDown={onTabKeyDown}>
+        {tabs.map((t) => {
+          const selected = t.key === tab;
+          return (
+            <button
+              key={t.key}
+              ref={(el) => {
+                tabRefs.current[t.key] = el;
+              }}
+              type="button"
+              role="tab"
+              id={`settings-tab-${t.key}`}
+              aria-selected={selected}
+              aria-controls={`settings-panel-${t.key}`}
+              tabIndex={selected ? 0 : -1}
+              className={`settings-tabs__tab ${selected ? 'is-active' : ''}`}
+              onClick={() => selectTab(t.key)}
+              title={t.hint}
+            >
+              <Icon name={t.icon} size={16} />
+              <span>
+                {t.label}
+                {t.long && <span className="settings-tabs__long"> {t.long}</span>}
+              </span>
+              {dirtyOf[t.key] && <span className="settings-tabs__dirty" role="img" aria-label="Cambios sin guardar" title="Cambios sin guardar" />}
+            </button>
+          );
+        })}
+      </div>
 
-          <div className="form-grid">
-            <Field label="Nombre del colegio" error={fieldErrors.name} full required>
-              <Input icon="building" name="name" value={form.name} onChange={handleChange} disabled={!canEdit} required />
-            </Field>
+      <div id={`settings-panel-${tab}`} role="tabpanel" aria-labelledby={`settings-tab-${tab}`} className="settings-panel" key={tab}>
+        <p className="settings-panel__hint text-sm text-muted">{active?.hint}</p>
 
-            <Field label="Logo" full>
-              <ImageUpload
-                currentUrl={settings.logoUrl}
-                file={logoFile}
-                onChange={handleLogoChange}
-                removed={removeLogo}
-                onRemove={() => setRemoveLogo(true)}
-                error={fieldErrors.logo}
-                disabled={!canEdit}
-                placeholderUrl={DEFAULT_SCHOOL_LOGO.compact}
-                placeholderLabel="Logo predeterminado (MoDo Educa)"
-              />
-              {!logoFile && (!settings.logoUrl || removeLogo) && (
-                <span className="form-hint">Mientras el colegio no tenga logo propio, se muestra el de MoDo Educa en toda la plataforma.</span>
+        {FORM_TABS.includes(tab) && (
+          <div className="grid settings-layout">
+            <form onSubmit={handleSubmit} className="card">
+              <Alert>{error}</Alert>
+
+              {tab === 'general' ? (
+                <div className="form-grid">
+                  <Field label="Nombre del colegio" error={fieldErrors.name} full required>
+                    <Input icon="building" name="name" value={form.name} onChange={handleChange} disabled={!canEdit} required />
+                  </Field>
+
+                  <Field label="Logo" full>
+                    <ImageUpload
+                      currentUrl={settings.logoUrl}
+                      file={logoFile}
+                      onChange={handleLogoChange}
+                      removed={removeLogo}
+                      onRemove={() => setRemoveLogo(true)}
+                      error={fieldErrors.logo}
+                      disabled={!canEdit}
+                      placeholderUrl={DEFAULT_SCHOOL_LOGO.compact}
+                      placeholderLabel="Logo predeterminado (MoDo Educa)"
+                    />
+                    {!logoFile && (!settings.logoUrl || removeLogo) && (
+                      <span className="form-hint">Mientras el colegio no tenga logo propio, se muestra el de MoDo Educa en toda la plataforma.</span>
+                    )}
+                    {removeLogo && (
+                      <span className="form-hint">
+                        El logo se quitará al guardar.{' '}
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          style={{ height: 'auto', padding: '0 4px' }}
+                          onClick={() => setRemoveLogo(false)}
+                        >
+                          Deshacer
+                        </button>
+                      </span>
+                    )}
+                  </Field>
+
+                  <Field label="Correo de contacto" error={fieldErrors.contactEmail}>
+                    <Input
+                      icon="inbox"
+                      name="contactEmail"
+                      type="email"
+                      value={form.contactEmail}
+                      onChange={handleChange}
+                      placeholder="secretaria@colegio.edu"
+                      disabled={!canEdit}
+                    />
+                  </Field>
+
+                  <Field label="Teléfono de contacto" error={fieldErrors.contactPhone}>
+                    <Input icon="user" name="contactPhone" value={form.contactPhone} onChange={handleChange} maxLength={30} disabled={!canEdit} />
+                  </Field>
+                </div>
+              ) : (
+                <div className="appearance-section appearance-section--tab">
+                  <p className="text-sm text-muted">
+                    Solo dos colores: el del menú y el de acento. Todo lo demás se ajusta solo. Verás el cambio en toda la plataforma al instante y
+                    se guarda con «Guardar cambios».
+                  </p>
+                  <AppearanceEditor form={form} setForm={setForm} onChange={handleChange} fieldErrors={fieldErrors} disabled={!canEdit} />
+                </div>
               )}
-              {removeLogo && (
-                <span className="form-hint">
-                  El logo se quitará al guardar.{' '}
-                  <button
+
+              <RequirePermission module="tenant_settings" action="update">
+                {otherDirty && (
+                  <p className="settings-panel__pending">
+                    <Icon name="info" size={14} /> También hay cambios sin guardar en «{tab === 'general' ? 'Apariencia' : 'General'}»: se guardan
+                    juntos.
+                  </p>
+                )}
+                <div className="form-actions">
+                  <Button
                     type="button"
-                    className="btn btn--ghost btn--sm"
-                    style={{ height: 'auto', padding: '0 4px' }}
-                    onClick={() => setRemoveLogo(false)}
+                    variant="secondary"
+                    disabled={!dirty || loading}
+                    onClick={() => {
+                      setForm(pickForm(settings));
+                      setPreview(null);
+                      setLogoFile(null);
+                      setRemoveLogo(false);
+                    }}
                   >
-                    Deshacer
-                  </button>
-                </span>
-              )}
-            </Field>
+                    Descartar cambios
+                  </Button>
+                  <Button type="submit" loading={loading} disabled={!dirty || !colorsValid}>
+                    Guardar cambios
+                  </Button>
+                </div>
+              </RequirePermission>
+            </form>
 
-            <Field label="Correo de contacto" error={fieldErrors.contactEmail}>
-              <Input
-                icon="inbox"
-                name="contactEmail"
-                type="email"
-                value={form.contactEmail}
-                onChange={handleChange}
-                placeholder="secretaria@colegio.edu"
-                disabled={!canEdit}
-              />
-            </Field>
-
-            <Field label="Teléfono de contacto" error={fieldErrors.contactPhone}>
-              <Input
-                icon="user"
-                name="contactPhone"
-                value={form.contactPhone}
-                onChange={handleChange}
-                maxLength={30}
-                disabled={!canEdit}
-              />
-            </Field>
-
-            <div className="form-field--full appearance-section">
-              <h3 className="appearance-section__title">Apariencia</h3>
-              <p className="text-sm text-muted">
-                Solo dos colores: el del menú y el de acento. Todo lo demás se ajusta solo. Verás el cambio en toda la plataforma al instante y
-                se guarda con «Guardar cambios».
-              </p>
-              <AppearanceEditor form={form} setForm={setForm} onChange={handleChange} fieldErrors={fieldErrors} disabled={!canEdit} />
-            </div>
+            <Card title="Vista previa" subtitle="Así se verá el panel con estos cambios">
+              <ThemePreview form={form} logoUrl={previewLogo} />
+            </Card>
           </div>
+        )}
 
-          <RequirePermission module="tenant_settings" action="update">
-            <div className="form-actions">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={!dirty || loading}
-                onClick={() => {
-                  setForm(pickForm(settings));
-                  setPreview(null);
-                  setLogoFile(null);
-                  setRemoveLogo(false);
-                }}
-              >
-                Descartar cambios
-              </Button>
-              <Button type="submit" loading={loading} disabled={!dirty || !colorsValid}>
-                Guardar cambios
-              </Button>
-            </div>
-          </RequirePermission>
-        </form>
+        {tab === 'anios' && <SchoolPeriodsTab />}
 
-        <Card title="Vista previa" subtitle="Así se verá el panel con estos cambios">
-          <ThemePreview form={form} logoUrl={previewLogo} />
-        </Card>
+        {/* Escala de calificación de cada grado: se guarda al instante, aparte del formulario. */}
+        {tab === 'escalas' && <GradingScalesCard canEdit={canEdit} />}
+
+        {tab === 'avanzado' && <AdvancedSettings settings={settings} />}
       </div>
     </div>
   );

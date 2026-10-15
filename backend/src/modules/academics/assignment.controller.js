@@ -19,12 +19,23 @@ const subjectSchema = z.object({
 const listSubjects = asyncHandler(async (req, res) => {
   res.status(200).json(await service.listSubjects(req.db, req.tenantId, { activeOnly: req.query.active === 'true' }));
 });
+// Grados donde se dicta la materia (selector múltiple): si viene, reemplaza la lista.
+const gradeIds = z.array(z.string().uuid()).max(100).optional();
+
+/** POST /academics/subjects — { name, code?, description?, gradeIds? } */
 const createSubject = asyncHandler(async (req, res) => {
-  res.status(201).json(await service.createSubject(req.db, req.tenantId, subjectSchema.parse(req.body)));
+  const { gradeIds: grades, ...data } = subjectSchema.extend({ gradeIds }).parse(req.body);
+  const subject = await service.createSubject(req.db, req.tenantId, data);
+  if (grades) await service.setSubjectGrades(req.db, req.tenantId, subject.id, grades);
+  res.status(201).json(await service.getSubjectWithGrades(req.db, req.tenantId, subject.id));
 });
+/** PUT /academics/subjects/:id — { name?, code?, description?, isActive?, gradeIds? } */
 const updateSubject = asyncHandler(async (req, res) => {
-  const data = subjectSchema.partial().extend({ isActive: z.boolean().optional() }).parse(req.body);
-  res.status(200).json(await service.updateSubject(req.db, req.tenantId, req.params.id, data));
+  const { gradeIds: grades, ...data } = subjectSchema.partial().extend({ isActive: z.boolean().optional(), gradeIds }).parse(req.body);
+  // Solo los grados (sin cambiar nombre/código/estado): no hay nada que actualizar en la materia.
+  if (Object.keys(data).length) await service.updateSubject(req.db, req.tenantId, req.params.id, data);
+  if (grades) await service.setSubjectGrades(req.db, req.tenantId, req.params.id, grades);
+  res.status(200).json(await service.getSubjectWithGrades(req.db, req.tenantId, req.params.id));
 });
 const deleteSubject = asyncHandler(async (req, res) => {
   await service.deleteSubject(req.db, req.tenantId, req.params.id);

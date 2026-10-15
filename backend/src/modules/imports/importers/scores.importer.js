@@ -2,6 +2,7 @@ const { z } = require('zod');
 const f = require('../fields');
 const { ApiError } = require('../../../utils/ApiError');
 const gradingService = require('../../grading/grading.service');
+const { scoreForLiteral } = require('../../grading/gradingScale');
 
 /** Descripción corta para encabezados de columna. */
 const short = (text, n = 40) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
@@ -10,7 +11,8 @@ const short = (text, n = 40) => (text.length > n ? `${text.slice(0, n - 1)}…` 
  * Calificaciones de UN plan de evaluación. La plantilla sale precargada con
  * los alumnos inscritos en las secciones del plan y las notas actuales:
  *
- * - Actividad simple: una columna con la nota (0 a su puntaje máximo).
+ * - Actividad simple: una columna con la nota (0 a su puntaje máximo). En un
+ *   grado con escala cualitativa también se acepta el literal (A–E).
  * - Actividad con indicadores (formato detallado): una columna por indicador
  *   (0 a su puntaje); la nota de la actividad es la suma. En cada fila hay que
  *   completar TODOS los indicadores de la actividad, o ninguno.
@@ -36,7 +38,7 @@ module.exports = {
       .join('sections as sec', 'sec.id', 'ep.section_id')
       .join('grades as g', 'g.id', 'sec.grade_id')
       .where({ 'ep.id': planId.data, 'ep.tenant_id': tenantId })
-      .select('ep.*', 'g.name as grade_name')
+      .select('ep.*', 'g.name as grade_name', 'g.grading_scale')
       .first();
     if (!plan) throw ApiError.notFound('Plan de evaluación no encontrado.');
     if (plan.status === 'closed') {
@@ -86,7 +88,10 @@ module.exports = {
               header: `${i + 1}. ${a.title} (${Number(a.weight_percent)}%)`,
               mustExist: true,
               width: Math.min(34, Math.max(14, a.title.length + 10)),
-              note: `Nota de 0 a ${max} (admite decimales). Vacío = sin cambios. Peso: ${Number(a.weight_percent)}% del lapso.`,
+              note:
+                plan.grading_scale === 'qualitative'
+                  ? `Literal A, B, C, D o E (o nota de 0 a ${max}). Vacío = sin cambios. Peso: ${Number(a.weight_percent)}% del lapso.`
+                  : `Nota de 0 a ${max} (admite decimales). Vacío = sin cambios. Peso: ${Number(a.weight_percent)}% del lapso.`,
               max,
             },
           ],
@@ -187,7 +192,10 @@ module.exports = {
       if (!g.indicators) {
         // Actividad simple: una nota.
         const col = g.cols[0];
-        const r = f.score(v[col.key], { label: g.activity.title, max: col.max });
+        // Literal (A–E) → su valor representativo; si no, nota numérica.
+        const cell = v[col.key];
+        const literal = typeof cell === 'string' && /^[A-E]$/i.test(cell.trim()) ? cell.trim().toUpperCase() : null;
+        const r = literal ? { value: scoreForLiteral(literal, col.max) } : f.score(cell, { label: g.activity.title, max: col.max });
         if (r.error) errors.push({ column: col.key, reason: 'nota inválida', message: r.error });
         else if (r.value !== null && ctx.existing.get(`${g.activity.id}|${student.id}`) !== r.value) {
           changes.push({ activityId: g.activity.id, rawScore: r.value });

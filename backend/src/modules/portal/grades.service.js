@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { scaleDefinition } = require('../grading/gradingScale');
 
 /**
  * Calificaciones acumuladas de un alumno para el portal del representante.
@@ -116,7 +117,7 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
     .join('sections as sec', 'sec.id', 'e.section_id')
     .join('grades as g', 'g.id', 'sec.grade_id')
     .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId, 'sec.school_period_id': period.id })
-    .select('sec.id', 'sec.name', 'g.name as grade_name', 'g.level_code', 'e.status as enrollment_status');
+    .select('sec.id', 'sec.name', 'g.name as grade_name', 'g.level_code', 'g.grading_scale', 'e.status as enrollment_status');
 
   // Planes de las secciones del alumno, incluidos los compartidos entre varias
   // secciones (migración 012). Si un alumno pasó por dos secciones del mismo
@@ -212,6 +213,8 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
       teacher_name: plan.teacher_name,
       section: `${section.grade_name} ${section.name}`,
       section_withdrawn: section.enrollment_status !== 'active',
+      // Escala del grado de ESE plan (migración 023): cómo mostrar sus notas.
+      grading_scale: section.grading_scale || 'quantitative',
       ...summarizePlan(acts),
       activities: acts.map(({ earned_percent: earned, ...a }) => ({ ...a, earned_percent: round2(earned) })),
       project: planCompetencies.length
@@ -260,7 +263,9 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
 
   // Nota mínima: la de la normativa del año escolar consultado (migración 014).
   const passingGrade = period.passing_grade === undefined || period.passing_grade === null ? PASSING_GRADE : Number(period.passing_grade);
-  return { ...base, passing_grade: passingGrade, school_period: { id: period.id, name: period.name }, sections, terms, subjects };
+  // Escala de la sección vigente del alumno (la de sus planes actuales) y las equivalencias de los literales.
+  const gradingScale = current?.grading_scale || 'quantitative';
+  return { ...base, passing_grade: passingGrade, school_period: { id: period.id, name: period.name }, sections, terms, subjects, grading_scale: gradingScale, scale_def: scaleDefinition() };
 }
 
 module.exports = {

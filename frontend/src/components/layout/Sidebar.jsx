@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTenant } from '../../context/TenantContext';
@@ -6,17 +6,7 @@ import Icon from '../ui/Icon';
 import SchoolLogo from '../ui/SchoolLogo';
 import { NAV_SECTIONS, isNavItemVisible, navItemLabel } from './navigation';
 import { initials } from './initials';
-
-const SECTIONS_KEY = 'ui.sidebar.closedSections';
-
-/** Grupos del menú que el usuario dejó contraídos (por defecto, todos abiertos). */
-function readClosedSections() {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(SECTIONS_KEY) || '[]'));
-  } catch {
-    return new Set();
-  }
-}
+import { useExpandedSet } from '../../hooks/useExpandedSet';
 
 // Rutas que solo se marcan activas si coinciden exactamente (igual que `end` en NavLink).
 const EXACT_PATHS = new Set(['/', '/payments', '/schedules']);
@@ -36,21 +26,16 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
 
   const displayName = user?.fullName || user?.username;
 
-  // Grupos contraídos (por nombre), recordados en este navegador.
+  // Grupos del menú CERRADOS al entrar (no se recuerdan entre recargas: el menú
+  // arranca siempre limpio).
+  // El grupo de la página actual se abre al llegar a ella (si no, no se vería
+  // dónde estás); después se puede cerrar igual que los demás.
   const location = useLocation();
-  const [closedSections, setClosedSections] = useState(readClosedSections);
-  const toggleSection = (label) =>
-    setClosedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      try {
-        localStorage.setItem(SECTIONS_KEY, JSON.stringify([...next]));
-      } catch {
-        // sin almacenamiento (modo privado): solo dura mientras la página esté abierta
-      }
-      return next;
-    });
+  const { isOpen: isSectionOpen, toggle: toggleSection, open: openSection } = useExpandedSet();
+  const activeSection = sections.find((section) => section.items.some((item) => isActivePath(item.path, location.pathname)))?.label;
+  useEffect(() => {
+    if (activeSection) openSection(activeSection);
+  }, [activeSection, openSection]);
 
   return (
     <aside
@@ -79,7 +64,7 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
       <nav className="sidebar__nav">
         {sections.map((section) => {
           // Con el menú en modo íconos no se colapsan grupos: todos los íconos a la vista.
-          const open = compact || !closedSections.has(section.label);
+          const open = compact || isSectionOpen(section.label);
           const bodyId = `sidebar-section-${section.label.replace(/\s+/g, '-').toLowerCase()}`;
           const hasActive = section.items.some((item) => isActivePath(item.path, location.pathname));
           return (

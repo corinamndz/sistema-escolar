@@ -16,6 +16,8 @@ import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import { useToast } from '../../../components/ui/Toast';
 import ImportButton from '../../../components/import/ImportButton';
+import { QUALITATIVE_LEVELS, SCALE_MAX, isQualitative, literalFor, literalOf } from '../gradingScale';
+import LiteralBadge from '../components/LiteralBadge';
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
@@ -23,6 +25,10 @@ const round2 = (n) => Math.round(Number(n) * 100) / 100;
  * Libreta de un plan: alumnos de todas sus secciones (filtrable por sección),
  * una columna por actividad y el acumulado del lapso. Las actividades del
  * formato detallado se califican por indicador (la nota es la suma).
+ *
+ * Grado con escala CUALITATIVA (Configuración → Escalas de calificación): las
+ * actividades simples se califican eligiendo un literal (A–E) y se muestran
+ * literales en lugar de números; el cálculo interno sigue siendo numérico.
  */
 function GradebookPage() {
   const { id: planId } = useParams();
@@ -66,6 +72,11 @@ function GradebookPage() {
 
       <Card
         title="Notas por actividad"
+        subtitle={
+          isQualitative(gradebook.grading_scale)
+            ? `Escala cualitativa: califica con literales (${QUALITATIVE_LEVELS.map((l) => `${l.code} ${l.label.toLowerCase()}`).join(' · ')}).`
+            : `Escala cuantitativa: notas numéricas (0 a ${SCALE_MAX}).`
+        }
         actions={
           multiSection && (
             <Select sorted value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Filtrar por sección">
@@ -82,7 +93,7 @@ function GradebookPage() {
         {gradebook.activities.length === 0 ? (
           <p className="text-muted">Este plan todavía no tiene actividades. Agrégalas desde el plan de evaluación.</p>
         ) : (
-          <GradesGrid gradebook={gradebook} showSection={multiSection && !sectionId} onSaved={refetch} />
+          <GradesGrid gradebook={gradebook} showSection={multiSection && !sectionId} onSaved={refetch} qualitative={isQualitative(gradebook.grading_scale)} />
         )}
       </Card>
 
@@ -95,7 +106,7 @@ function GradebookPage() {
   );
 }
 
-function GradesGrid({ gradebook, showSection, onSaved }) {
+function GradesGrid({ gradebook, showSection, onSaved, qualitative }) {
   const { activities, rows } = gradebook;
   const [grading, setGrading] = useState(null); // { activity, student, score } para las actividades por indicador
 
@@ -128,14 +139,16 @@ function GradesGrid({ gradebook, showSection, onSaved }) {
                 return (
                   <td key={score.activityId} style={{ textAlign: 'center' }}>
                     {activity.indicators.length ? (
-                      <IndicatorScoreButton score={score} activity={activity} onOpen={() => setGrading({ activity, student: row.student, score })} />
+                      <IndicatorScoreButton score={score} activity={activity} qualitative={qualitative} onOpen={() => setGrading({ activity, student: row.student, score })} />
+                    ) : qualitative ? (
+                      <LiteralCell activityId={score.activityId} studentId={row.student.id} score={score} maxScore={activity.max_score} onSaved={onSaved} />
                     ) : (
                       <ScoreCell activityId={score.activityId} studentId={row.student.id} score={score} maxScore={activity.max_score} onSaved={onSaved} />
                     )}
                   </td>
                 );
               })}
-              <td style={{ textAlign: 'center', fontWeight: 600 }}>{row.accumulated}</td>
+              <td style={{ textAlign: 'center', fontWeight: 600 }}>{qualitative ? <AccumulatedLiteral scores={row.scores} /> : row.accumulated}</td>
             </tr>
           ))}
         </tbody>
@@ -146,17 +159,71 @@ function GradesGrid({ gradebook, showSection, onSaved }) {
 }
 
 /** Nota de una actividad por indicadores: muestra el total y abre el desglose. */
-function IndicatorScoreButton({ score, activity, onOpen }) {
+function IndicatorScoreButton({ score, activity, onOpen, qualitative }) {
   const { can } = useAuth();
   const graded = score.rawScore !== null;
+  // Cualitativa: el total de los indicadores se muestra como literal.
+  const text = graded ? (qualitative ? literalOf(score.rawScore, activity.max_score).code : `${score.rawScore}/${activity.max_score}`) : null;
   if (!can('grading', 'update')) {
-    return <span>{graded ? `${score.rawScore}/${activity.max_score}` : '—'}</span>;
+    return <span>{text ?? '—'}</span>;
   }
   return (
     <button type="button" className={`score-chip ${graded ? 'is-graded' : ''}`} onClick={onOpen} title="Calificar por indicador">
-      {graded ? `${score.rawScore}/${activity.max_score}` : 'Calificar'}
+      {text ?? 'Calificar'}
     </button>
   );
+}
+
+/**
+ * Grado cualitativo: la nota se elige como literal (A–E). Se guarda al
+ * elegir; el backend guarda el valor representativo del literal.
+ */
+function LiteralCell({ activityId, studentId, score, maxScore, onSaved }) {
+  const current = literalOf(score.rawScore, score.maxScore || maxScore);
+  const { run, loading, error } = useMutation((data) => gradingApi.upsertScore(activityId, data));
+
+  const handleChange = async (e) => {
+    const literal = e.target.value;
+    if (!literal || literal === current?.code) return;
+    try {
+      await run({ studentId, literal });
+      onSaved();
+    } catch {
+      // el error se muestra debajo
+    }
+  };
+
+  return (
+    <RequirePermission module="grading" action="update" fallback={current ? <LiteralBadge level={current} /> : <span>—</span>}>
+      <div>
+        <Select
+          value={current?.code || ''}
+          onChange={handleChange}
+          disabled={loading}
+          className={`literal-select ${current ? `literal-select--${current.code}` : ''}`}
+          aria-label="Literal"
+        >
+          <option value="">—</option>
+          {QUALITATIVE_LEVELS.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.code} · {l.label}
+            </option>
+          ))}
+        </Select>
+        {error && <div className="field-error" style={{ maxWidth: 120 }}>{error}</div>}
+      </div>
+    </RequirePermission>
+  );
+}
+
+/** Literal del promedio de lo evaluado (lo calificado hasta ahora), sobre 20. */
+function AccumulatedLiteral({ scores }) {
+  const graded = scores.filter((s) => s.rawScore !== null);
+  const weight = graded.reduce((n, s) => n + s.weightPercent, 0);
+  if (!weight) return <span className="text-muted">—</span>;
+  const earned = graded.reduce((n, s) => n + s.weightedScore, 0);
+  const level = literalFor((earned / weight) * SCALE_MAX);
+  return <LiteralBadge level={level} showLabel />;
 }
 
 /** Calificación por indicador: una nota por indicador (0 a su puntaje); la nota es la suma. */

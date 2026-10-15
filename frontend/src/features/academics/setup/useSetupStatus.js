@@ -39,7 +39,8 @@ export function computeSetup({ periods, classrooms, grades, subjects, sections }
   const activePeriods = periods.filter((p) => p.is_active);
   const activeIds = new Set(activePeriods.map((p) => p.id));
   // Grados con plan de estudios por materias (Primaria y Secundaria).
-  const curriculumGrades = grades.filter((g) => g.has_curriculum);
+  // Inicial puede tener áreas (migración 024), pero es opcional: no cuenta como pendiente.
+  const curriculumGrades = grades.filter((g) => g.has_curriculum && g.level_code !== 'initial');
   const gradesWithoutPlan = curriculumGrades.filter((g) => !g.subject_count);
   const currentSections = sections.filter((s) => activeIds.has(s.school_period_id));
   const staffed = currentSections.filter(isSectionStaffed);

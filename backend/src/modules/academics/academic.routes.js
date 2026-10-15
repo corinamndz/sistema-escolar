@@ -23,6 +23,9 @@ router.get('/levels', read, assignments.listLevels);
 
 router.get('/school-periods', read, controller.listSchoolPeriods);
 router.post('/school-periods', create, controller.createSchoolPeriod);
+// Eliminar un año escolar con todo lo asociado (requiere escribir su nombre para confirmar).
+router.get('/school-periods/:id/deletion-impact', remove, controller.getPeriodDeletionImpact);
+router.delete('/school-periods/:id', remove, controller.deleteSchoolPeriod);
 // Cierre de año escolar ("Finalizado") y reapertura para corregir.
 router.get('/school-periods/:id/evaluation-rules', promo('read'), promotion.getRules);
 router.put('/school-periods/:id/evaluation-rules', promo('update'), promotion.updateRules);

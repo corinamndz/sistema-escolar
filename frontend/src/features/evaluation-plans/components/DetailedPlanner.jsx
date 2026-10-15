@@ -11,6 +11,7 @@ import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { TermSelect, termLabel } from '../terms';
+import { GRADING_SCALES } from '../../grading/gradingScale';
 
 export const FORMATS = {
   simple: {
@@ -420,6 +421,16 @@ export function PlanSettings({ plan, canEdit, onChanged }) {
         </label>
         <TermSelect id="plan-term" value={plan.term_number} onChange={changeTerm} disabled={!canEdit || plan.status === 'closed'} required />
         <span className="form-hint">Las actividades de este plan se califican en este lapso.</span>
+      </div>
+      <div>
+        <span className="student-card__label">Escala de calificación</span>
+        <div className="plan-settings__scale">
+          <span className={`chip plan-scale plan-scale--${plan.grading_scale || 'quantitative'}`}>
+            <Icon name={GRADING_SCALES[plan.grading_scale || 'quantitative'].icon} size={13} /> {GRADING_SCALES[plan.grading_scale || 'quantitative'].label} ·{' '}
+            {GRADING_SCALES[plan.grading_scale || 'quantitative'].short}
+          </span>
+        </div>
+        <span className="form-hint">La define el grado ({plan.grade_name}) en Configuración → Escalas de calificación.</span>
       </div>
       <div>
         <span className="student-card__label">Tipo de formato</span>

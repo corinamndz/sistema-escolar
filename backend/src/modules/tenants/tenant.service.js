@@ -1,5 +1,6 @@
 const { ApiError } = require('../../utils/ApiError');
 const { toPublicUrl } = require('../../services/storage/logoStorage');
+const { GRADING_SCALES, scaleDefinition } = require('../grading/gradingScale');
 
 async function getSettings(trx, tenantId) {
   const tenant = await trx('tenants').where({ id: tenantId }).first();
@@ -117,4 +118,33 @@ async function getProfile(trx, tenantId) {
   return { name, logoUrl, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail };
 }
 
-module.exports = { getSettings, getProfile, updateSettings };
+
+
+// ---------------------------------------------------------------------------
+// Escalas de calificación por grado (migración 023)
+// ---------------------------------------------------------------------------
+
+
+
+/** Todos los grados (jerarquía escolar) con su escala, más la definición de las escalas. */
+async function listGradingScales(trx, tenantId) {
+  const grades = await trx('grades as g')
+    .join('education_levels as el', 'el.code', 'g.level_code')
+    .where('g.tenant_id', tenantId)
+    .select('g.id', 'g.name', 'g.level_code', 'el.name as level_name', 'g.grading_scale')
+    .orderBy([{ column: 'el.sort_order' }, { column: 'g.sort_order' }, { column: 'g.name' }]);
+  return { grades, scales: GRADING_SCALES, ...scaleDefinition() };
+}
+
+/** Cambia la escala de uno o varios grados: [{ gradeId, gradingScale }]. */
+async function setGradingScales(trx, tenantId, list) {
+  const ids = [...new Set(list.map((x) => x.gradeId))];
+  const found = await trx('grades').where({ tenant_id: tenantId }).whereIn('id', ids).pluck('id');
+  if (found.length !== ids.length) throw ApiError.badRequest('Hay grados que no existen en el colegio.', [{ path: 'grades', message: 'Grado inválido.' }]);
+  for (const { gradeId, gradingScale } of list) {
+    await trx('grades').where({ id: gradeId, tenant_id: tenantId }).update({ grading_scale: gradingScale });
+  }
+  return listGradingScales(trx, tenantId);
+}
+
+module.exports = { getSettings, getProfile, updateSettings, listGradingScales, setGradingScales };

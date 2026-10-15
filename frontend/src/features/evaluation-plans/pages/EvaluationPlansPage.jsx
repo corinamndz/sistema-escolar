@@ -5,6 +5,7 @@ import DataTable from '../../../components/ui/DataTable';
 import Badge from '../../../components/ui/Badge';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
 import { useFetch } from '../../../hooks/useFetch';
+import { useExpandedSet } from '../../../hooks/useExpandedSet';
 import { useMutation } from '../../../hooks/useMutation';
 import PageHeader from '../../../components/ui/PageHeader';
 import Button from '../../../components/ui/Button';
@@ -73,7 +74,6 @@ function EvaluationPlansPage() {
   );
 
   const [query, setQuery] = useState('');
-  const [collapsed, setCollapsed] = useState(new Set());
   const [editingTerm, setEditingTerm] = useState(null); // lapso cuyas fechas se editan
   const [createFor, setCreateFor] = useState(null); // { termNumber } | {} → modal de nuevo plan
 
@@ -128,17 +128,12 @@ function EvaluationPlansPage() {
   }, [filtered, terms]);
 
   // Acordeones: materias (clave de la materia) y lapsos dentro (materia|lapso).
-  // Al buscar se abre todo para ver los resultados.
-  const [collapsedTerms, setCollapsedTerms] = useState(new Set());
-  const toggleIn = (setter) => (key) =>
-    setter((c) => {
-      const next = new Set(c);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  const toggle = toggleIn(setCollapsed);
-  const toggleTerm = toggleIn(setCollapsedTerms);
+  // CERRADOS por defecto: se abre solo lo que se quiere consultar. Al buscar se
+  // abre todo para ver los resultados.
+  const subjectsOpen = useExpandedSet();
+  const termsOpen = useExpandedSet();
+  const toggle = subjectsOpen.toggle;
+  const toggleTerm = termsOpen.toggle;
 
   // Dentro de una materia la columna "Asignatura" sobra: se muestra sección y docente.
   const planColumns = [
@@ -227,14 +222,17 @@ function EvaluationPlansPage() {
               size="sm"
               icon="chevronDown"
               onClick={() => {
-                setCollapsed(new Set());
-                setCollapsedTerms(new Set());
+                subjectsOpen.expandAll(subjectGroups.map((g) => g.key));
+                termsOpen.expandAll(subjectGroups.flatMap((g) => g.termGroups.map((t) => `${g.key}|${t.key}`)));
               }}
               disabled={Boolean(query)}
             >
               Expandir todo
             </Button>
-            <Button variant="ghost" size="sm" icon="chevronRight" onClick={() => setCollapsed(new Set(subjectGroups.map((g) => g.key)))} disabled={Boolean(query)}>
+            <Button variant="ghost" size="sm" icon="chevronRight" onClick={() => {
+                subjectsOpen.collapseAll();
+                termsOpen.collapseAll();
+              }} disabled={Boolean(query)}>
               Contraer todo
             </Button>
           </div>
@@ -286,7 +284,7 @@ function EvaluationPlansPage() {
       ) : (
         <div className="student-groups">
           {subjectGroups.map((s) => {
-            const open = Boolean(query) || !collapsed.has(s.key);
+            const open = Boolean(query) || subjectsOpen.isOpen(s.key);
             const bodyId = `subject-group-${s.key.replace(/[^a-z0-9-]/gi, '-')}`;
             return (
               <section key={s.key} className={`student-group subject-group ${open ? 'is-open' : ''}`}>
@@ -315,7 +313,7 @@ function EvaluationPlansPage() {
                     {/* Nivel 2: los lapsos de la materia */}
                     {s.termGroups.map((t) => {
                       const termKey = `${s.key}|${t.key}`;
-                      const termOpen = Boolean(query) || !collapsedTerms.has(termKey);
+                      const termOpen = Boolean(query) || termsOpen.isOpen(termKey);
                       const termBodyId = `${bodyId}-${t.key}`;
                       const closed = t.plans.filter((p) => p.status === 'closed').length;
                       return (
@@ -438,9 +436,13 @@ function CreateTermModal({ schoolPeriodId, initial, onClose, onCreated }) {
 }
 
 /**
- * El formulario se adapta al nivel de la sección elegida:
- *  - Secundaria: se elige una materia con profesor asignado; el docente se completa solo.
- *  - Inicial / Primaria: se elige entre los docentes de la sección y el área es texto libre.
+ * El formulario se adapta al nivel de la sección elegida, pero la materia
+ * SIEMPRE se elige de una lista desplegable:
+ *  - Grado con materias marcadas (cualquier nivel): las materias del grado; el
+ *    docente se completa solo (profesor de la materia, especialista o titular).
+ *    Las que no tienen docente aparecen deshabilitadas, con el motivo.
+ *  - Inicial / Primaria sin materias marcadas en el grado: se elige el docente
+ *    de aula y el área del catálogo de materias activas del colegio.
  */
 function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
   const { data: sections, loading: loadingSections } = useFetch(() => evaluationPlansApi.listSectionOptions(), []);
@@ -464,11 +466,15 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
   const toast = useToast();
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  // Secundaria siempre; Primaria cuando su grado ya tiene plan de estudios.
-  const primaryCurriculum = assignment?.mode === 'homeroom' && assignment.subjects?.length > 0;
+  // Materias del grado: en Secundaria siempre; en Inicial/Primaria cuando el grado ya tiene materias marcadas.
+  const curriculumSize = assignment ? (assignment.curriculum_size ?? assignment.subjects?.length ?? 0) : 0;
+  const primaryCurriculum = assignment?.mode === 'homeroom' && curriculumSize > 0;
   const bySubjects = assignment?.mode === 'subjects' || primaryCurriculum;
-  // effectiveTeacher: el profesor de la materia, o en Primaria el titular si no hay especialista.
-  const assignedSubjects = bySubjects ? assignment.subjects.filter((s) => s.effectiveTeacher) : [];
+  // effectiveTeacher: el profesor de la materia, o en Inicial/Primaria el titular si no hay especialista.
+  const gradeSubjects = bySubjects ? assignment.subjects || [] : [];
+  const assignedSubjects = gradeSubjects.filter((s) => s.effectiveTeacher);
+  // Sin materias marcadas en el grado (Inicial/Primaria): el área se elige del catálogo.
+  const catalog = assignment?.catalog || [];
   const homeroomTeachers = assignment?.mode === 'homeroom'
     ? [
         assignment.homeroom.lead && { ...assignment.homeroom.lead, role: 'Titular' },
@@ -479,12 +485,16 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
 
   // Sin docente/materia asignada no se puede crear el plan: se explica en vez de mostrar un selector vacío.
   let blocker = null;
-  if (assignment && bySubjects && assignedSubjects.length === 0) {
+  if (assignment && assignment.mode === 'subjects' && curriculumSize === 0) {
+    blocker = 'El grado aún no tiene materias: márcalas en Estructura académica → Materias (campo «Grados donde se dicta»).';
+  } else if (assignment && bySubjects && assignedSubjects.length === 0) {
     blocker = primaryCurriculum
       ? 'Esta sección no tiene docente titular. Asígnalo en Estructura académica → Secciones.'
-      : 'Ninguna materia de esta sección tiene profesor asignado. Asígnalos en Estructura académica → Secciones.';
+      : 'Ninguna materia de esta sección tiene profesor asignado. Asígnalos en Estructura académica → Secciones (o desde Horarios).';
   } else if (assignment && !bySubjects && homeroomTeachers.length === 0) {
     blocker = 'Esta sección no tiene docente asignado. Asígnalo en Estructura académica → Secciones.';
+  } else if (assignment && !bySubjects && catalog.length === 0) {
+    blocker = 'Aún no hay materias en el catálogo: créalas en Estructura académica → Materias.';
   }
 
   const changeSection = (e) => {
@@ -604,13 +614,18 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
                       label="Materia"
                       error={fieldErrors.subjectId}
                       required
-                      hint={primaryCurriculum ? 'Materias del plan de estudios del grado.' : 'Solo materias con profesor asignado en esta sección.'}
+                      hint={
+                        gradeSubjects.length > assignedSubjects.length
+                          ? 'Materias del grado. Las deshabilitadas aún no tienen docente asignado en esta sección.'
+                          : 'Materias del plan de estudios del grado.'
+                      }
                     >
                       <Select sorted value={form.subjectId} onChange={set('subjectId')} required>
                         <option value="">Selecciona…</option>
-                        {assignedSubjects.map((s) => (
-                          <option key={s.id} value={s.id}>
+                        {gradeSubjects.map((s) => (
+                          <option key={s.id} value={s.id} disabled={!s.effectiveTeacher}>
                             {s.name}
+                            {s.effectiveTeacher ? '' : ' — sin docente asignado'}
                           </option>
                         ))}
                       </Select>
@@ -639,8 +654,22 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
                         ))}
                       </Select>
                     </Field>
-                    <Field label="Área / asignatura" error={fieldErrors.subject} full required>
-                      <Input value={form.subject} onChange={set('subject')} placeholder="Lenguaje y comunicación" required />
+                    <Field
+                      label="Área / asignatura"
+                      error={fieldErrors.subject}
+                      full
+                      required
+                      hint="Materias activas del colegio. Para que aquí aparezcan solo las del grado, márcalas en Materias → «Grados donde se dicta»."
+                    >
+                      <Select sorted value={form.subject} onChange={set('subject')} required>
+                        <option value="">Selecciona…</option>
+                        {catalog.map((c) => (
+                          <option key={c.id} value={c.name}>
+                            {c.name}
+                            {c.code ? ` (${c.code})` : ''}
+                          </option>
+                        ))}
+                      </Select>
                     </Field>
                   </>
                 )}

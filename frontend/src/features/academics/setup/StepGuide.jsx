@@ -7,16 +7,17 @@ const storageKey = (key) => `academics.guide.${key}.collapsed`;
 
 function readCollapsed(key) {
   try {
-    return localStorage.getItem(storageKey(key)) === '1';
+    // Contraída por defecto; solo queda abierta si el usuario la abrió ('0').
+    return localStorage.getItem(storageKey(key)) !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 
 /**
  * Banner de ayuda de un paso: qué hacer aquí, cómo se conecta con el resto
- * y cuál es la siguiente acción concreta. Se puede contraer (se recuerda por
- * navegador) para no estorbar a quien ya conoce el flujo.
+ * y cuál es la siguiente acción concreta. Empieza contraída ("Ver guía") y se
+ * recuerda por navegador si el usuario la abre.
  */
 export function StepGuide({ step, guide }) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed(step.key));

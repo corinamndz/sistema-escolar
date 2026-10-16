@@ -6810,3 +6810,99 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
   .evt-pill__time { display: none; }
   .evt-pill { padding: 2px 4px; font-size: 11px; }
 }
+
+/* ---------------------------------------------------------------------------
+   Tasa oficial BCV (Configuración → Datos de pago) y estado de sincronización
+   --------------------------------------------------------------------------- */
+.bcv-card { margin-bottom: 20px; }
+.bcv-card__body { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px; margin-bottom: 12px; }
+.bcv-card__rate {
+  display: flex; align-items: baseline; gap: 8px; padding: 14px 18px; border-radius: var(--radius-lg);
+  background: var(--color-primary-softer); border: 1px solid var(--color-primary-soft);
+}
+.bcv-card__rate.is-stale { background: var(--color-warning-soft); border-color: transparent; }
+.bcv-card__value { font-family: var(--font-display); font-size: 30px; font-weight: 800; line-height: 1; color: var(--color-text); }
+.bcv-card__value--empty { font-size: 20px; color: var(--color-text-muted); }
+.bcv-card__unit { font-size: 13px; color: var(--color-text-secondary); }
+.bcv-card__facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 24px; margin: 0; flex: 1; min-width: 260px; }
+.bcv-card__facts dt { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+.bcv-card__facts dd { margin: 2px 0 0; font-size: 14px; }
+.bcv-card .alert { margin-top: 10px; }
+
+.bcv-sync { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13px; margin-top: 8px; }
+.bcv-sync--compact { margin: 0 0 12px; font-size: 12px; }
+.bcv-sync__auto { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.bcv-sync__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-text-subtle); }
+.bcv-sync__auto.is-on .bcv-sync__dot { background: var(--color-success); box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15); }
+.bcv-sync__auto.is-off { color: var(--color-text-muted); }
+.bcv-sync__error { display: inline-flex; align-items: center; gap: 4px; color: var(--color-warning); font-weight: 600; }
+
+/* ---------------------------------------------------------------------------
+   Eliminar moneda (modal de advertencia con lo que se borrará)
+   --------------------------------------------------------------------------- */
+.delete-currency { display: flex; flex-direction: column; gap: 12px; }
+.delete-currency__icon {
+  align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px;
+  border-radius: 50%; background: var(--color-danger-soft); color: var(--color-danger);
+}
+.delete-currency__lead { margin: 0; line-height: 1.5; }
+.delete-currency__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.delete-currency__list li {
+  display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-radius: var(--radius-md);
+  background: var(--color-danger-soft); color: var(--color-text); font-size: 14px;
+}
+.delete-currency__list li > svg { flex-shrink: 0; margin-top: 2px; color: var(--color-danger); }
+.delete-currency__statuses { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.delete-currency__confirm { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.delete-currency__confirm .input { max-width: 140px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.1em; }
+
+/* ---------------------------------------------------------------------------
+   Campana de notificaciones
+   --------------------------------------------------------------------------- */
+.notif-bell__badge {
+  position: absolute; top: 4px; right: 3px; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 999px; background: var(--color-danger); color: #fff; border: 2px solid var(--color-surface);
+  font-size: 10px; font-weight: 800; line-height: 13px; text-align: center; box-sizing: border-box;
+}
+.notif-panel { padding-bottom: 6px; }
+.notif-panel__header { justify-content: space-between; }
+.notif-panel__readall { font-size: 12px; }
+.notif-list { list-style: none; margin: 0; padding: 0; max-height: 380px; overflow-y: auto; }
+.notif-item {
+  display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 10px 12px; border: 0; border-radius: var(--radius-md);
+  background: transparent; color: var(--color-text); text-align: left; cursor: pointer; transition: background var(--transition-fast);
+}
+.notif-item:hover, .notif-item:focus-visible { background: var(--color-surface-muted); }
+.notif-item.is-unread { background: var(--color-primary-softer); }
+.notif-item.is-unread:hover { background: var(--color-primary-soft); }
+.notif-item__icon {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px;
+  border-radius: 50%; background: var(--color-primary-soft); color: var(--color-primary);
+}
+.notif-item__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.notif-item__text { font-size: 13px; line-height: 1.4; }
+.notif-item.is-unread .notif-item__text { font-weight: 600; }
+.notif-item__time { font-size: 11px; color: var(--color-text-muted); }
+.notif-item__dot { flex-shrink: 0; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--color-primary); }
+
+.notif-rate { display: flex; flex-direction: column; gap: 14px; }
+.notif-rate__value { font-family: var(--font-display); font-size: 32px; font-weight: 800; }
+.notif-rate__value small { font-size: 14px; font-weight: 500; color: var(--color-text-secondary); }
+.notif-rate__facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; margin: 0; }
+.notif-rate__facts dt { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+.notif-rate__facts dd { margin: 2px 0 0; font-size: 14px; }
+.notif-rate__facts dd.is-up { color: var(--color-danger); }
+.notif-rate__facts dd.is-down { color: var(--color-success); }
+@media (max-width: 560px) {
+  .notif-rate__facts { grid-template-columns: 1fr; }
+}
+
+/* Simulación de la tasa BCV (pruebas de la campana) */
+.bcv-card__actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.sim-bcv__option { display: flex; align-items: center; gap: 8px; font-weight: 400; font-size: 14px; margin-top: 4px; }
+.sim-bcv__clear { margin-right: auto; font-size: 13px; color: var(--color-danger); }
+.notif-rate__test {
+  display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-radius: var(--radius-md);
+  background: var(--color-warning-soft); color: var(--color-text); font-size: 13px;
+}
+.notif-rate__test > svg { flex-shrink: 0; margin-top: 2px; color: var(--color-warning); }

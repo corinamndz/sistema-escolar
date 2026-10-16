@@ -1,0 +1,205 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import notificationsApi from '../../api/endpoints/notifications.api';
+import Icon from '../ui/Icon';
+import Modal from '../ui/Modal';
+import { formatRate } from '../../features/payments/currency';
+import { formatDate } from '../../features/payments/paymentStatus';
+import { SOURCE_LABELS, timeAgo } from '../../features/payments/components/BcvRateCard';
+import { NOTIFICATIONS_REFRESH } from '../../lib/notificationEvents';
+
+const POLL_MS = 60 * 1000; // la tasa cambia pocas veces al día: un minuto de demora es suficiente
+const ICONS = { bcv_rate: 'trendingUp' };
+
+/**
+ * Campana de notificaciones del Topbar. Consulta las del usuario al cargar,
+ * cada minuto y al volver a la pestaña; muestra el contador de no leídas.
+ * Al tocar una notificación se marca como leída y se abre su detalle.
+ * `dropdown`: estado del menú (abierto/cerrado, click afuera) del Topbar.
+ */
+function NotificationBell({ dropdown }) {
+  const [data, setData] = useState({ items: [], unread_count: 0 });
+  const [selected, setSelected] = useState(null);
+  const alive = useRef(true);
+
+  const load = useCallback(async () => {
+    try {
+      const next = await notificationsApi.list();
+      if (alive.current) setData(next);
+    } catch {
+      // en segundo plano: si falla, se reintenta en la siguiente consulta
+    }
+  }, []);
+
+  useEffect(() => {
+    alive.current = true;
+    load();
+    const timer = setInterval(() => document.visibilityState === 'visible' && load(), POLL_MS);
+    const onVisible = () => document.visibilityState === 'visible' && load();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', load);
+    window.addEventListener(NOTIFICATIONS_REFRESH, load);
+    return () => {
+      alive.current = false;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', load);
+      window.removeEventListener(NOTIFICATIONS_REFRESH, load);
+    };
+  }, [load]);
+
+  // Al abrir el menú, datos frescos.
+  useEffect(() => {
+    if (dropdown.open) load();
+  }, [dropdown.open, load]);
+
+  const markLocal = (pred) =>
+    setData((d) => {
+      const items = d.items.map((n) => (pred(n) ? { ...n, read: true } : n));
+      return { items, unread_count: items.filter((n) => !n.read).length };
+    });
+
+  const open = (n) => {
+    setSelected(n);
+    dropdown.setOpen(false);
+    if (!n.read) {
+      markLocal((x) => x.id === n.id);
+      notificationsApi.markRead(n.id).catch(() => load());
+    }
+  };
+
+  const readAll = () => {
+    markLocal(() => true);
+    notificationsApi.markAllRead().catch(() => load());
+  };
+
+  const unread = data.unread_count;
+
+  return (
+    <>
+      <div className="dropdown" ref={dropdown.ref}>
+        <button
+          className="topbar__icon-btn notif-bell"
+          onClick={dropdown.toggle}
+          aria-label={unread ? `Notificaciones: ${unread} sin leer` : 'Notificaciones'}
+          aria-expanded={dropdown.open}
+          aria-haspopup="true"
+        >
+          <Icon name="bell" size={19} />
+          {unread > 0 && <span className="notif-bell__badge">{unread > 9 ? '9+' : unread}</span>}
+        </button>
+        {dropdown.open && (
+          <div className="dropdown__panel dropdown__panel--wide notif-panel" role="menu">
+            <div className="dropdown__header notif-panel__header">
+              <span className="dropdown__title">Notificaciones</span>
+              {unread > 0 && (
+                <button type="button" className="link-button notif-panel__readall" onClick={readAll}>
+                  Marcar todas como leídas
+                </button>
+              )}
+            </div>
+            {data.items.length === 0 ? (
+              <div className="empty-state" style={{ border: 'none', background: 'none', padding: '24px 12px' }}>
+                <div className="empty-state__icon">
+                  <Icon name="checkCircle" size={22} />
+                </div>
+                <div className="empty-state__title">Estás al día</div>
+                <div className="text-sm">No tienes notificaciones nuevas.</div>
+              </div>
+            ) : (
+              <ul className="notif-list">
+                {data.items.map((n) => (
+                  <li key={n.id}>
+                    <button type="button" className={`notif-item ${n.read ? '' : 'is-unread'}`} onClick={() => open(n)} role="menuitem">
+                      <span className="notif-item__icon">
+                        <Icon name={ICONS[n.type] || 'bell'} size={16} />
+                      </span>
+                      <span className="notif-item__body">
+                        <span className="notif-item__text">{n.body}</span>
+                        <span className="notif-item__time">{timeAgo(n.created_at)}</span>
+                      </span>
+                      {!n.read && <span className="notif-item__dot" aria-label="Sin leer" />}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+      {selected && <NotificationDetail notification={selected} onClose={() => setSelected(null)} />}
+    </>
+  );
+}
+
+/** Detalle de una notificación. La de tasa BCV muestra la tasa, su fecha valor y la variación. */
+function NotificationDetail({ notification: n, onClose }) {
+  if (n.type !== 'bcv_rate') {
+    return (
+      <Modal title={n.title} onClose={onClose}>
+        <p>{n.body}</p>
+        <div className="form-actions">
+          {n.link && (
+            <Link to={n.link} className="btn btn--primary" onClick={onClose}>
+              Ver
+            </Link>
+          )}
+        </div>
+      </Modal>
+    );
+  }
+  const { rate, rate_date: rateDate, previous_rate: prev, source, effective_now: effectiveNow, simulated } = n.data || {};
+  const change = prev ? ((rate - prev) / prev) * 100 : null;
+  return (
+    <Modal title={simulated ? 'Tasa BCV actualizada (prueba)' : 'Tasa BCV actualizada'} onClose={onClose}>
+      <div className="notif-rate">
+        {simulated && (
+          <div className="notif-rate__test">
+            <Icon name="info" size={15} /> Aviso de prueba generado desde «Simular actualización BCV»: esta tasa no se registró ni cambia ningún monto.
+          </div>
+        )}
+        <div className="notif-rate__value">
+          {formatRate(rate, 'VES')} <small>por $1</small>
+        </div>
+        <dl className="notif-rate__facts">
+          <div>
+            <dt>Fecha valor</dt>
+            <dd>
+              {formatDate(rateDate)} · {effectiveNow ? 'vigente' : 'regirá desde ese día'}
+            </dd>
+          </div>
+          {change !== null && (
+            <div>
+              <dt>Variación</dt>
+              <dd className={change > 0 ? 'is-up' : change < 0 ? 'is-down' : ''}>
+                {change > 0 ? '+' : ''}
+                {change.toLocaleString('es-VE', { maximumFractionDigits: 2 })} % frente a {formatRate(prev, 'VES')}
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt>Origen</dt>
+            <dd>{SOURCE_LABELS[source] || 'BCV'}</dd>
+          </div>
+          <div>
+            <dt>Actualizada</dt>
+            <dd>{new Date(n.created_at).toLocaleString('es-VE', { dateStyle: 'medium', timeStyle: 'short' })}</dd>
+          </div>
+        </dl>
+        <p className="text-sm text-muted">Los montos en bolívares de las cuotas pendientes se calculan con la tasa vigente del día.</p>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn btn--secondary" onClick={onClose}>
+          Cerrar
+        </button>
+        {n.link && (
+          <Link to={n.link} className="btn btn--primary" onClick={onClose}>
+            <Icon name="receipt" size={16} /> {n.link === '/payments/mine' ? 'Ver mis pagos' : 'Ver tasas y pagos'}
+          </Link>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+export default NotificationBell;

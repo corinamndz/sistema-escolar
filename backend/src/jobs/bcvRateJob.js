@@ -1,51 +1,98 @@
 const { db, withTenantTransaction } = require('../config/database');
-const exchange = require('../modules/payments/exchangeRate.service');
+const bcvSync = require('../modules/payments/bcvSync.service');
 
 /**
- * Actualización automática de la tasa BCV (opcional).
- * Se activa con BCV_AUTO_UPDATE=true; consulta la página del BCV al iniciar y
- * cada BCV_UPDATE_INTERVAL_HOURS horas (6 por defecto) y guarda la tasa con su
- * fecha valor en cada colegio activo. Si el BCV no responde o cambió su página,
- * solo registra el error: la tasa vigente anterior sigue aplicándose y el
- * administrador puede cargarla a mano.
+ * Actualización automática de la tasa oficial del BCV.
+ *
+ * ACTIVA por defecto (BCV_AUTO_UPDATE=false la desactiva). Corre a horas
+ * FIJAS, en hora de Venezuela: BCV_SYNC_TIMES (por defecto 09:00, 13:00 y
+ * 17:00). Además corre una vez poco después de arrancar el servidor, por si
+ * estuvo apagado a la hora programada. La tasa se obtiene UNA vez por corrida
+ * y se guarda en cada colegio activo que usa el bolívar; si es una tasa nueva,
+ * se avisa en la campana a la administración y a los representantes.
+ *
+ * Si la consulta falla, la tasa vigente anterior sigue aplicándose, el motivo
+ * queda registrado en cada colegio (la administración lo ve en el panel de
+ * tasas) y se reintenta en la siguiente corrida.
  */
-async function runOnce() {
-  let fetched;
-  try {
-    fetched = await exchange.fetchBcvRate();
-  } catch (err) {
-    console.error('[bcv] No se pudo obtener la tasa:', err.message);
-    return;
-  }
-  // Solo colegios que usan el bolívar (los que no configuraron monedas lo usan por defecto).
-  const tenants = await db('tenants as t')
+let running = false;
+
+/** Colegios activos que usan el bolívar (los que no configuraron monedas lo usan por defecto). */
+async function vesTenants() {
+  return db('tenants as t')
     .whereIn('t.status', ['active', 'trial'])
     .where((q) =>
       q
-        .whereExists(db('tenant_currencies').whereRaw('tenant_id = t.id').andWhere('currency_code', 'VES'))
+        .whereExists(db('tenant_currencies').whereRaw('tenant_id = t.id').andWhere('currency_code', 'VES').andWhere('is_active', true))
         .orWhereNotExists(db('tenant_currencies').whereRaw('tenant_id = t.id'))
     )
-    .select('t.id');
-  for (const t of tenants) {
+    .pluck('t.id');
+}
+
+async function runOnce() {
+  if (running) return { skipped: true };
+  running = true;
+  try {
+    const tenants = await vesTenants();
+    if (!tenants.length) return { tenants: 0 };
+    let fetched;
     try {
-      await withTenantTransaction(t.id, (trx) =>
-        exchange.upsertRate(trx, t.id, { currency: 'VES', rateDate: fetched.rateDate, rate: fetched.rate, source: 'bcv' })
-      );
+      fetched = await bcvSync.fetchOfficialRate();
     } catch (err) {
-      console.error(`[bcv] No se pudo guardar la tasa del colegio ${t.id}:`, err.message);
+      console.error('[bcv] No se pudo obtener la tasa:', err.message);
+      for (const id of tenants) await bcvSync.recordFailure(id, err.message, 'auto');
+      return { tenants: tenants.length, saved: 0, error: err.message };
     }
+    let saved = 0;
+    for (const id of tenants) {
+      try {
+        await withTenantTransaction(id, (trx) => bcvSync.applyRate(trx, id, fetched, { trigger: 'auto' }));
+        saved += 1;
+      } catch (err) {
+        console.error(`[bcv] No se pudo guardar la tasa del colegio ${id}:`, err.message);
+        await bcvSync.recordFailure(id, err.message, 'auto');
+      }
+    }
+    console.log(`[bcv] Tasa ${fetched.rate} Bs/USD (fecha valor ${fetched.rateDate}, origen ${fetched.source}) guardada en ${saved}/${tenants.length} colegio(s).`);
+    return { tenants: tenants.length, saved, fetched };
+  } catch (err) {
+    console.error('[bcv] Error en la actualización automática:', err.message);
+    return { error: err.message };
+  } finally {
+    running = false;
   }
-  console.log(`[bcv] Tasa ${fetched.rate} Bs/USD (fecha valor ${fetched.rateDate}) guardada en ${tenants.length} colegio(s).`);
+}
+
+let timer = null;
+
+/** Programa la próxima corrida a la siguiente hora fija (y así sucesivamente). */
+function scheduleNext() {
+  const ms = bcvSync.msUntilNextRun();
+  timer = setTimeout(async () => {
+    await runOnce();
+    scheduleNext();
+  }, ms);
+  timer.unref(); // no impide que el proceso termine
+  return new Date(Date.now() + ms);
 }
 
 function startBcvRateJob() {
-  if (process.env.BCV_AUTO_UPDATE !== 'true') return null;
-  const hours = Number(process.env.BCV_UPDATE_INTERVAL_HOURS) || 6;
-  runOnce();
-  const timer = setInterval(runOnce, hours * 3600 * 1000);
-  timer.unref(); // no impide que el proceso termine
-  console.log(`[bcv] Actualización automática activada cada ${hours} h.`);
-  return timer;
+  const { enabled, times } = bcvSync.autoConfig();
+  if (!enabled) {
+    console.log('[bcv] Actualización automática desactivada (BCV_AUTO_UPDATE=false).');
+    return null;
+  }
+  // Corrida inicial unos segundos después de arrancar (no retrasa el inicio del servidor).
+  const first = setTimeout(runOnce, 15 * 1000);
+  first.unref();
+  const next = scheduleNext();
+  console.log(`[bcv] Actualización automática a las ${times.join(', ')} (hora de Venezuela). Próxima: ${next.toISOString()}.`);
+  return { next };
 }
 
-module.exports = { startBcvRateJob, runOnce };
+function stopBcvRateJob() {
+  if (timer) clearTimeout(timer);
+  timer = null;
+}
+
+module.exports = { startBcvRateJob, stopBcvRateJob, runOnce };

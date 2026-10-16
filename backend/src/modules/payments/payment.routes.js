@@ -31,6 +31,8 @@ router.put('/currencies', requirePermission('payments', 'update'), controller.se
 router.get('/currencies/admin', requirePermission('payments', 'read'), controller.currencyAdmin);
 router.post('/currencies', requirePermission('payments', 'update'), controller.addCurrency);
 router.put('/currencies/:code', requirePermission('payments', 'update'), controller.updateCurrency);
+// Eliminar una moneda junto con sus pagos y tasas (modal de confirmación: primero el impacto).
+router.get('/currencies/:code/deletion-impact', requirePermission('payments', 'update'), controller.currencyDeletionImpact);
 router.delete('/currencies/:code', requirePermission('payments', 'update'), controller.removeCurrency);
 router.get('/exchange-rates/current', controller.currentRate);
 router.get('/exchange-rates', requirePermission('payments', 'read'), controller.listRates);

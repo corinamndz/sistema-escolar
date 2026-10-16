@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const bcvClient = require('../../services/bcv/bcvClient');
 
 /**
  * Monedas y tasas de cambio (moneda local por 1 USD) — migrations/007 y 010.
@@ -241,27 +242,7 @@ async function updateTenantCurrency(trx, tenantId, code, { name, symbol, decimal
   return getCurrencyAdminItem(trx, tenantId, normalized);
 }
 
-/**
- * Quita una moneda del colegio. Solo si nunca se usó (sin tasas ni pagos):
- * si ya tiene historial, se desactiva para no perderlo.
- */
-async function removeTenantCurrency(trx, tenantId, code) {
-  const normalized = code.toUpperCase();
-  const row = await trx('tenant_currencies').where({ tenant_id: tenantId, currency_code: normalized }).first();
-  if (!row) throw ApiError.notFound('Esa moneda no está configurada en el colegio.');
-  if (row.is_default) {
-    throw ApiError.unprocessable('No se puede quitar la moneda predeterminada: marca otra como predeterminada primero.');
-  }
-  const hasRates = await trx('exchange_rates').where({ tenant_id: tenantId, quote_currency: normalized }).first();
-  const hasPayments = await trx('payments')
-    .where({ tenant_id: tenantId })
-    .andWhere((q) => q.where('currency', normalized).orWhere('ref_currency', normalized))
-    .first();
-  if (hasRates || hasPayments) {
-    throw ApiError.conflict('Esta moneda ya tiene tasas o pagos registrados: desactívala en lugar de quitarla, para conservar el historial.');
-  }
-  await trx('tenant_currencies').where({ tenant_id: tenantId, currency_code: normalized }).delete();
-}
+// Quitar una moneda (con sus pagos y tasas): ver currencyDeletion.service.js.
 
 async function getCurrencyAdminItem(trx, tenantId, code) {
   const admin = await listCurrencyAdmin(trx, tenantId);
@@ -511,12 +492,15 @@ function parseBcvHtml(html) {
   return { rate, rateDate: date[1] };
 }
 
+/**
+ * Solo la página del BCV (sin respaldo). La sincronización completa, con la
+ * API de respaldo y el registro de cada intento, está en bcvSync.service.
+ */
 async function fetchBcvRate({ timeoutMs = 15000 } = {}) {
   let html;
   try {
-    const res = await fetch(BCV_URL, { signal: AbortSignal.timeout(timeoutMs), headers: { 'User-Agent': 'SistemaEscolar/1.0' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    html = await res.text();
+    // El BCV envía su cadena de certificados incompleta: el cliente la completa (sin desactivar TLS).
+    html = await bcvClient.getTextCompletingChain(process.env.BCV_URL || BCV_URL, { timeoutMs });
   } catch (err) {
     throw ApiError.unprocessable(`No se pudo consultar la página del BCV (${err.message}). Registra la tasa manualmente.`);
   }
@@ -525,14 +509,6 @@ async function fetchBcvRate({ timeoutMs = 15000 } = {}) {
   } catch (err) {
     throw ApiError.unprocessable(`${err.message} Registra la tasa manualmente.`);
   }
-}
-
-/** Consulta el BCV y guarda la tasa del bolívar publicada (con su fecha valor) para el colegio. */
-async function updateFromBcv(trx, tenantId, userId = null) {
-  await assertRefCurrency(trx, tenantId, 'VES');
-  const { rate, rateDate } = await fetchBcvRate();
-  const status = await upsertRate(trx, tenantId, { currency: 'VES', rateDate, rate, source: 'bcv' }, userId);
-  return { fetched: { rate, rate_date: rateDate }, ...status };
 }
 
 module.exports = {
@@ -546,7 +522,6 @@ module.exports = {
   listCurrencyAdmin,
   addTenantCurrency,
   updateTenantCurrency,
-  removeTenantCurrency,
   conversionJoins,
   CONV_SELECT,
   targetRateJoin,
@@ -559,5 +534,4 @@ module.exports = {
   deleteRate,
   parseBcvHtml,
   fetchBcvRate,
-  updateFromBcv,
 };

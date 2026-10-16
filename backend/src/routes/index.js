@@ -15,6 +15,8 @@ router.use('/academics', require('../modules/academics/academic.routes'));
 router.use('/evaluation-plans', require('../modules/evaluation-plans/evaluationPlan.routes'));
 router.use('/grading', require('../modules/grading/grading.routes'));
 router.use('/payments', require('../modules/payments/payment.routes'));
+router.use('/exchange-rate', require('../modules/payments/exchangeRate.routes'));
+router.use('/notifications', require('../modules/notifications/notification.routes'));
 router.use('/schedules', require('../modules/schedules/schedule.routes'));
 router.use('/discipline', require('../modules/discipline/discipline.routes'));
 router.use('/clubs', require('../modules/clubs/club.routes'));

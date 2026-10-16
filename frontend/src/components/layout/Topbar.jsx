@@ -5,6 +5,7 @@ import { useTenant } from '../../context/TenantContext';
 import Icon from '../ui/Icon';
 import SchoolLogo from '../ui/SchoolLogo';
 import { findRouteMeta } from './navigation';
+import NotificationBell from './NotificationBell';
 import { initials } from './initials';
 
 /** Estado abierto/cerrado de un menú desplegable que se cierra con click afuera o Escape. */
@@ -68,31 +69,7 @@ function Topbar({ onOpenMobileSidebar }) {
           <span>{settings.name}</span>
         </div>
 
-        <div className="dropdown" ref={notifications.ref}>
-          <button
-            className="topbar__icon-btn"
-            onClick={notifications.toggle}
-            aria-label="Notificaciones"
-            aria-expanded={notifications.open}
-            aria-haspopup="true"
-          >
-            <Icon name="bell" size={19} />
-          </button>
-          {notifications.open && (
-            <div className="dropdown__panel dropdown__panel--wide" role="menu">
-              <div className="dropdown__header">
-                <span className="dropdown__title">Notificaciones</span>
-              </div>
-              <div className="empty-state" style={{ border: 'none', background: 'none', padding: '24px 12px' }}>
-                <div className="empty-state__icon">
-                  <Icon name="checkCircle" size={22} />
-                </div>
-                <div className="empty-state__title">Estás al día</div>
-                <div className="text-sm">No tienes notificaciones nuevas.</div>
-              </div>
-            </div>
-          )}
-        </div>
+        <NotificationBell dropdown={notifications} />
 
         <span className="topbar__divider" />
 

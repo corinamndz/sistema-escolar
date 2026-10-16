@@ -19,6 +19,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { formatDate } from '../paymentStatus';
 import { formatRate } from '../currency';
+import DeleteCurrencyModal from '../components/DeleteCurrencyModal';
 
 const SOURCE_LABELS = { bcv: 'BCV', manual: 'Manual' };
 
@@ -41,6 +42,7 @@ function CurrenciesPage() {
   const confirm = useConfirm();
   const { data, loading, error, refetch } = useFetch(() => paymentsApi.currencyAdmin(), []);
   const [editing, setEditing] = useState(null); // null | {} (agregar) | moneda
+  const [deleting, setDeleting] = useState(null); // moneda a eliminar (modal de advertencia)
 
   const update = async (c, body, successTitle) => {
     try {
@@ -171,15 +173,23 @@ function CurrenciesPage() {
               ]
             : []
         }
-        onDelete={(c) => paymentsApi.removeCurrency(c.code)}
+        // Eliminar: modal propio que muestra todo lo que se borrará con la moneda.
+        onDeleteClick={setDeleting}
         canDelete={(c) => canEdit && !c.is_default}
-        deleteConfirm={(c) => ({
-          title: `¿Quitar ${c.name} (${c.code}) del colegio?`,
-          message: 'Solo se puede si nunca tuvo tasas ni pagos; si ya tiene historial, desactívala en su lugar.',
-          successMessage: `${c.code} quitada`,
-        })}
-        onDeleted={refetch}
       />
+
+      {deleting && (
+        <DeleteCurrencyModal
+          currency={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={refetch}
+          onDeactivate={() => {
+            const c = deleting;
+            setDeleting(null);
+            update(c, { isActive: false }, 'Moneda desactivada');
+          }}
+        />
+      )}
 
       {editing !== null && (
         <CurrencyFormModal

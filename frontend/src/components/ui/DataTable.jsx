@@ -58,6 +58,8 @@ const allowed = (rule, row) => (typeof rule === 'function' ? rule(row) : rule !=
  * booleano o función por fila) no es `false`. `onDelete` debe devolver una
  * promesa: la tabla pide confirmación, muestra el estado de carga en la fila y
  * notifica el éxito o el error del backend con un toast.
+ * `onDeleteClick(row)`: en lugar de la confirmación genérica, el botón de
+ * eliminar llama a este handler (para modales de borrado con más detalle).
  *
  * `rowActions` agrega botones propios del módulo (ej. "Asignar docentes")
  * antes de Ver / Editar / Eliminar.
@@ -93,6 +95,7 @@ function DataTable({
   onView,
   onEdit,
   onDelete,
+  onDeleteClick,
   canView = true,
   canEdit = true,
   canDelete = true,
@@ -147,7 +150,7 @@ function DataTable({
 
   const showCreate = Boolean(onCreate) && canCreate;
   const showSearch = searchable && allRows.length > searchThreshold;
-  const hasActions = Boolean(onView || onEdit || onDelete || rowActions.length);
+  const hasActions = Boolean(onView || onEdit || onDelete || onDeleteClick || rowActions.length);
 
   const handleDelete = async (row) => {
     const texts = deleteConfirm?.(row) || {};
@@ -345,11 +348,11 @@ function DataTable({
                             <Icon name="pencil" size={15} />
                           </button>
                         )}
-                        {onDelete && allowed(canDelete, row) && (
+                        {(onDelete || onDeleteClick) && allowed(canDelete, row) && (
                           <button
                             type="button"
                             className="row-action row-action--delete"
-                            onClick={() => handleDelete(row)}
+                            onClick={() => (onDeleteClick ? onDeleteClick(row) : handleDelete(row))}
                             disabled={deleting}
                             title="Eliminar"
                             aria-label="Eliminar"

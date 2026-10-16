@@ -73,12 +73,22 @@ const paymentsApi = {
   /** Editar / activar / desactivar / marcar predeterminada. */
   updateCurrency: (code, data) => axiosClient.put(`/payments/currencies/${code}`, data).then((r) => r.data),
   /** Solo si nunca se usó (sin tasas ni pagos); si no, hay que desactivarla. */
-  removeCurrency: (code) => axiosClient.delete(`/payments/currencies/${code}`).then((r) => r.data),
+  /** Qué se borraría: { currency, rates, payments: { total, in_currency, paid_with_currency, by_status, proofs, receipts }, needs_confirmation, blocked_reason } */
+  currencyDeletionImpact: (code) => get(`/payments/currencies/${code}/deletion-impact`),
+  /** Elimina la moneda JUNTO con sus pagos y tasas. confirmCode: el código (obligatorio si tiene registros). */
+  removeCurrency: (code, confirmCode) => axiosClient.delete(`/payments/currencies/${code}`, { data: confirmCode ? { confirmCode } : {} }).then((r) => r.data),
   listRates: (currency) => get('/payments/exchange-rates', currency ? { currency } : undefined),
   /** { currency, rateDate: 'YYYY-MM-DD' (fecha valor), rate: moneda local por 1 USD } */
   upsertRate: (data) => axiosClient.put('/payments/exchange-rates', data).then((r) => r.data),
-  /** Consulta la página del BCV y guarda la tasa del bolívar con su fecha valor. */
-  fetchBcvRate: () => post('/payments/exchange-rates/bcv'),
+  /**
+   * «Actualizar tasa ahora»: consulta la tasa oficial del BCV (o su respaldo) y la guarda con su fecha valor.
+   * → { fetched: { rate, rate_date, source: 'bcv' | 'bcv_api' }, …estado de tasas, sync }
+   */
+  syncBcvRate: () => post('/exchange-rate/sync'),
+  fetchBcvRate: () => post('/exchange-rate/sync'),
+  /** Prueba de la campana: aviso de una tasa simulada (NO se registra). { rate?, audience?: 'all' | 'staff' } → { notification, rate, recipients } */
+  simulateBcvRate: (data) => post('/exchange-rate/simulate', data),
+  clearBcvSimulations: () => axiosClient.delete('/exchange-rate/simulate').then((r) => r.data),
   deleteRate: (id) => axiosClient.delete(`/payments/exchange-rates/${id}`).then((r) => r.data),
 };
 

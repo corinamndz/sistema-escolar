@@ -17,14 +17,14 @@ import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { formatDate } from '../paymentStatus';
 import { currencyLabel, currencyMeta, formatMoney, formatRate } from '../currency';
-
-const SOURCE_LABELS = { bcv: 'Consultada al BCV', manual: 'Registrada manualmente' };
+import { BcvSyncStatus, SOURCE_LABELS } from './BcvRateCard';
 
 /**
  * Monedas de referencia del colegio y su tasa del día (moneda local por 1 USD):
  * una tarjeta por moneda activa con su valor, fecha valor, próxima tasa ya
  * publicada y aviso si está desactualizada. Acciones: registrar tasa,
- * consultar el BCV (solo bolívar) e ir a la administración de monedas
+ * actualizar ahora la tasa del BCV (solo bolívar; además se actualiza sola,
+ * ver bcvRateJob en el backend) e ir a la administración de monedas
  * (/payments/currencies: agregar, editar, activar/desactivar, predeterminada).
  * `status` viene de GET /payments/exchange-rates/current; `onChanged` recarga
  * la página (los equivalentes dependen de las tasas).
@@ -41,15 +41,16 @@ export function ExchangeRatePanel({ status, loading, onChanged }) {
   const handleFetchBcv = async () => {
     setFetching(true);
     try {
-      const r = await paymentsApi.fetchBcvRate();
+      const r = await paymentsApi.syncBcvRate();
       const effectiveNow = r.fetched.rate_date <= r.today;
       toast.success(
         `Tasa BCV: ${formatRate(r.fetched.rate, 'VES')}`,
-        effectiveNow ? `Vigente desde ${formatDate(r.fetched.rate_date)}.` : `Fecha valor ${formatDate(r.fetched.rate_date)}: regirá desde ese día.`
+        `${effectiveNow ? `Vigente desde ${formatDate(r.fetched.rate_date)}` : `Fecha valor ${formatDate(r.fetched.rate_date)}: regirá desde ese día`} · ${SOURCE_LABELS[r.fetched.source]}.`
       );
       onChanged?.();
     } catch (err) {
       toast.error('No se pudo consultar el BCV', getErrorMessage(err));
+      onChanged?.(); // el fallo queda registrado: se ve en el estado de sincronización
     } finally {
       setFetching(false);
     }
@@ -65,8 +66,8 @@ export function ExchangeRatePanel({ status, loading, onChanged }) {
         {canEdit && (
           <div className="rate-board__actions">
             {hasVes && (
-              <Button size="sm" variant="ghost" icon="sparkles" onClick={handleFetchBcv} loading={fetching} loadingText="Consultando…">
-                Consultar BCV
+              <Button size="sm" variant="ghost" icon="trendingUp" onClick={handleFetchBcv} loading={fetching} loadingText="Consultando BCV…">
+                Actualizar tasa ahora
               </Button>
             )}
             <Link to="/payments/currencies" className="btn btn--secondary btn--sm">
@@ -78,6 +79,8 @@ export function ExchangeRatePanel({ status, loading, onChanged }) {
           </div>
         )}
       </div>
+
+      {hasVes && <BcvSyncStatus sync={status?.sync} compact />}
 
       {!loading && currencies.length === 1 && canEdit && (
         <Alert variant="info">
@@ -227,7 +230,7 @@ function RateFormModal({ status, initialCurrency, onClose, onSaved }) {
                 <li key={r.id}>
                   <span>{formatDate(r.rate_date)}</span>
                   <strong>{formatRate(r.rate, currency)}</strong>
-                  <span className="text-muted">{r.source === 'bcv' ? 'BCV' : r.created_by_name || 'Manual'}</span>
+                  <span className="text-muted">{r.source === 'bcv' ? 'BCV' : r.source === 'bcv_api' ? 'BCV (respaldo)' : r.created_by_name || 'Manual'}</span>
                   <button type="button" className="row-action row-action--delete" onClick={() => handleDelete(r)} aria-label="Eliminar tasa" title="Eliminar tasa">
                     <Icon name="trash" size={14} />
                   </button>

@@ -1,7 +1,11 @@
+const fs = require('fs');
 const { z } = require('zod');
 const service = require('./payment.service');
 const tuition = require('./tuition.service');
 const exchange = require('./exchangeRate.service');
+const bcvSync = require('./bcvSync.service');
+const currencyDeletion = require('./currencyDeletion.service');
+const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
 const { saveProof, deleteProof } = require('../../services/storage/paymentProofStorage');
 
 /**
@@ -237,14 +241,45 @@ const updateCurrency = asyncHandler(async (req, res) => {
   res.status(200).json(await exchange.updateTenantCurrency(req.db, req.tenantId, code, data));
 });
 
-const removeCurrency = asyncHandler(async (req, res) => {
+/** GET /payments/currencies/:code/deletion-impact — qué se borraría (para el modal de confirmación). */
+const currencyDeletionImpact = asyncHandler(async (req, res) => {
   const code = z.string().regex(/^[A-Za-z]{3}$/).parse(req.params.code);
-  await exchange.removeTenantCurrency(req.db, req.tenantId, code);
-  res.status(204).send();
+  res.status(200).json(await currencyDeletion.getCurrencyDeletionImpact(req.db, req.tenantId, code));
 });
 
+/**
+ * DELETE /payments/currencies/:code — { confirmCode } (el código de la moneda,
+ * obligatorio si tiene tasas o pagos). Elimina la moneda del colegio junto con
+ * sus pagos y tasas; los archivos de esos pagos se borran después del commit.
+ */
+const removeCurrency = asyncHandler(async (req, res) => {
+  const code = z.string().regex(/^[A-Za-z]{3}$/).parse(req.params.code);
+  const { confirmCode } = z.object({ confirmCode: z.string().trim().max(3).optional() }).parse(req.body || {});
+  const { files, ...result } = await currencyDeletion.deleteTenantCurrencyCascade(req.db, req.tenantId, code, { confirmCode, userId: req.user.id });
+  // La transacción del request se confirma al responder: recién entonces se borran los archivos.
+  res.on('finish', () => {
+    if (res.statusCode >= 400) return;
+    files.forEach((f) => (f.kind === 'proof' ? deleteProof(f.path) : deleteReceiptFile(f.path)));
+  });
+  res.status(200).json(result);
+});
+
+function deleteReceiptFile(absolutePath) {
+  fs.unlink(absolutePath, (err) => {
+    if (err && err.code !== 'ENOENT') console.error('No se pudo borrar el recibo', absolutePath, err.message);
+  });
+}
+
+/**
+ * GET /payments/exchange-rates/current (y GET /exchange-rate/current): tasas
+ * vigentes. Quien administra pagos recibe además `sync`: estado de la
+ * actualización automática del BCV (último intento, último error…).
+ */
 const currentRate = asyncHandler(async (req, res) => {
-  res.status(200).json(await exchange.getRateStatus(req.db, req.tenantId));
+  const status = await exchange.getRateStatus(req.db, req.tenantId);
+  const perms = await getEffectivePermissions(req.db, req.tenantId, req.user.id);
+  if (perms.payments?.can_read) status.sync = await bcvSync.getSyncStatus(req.db, req.tenantId);
+  res.status(200).json(status);
 });
 
 const listRates = asyncHandler(async (req, res) => {
@@ -265,7 +300,20 @@ const upsertRate = asyncHandler(async (req, res) => {
 });
 
 const updateRateFromBcv = asyncHandler(async (req, res) => {
-  res.status(200).json(await exchange.updateFromBcv(req.db, req.tenantId, req.user.id));
+  res.status(200).json(await bcvSync.syncNow(req.db, req.tenantId, req.user.id));
+});
+
+/** POST /exchange-rate/simulate — { rate?, audience?: 'all' | 'staff' }: aviso de prueba (no registra la tasa). */
+const simulateBcvRate = asyncHandler(async (req, res) => {
+  const data = z
+    .object({ rate: z.number().positive('La tasa debe ser mayor que 0.').max(1e9).optional(), audience: z.enum(['all', 'staff']).optional() })
+    .parse(req.body || {});
+  res.status(201).json(await bcvSync.simulateRateUpdate(req.db, req.tenantId, data));
+});
+
+/** DELETE /exchange-rate/simulate — borra los avisos de prueba. */
+const clearBcvSimulations = asyncHandler(async (req, res) => {
+  res.status(200).json(await bcvSync.clearSimulations(req.db, req.tenantId));
 });
 
 const deleteRate = asyncHandler(async (req, res) => {
@@ -283,6 +331,9 @@ module.exports = {
   addCurrency,
   updateCurrency,
   removeCurrency,
+  currencyDeletionImpact,
+  simulateBcvRate,
+  clearBcvSimulations,
   listCurrencies,
   setCurrencies,
   quote,

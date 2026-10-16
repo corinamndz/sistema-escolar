@@ -21,6 +21,7 @@ import AppearanceEditor, { ThemePreview } from '../components/AppearanceEditor';
 import GradingScalesCard from '../components/GradingScalesCard';
 import AdvancedSettings from '../components/AdvancedSettings';
 import PaymentAccountsSettings from '../components/PaymentAccountsSettings';
+import BcvRateCard from '../../payments/components/BcvRateCard';
 import SchoolPeriodsTab from '../../academics/components/SchoolPeriodsTab';
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -45,7 +46,7 @@ const TABS = [
     key: 'pagos',
     label: 'Datos de pago',
     icon: 'wallet',
-    hint: 'Pago móvil y cuentas bancarias del colegio: los representantes los ven al reportar un pago.',
+    hint: 'Tasa oficial del BCV y cuentas del colegio (pago móvil y transferencias) que ven los representantes al reportar un pago.',
   },
   { key: 'avanzado', label: 'Otros', long: '/ Avanzado', icon: 'settings', hint: 'Acceso a la plataforma y otros ajustes del sistema.' },
 ];
@@ -323,7 +324,13 @@ function TenantSettingsPage() {
         {/* Escala de calificación de cada grado: se guarda al instante, aparte del formulario. */}
         {tab === 'escalas' && <GradingScalesCard canEdit={canEdit} />}
 
-        {tab === 'pagos' && <PaymentAccountsSettings canEdit={canEdit} />}
+        {tab === 'pagos' && (
+          <>
+            {/* Tasa BCV: se actualiza sola; aquí se ve su estado y se puede forzar. */}
+            {can('payments', 'read') && <BcvRateCard />}
+            <PaymentAccountsSettings canEdit={canEdit} />
+          </>
+        )}
 
         {tab === 'avanzado' && <AdvancedSettings settings={settings} />}
       </div>

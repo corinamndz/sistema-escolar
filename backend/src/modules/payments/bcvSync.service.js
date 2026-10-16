@@ -3,6 +3,8 @@ const { ApiError } = require('../../utils/ApiError');
 const exchange = require('./exchangeRate.service');
 const bcvClient = require('../../services/bcv/bcvClient');
 const notifications = require('../notifications/notification.service');
+const { notify } = require('../notifications/notify');
+const notificationPrefs = require('../notifications/notificationPreferences.service');
 
 /**
  * Sincronización automática de la tasa oficial del BCV (bolívar por 1 USD).
@@ -208,11 +210,15 @@ const dmy = (d) => d.split('-').reverse().join('/');
  * Al abrirlo, la administración va a Pagos y la familia a Mis pagos.
  */
 async function notifyNewRate(trx, tenantId, fetched, { previousRate, today, simulated = false, audience = ['staff', 'guardians'] }) {
-  return notifications.createNotification(trx, tenantId, {
-    type: 'bcv_rate',
+  // Campana y/o correo según Configuración → Notificaciones (la simulación: solo campana).
+  const { bell } = await notify(trx, tenantId, {
+    event: 'bcv_rate',
+    allGuardians: audience.includes('guardians'),
+    alsoStaff: audience.includes('guardians'),
+    staffOnly: !audience.includes('guardians'),
+    skipEmail: simulated,
     title: simulated ? 'Nueva tasa BCV (prueba)' : 'Nueva tasa BCV',
     body: `${simulated ? '[Prueba] ' : ''}Nueva tasa BCV actualizada: ${formatVes(fetched.rate)} Bs/USD (Fecha: ${dmy(fetched.rateDate)})`,
-    audience,
     // Las simulaciones no se deduplican: cada prueba genera su aviso.
     dedupeKey: simulated ? null : `bcv_rate:VES:${fetched.rateDate}:${fetched.rate}`,
     data: {
@@ -223,9 +229,10 @@ async function notifyNewRate(trx, tenantId, fetched, { previousRate, today, simu
       previous_rate: previousRate,
       source: fetched.source,
       effective_now: fetched.rateDate <= today,
-      links: { staff: '/payments', guardians: '/payments/mine' },
     },
+    links: { staff: '/payments', guardians: '/payments/mine' },
   });
+  return bell;
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +266,9 @@ async function simulateRateUpdate(trx, tenantId, { rate, audience = 'all' } = {}
   const value = rate ?? Math.round((current ? current.rate * 1.0035 : 100) * 10000) / 10000;
   const { rows } = await trx.raw('SELECT current_date::text AS today');
   const { today } = rows[0];
+  if (!(await notificationPrefs.isEnabled(trx, tenantId, 'bcv_rate', 'bell'))) {
+    throw ApiError.unprocessable('La campana está desactivada para «Nueva tasa BCV» en Configuración → Notificaciones: actívala para simular el aviso.');
+  }
   const target = audience === 'staff' ? ['staff'] : ['staff', 'guardians'];
   const notification = await notifyNewRate(
     trx,

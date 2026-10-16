@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const notices = require('../notifications/notices');
 const teacherScope = require('../access/teacherScope');
 
 /**
@@ -152,7 +153,9 @@ async function createSanction(trx, tenantId, userId, studentId, data) {
       registered_by: userId,
     })
     .returning('id');
-  return format(await baseQuery(trx, tenantId).andWhere('ss.id', row.id).first());
+  const created = format(await baseQuery(trx, tenantId).andWhere('ss.id', row.id).first());
+  await notices.sanction(trx, tenantId, { ...created, student_id: studentId, first_name: student.first_name });
+  return created;
 }
 
 async function updateSanction(trx, tenantId, userId, id, data) {

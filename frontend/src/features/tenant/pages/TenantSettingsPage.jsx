@@ -21,6 +21,8 @@ import AppearanceEditor, { ThemePreview } from '../components/AppearanceEditor';
 import GradingScalesCard from '../components/GradingScalesCard';
 import AdvancedSettings from '../components/AdvancedSettings';
 import PaymentAccountsSettings from '../components/PaymentAccountsSettings';
+import MailSettingsCard from '../components/MailSettingsCard';
+import NotificationPreferencesCard from '../components/NotificationPreferencesCard';
 import BcvRateCard from '../../payments/components/BcvRateCard';
 import SchoolPeriodsTab from '../../academics/components/SchoolPeriodsTab';
 
@@ -47,6 +49,18 @@ const TABS = [
     label: 'Datos de pago',
     icon: 'wallet',
     hint: 'Tasa oficial del BCV y cuentas del colegio (pago móvil y transferencias) que ven los representantes al reportar un pago.',
+  },
+  {
+    key: 'correo',
+    label: 'Correo',
+    icon: 'mail',
+    hint: 'Cuenta de correo (Gmail o SMTP propio) con que el sistema envía comprobantes y avisos a los representantes.',
+  },
+  {
+    key: 'notificaciones',
+    label: 'Notificaciones',
+    icon: 'bell',
+    hint: 'Qué avisos se envían por la campana del sistema y cuáles por correo electrónico.',
   },
   { key: 'avanzado', label: 'Otros', long: '/ Avanzado', icon: 'settings', hint: 'Acceso a la plataforma y otros ajustes del sistema.' },
 ];
@@ -331,6 +345,10 @@ function TenantSettingsPage() {
             <PaymentAccountsSettings canEdit={canEdit} />
           </>
         )}
+
+        {tab === 'correo' && <MailSettingsCard canEdit={canEdit} schoolName={settings.name} />}
+
+        {tab === 'notificaciones' && <NotificationPreferencesCard canEdit={canEdit} />}
 
         {tab === 'avanzado' && <AdvancedSettings settings={settings} />}
       </div>

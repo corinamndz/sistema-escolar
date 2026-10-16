@@ -2,9 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const { ApiError } = require('../../utils/ApiError');
 const { generateReceiptPdf } = require('../../services/pdf/receiptGenerator');
-const { sendMail } = require('../../services/email/mailer');
+const { sendMail, escapeHtml } = require('../../services/email/mailer');
 const { ensureTuition } = require('./tuition.service');
 const exchange = require('./exchangeRate.service');
+const notices = require('../notifications/notices');
+const notificationPrefs = require('../notifications/notificationPreferences.service');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
 const { resolveProof } = require('../../services/storage/paymentProofStorage');
 const { resolveLogoFileOrDefault } = require('../../services/storage/logoStorage');
@@ -463,24 +465,33 @@ async function markAsPaid(trx, tenantId, paymentId, details = {}, proof = null) 
 
   let emailSent = false;
   let emailError = null;
-  if (guardian.email) {
+  // Configuración → Notificaciones: «Pago confirmado» por correo = el comprobante en PDF.
+  const emailOn = await notificationPrefs.isEnabled(trx, tenantId, 'payment_confirmed', 'email');
+  if (!emailOn) emailError = 'el envío por correo de pagos confirmados está desactivado en Configuración → Notificaciones';
+  if (guardian.email && emailOn) {
     try {
+      // Con el correo configurado por el colegio (Configuración → Correo) o, si no tiene, el del servidor.
       await sendMail({
+        trx,
+        tenantId,
         to: guardian.email,
         subject: `Comprobante de pago - ${payment.period_label}`,
         html: `
-          <p>Estimado(a) ${guardian.first_name},</p>
-          <p>Hemos recibido el pago de <strong>${payment.period_label}</strong> por
-          ${payment.currency} ${Number(payment.amount).toFixed(2)} para el alumno
-          ${student.first_name} ${student.last_name}. Adjuntamos el comprobante.</p>
-          <p>${tenant.name}</p>
+          <p>Estimado(a) ${escapeHtml(guardian.first_name)},</p>
+          <p>Hemos recibido el pago de <strong>${escapeHtml(payment.period_label)}</strong> por
+          ${escapeHtml(payment.currency)} ${Number(payment.amount).toFixed(2)} para el alumno
+          ${escapeHtml(student.first_name)} ${escapeHtml(student.last_name)}. Adjuntamos el comprobante.</p>
+          <p>${escapeHtml(tenant.name)}</p>
         `,
         attachments: [{ filename: receiptFilename, content: pdfBuffer, contentType: 'application/pdf' }],
       });
       emailSent = true;
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('No se pudo enviar el correo de comprobante:', err.message);
+      // Envíos desactivados o sin configurar: no es un fallo, el comprobante queda disponible en el portal.
+      if (err.code !== 'MAIL_DISABLED') {
+        // eslint-disable-next-line no-console
+        console.error('No se pudo enviar el correo de comprobante:', err.message);
+      }
       emailError = err.message;
     }
   }
@@ -490,6 +501,7 @@ async function markAsPaid(trx, tenantId, paymentId, details = {}, proof = null) 
     .update({ receipt_url: receiptUrl, email_sent_at: emailSent ? trx.fn.now() : null })
     .returning('*');
 
+  await notices.paymentConfirmed(trx, tenantId, paymentId); // campana (según Configuración → Notificaciones)
   return { payment: finalPayment, emailSent, emailError, replacedProofPath };
 }
 

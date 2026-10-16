@@ -1,0 +1,107 @@
+const { ApiError } = require('../../utils/ApiError');
+const mailer = require('../../services/email/mailer');
+
+/**
+ * Matriz de avisos (Configuración → Notificaciones): por cada evento, si sale
+ * por la CAMPANA del sistema y/o por CORREO. Todo disparador consulta
+ * `isEnabled` antes de emitir. Sin fila guardada vale el predeterminado.
+ */
+const CATALOG = [
+  {
+    key: 'bcv_rate',
+    label: 'Nueva tasa BCV',
+    description: 'Cuando se actualiza la tasa oficial del dólar (automática o manualmente).',
+    recipients: 'Todas las familias (y la administración, en la campana)',
+    defaults: { bell: true, email: false },
+  },
+  {
+    key: 'payment_confirmed',
+    label: 'Pago confirmado',
+    description: 'Cuando la administración confirma un pago. Por correo va el comprobante en PDF.',
+    recipients: 'El representante del pago',
+    defaults: { bell: true, email: true },
+  },
+  {
+    key: 'school_event',
+    label: 'Eventos y cartelera',
+    description: 'Al publicar un evento (asambleas, actos culturales…) o cambiarle la fecha u hora.',
+    recipients: 'Las familias a las que va dirigido el evento',
+    defaults: { bell: true, email: false },
+  },
+  {
+    key: 'sanction',
+    label: 'Sanciones de convivencia',
+    description: 'Cuando se registra una sanción o amonestación a un alumno.',
+    recipients: 'Los representantes del alumno',
+    defaults: { bell: true, email: false },
+  },
+  {
+    key: 'club_enrollment',
+    label: 'Inscripción en clubes',
+    description: 'Cuando se inscribe a un alumno en un club o actividad extracurricular.',
+    recipients: 'Los representantes del alumno',
+    defaults: { bell: true, email: false },
+  },
+];
+const EVENT_KEYS = CATALOG.map((e) => e.key);
+const CHANNELS = ['bell', 'email'];
+
+let ready = false;
+async function hasTable(trx) {
+  if (ready) return true;
+  const { rows } = await trx.raw("SELECT to_regclass('notification_preferences') IS NOT NULL AS ok");
+  ready = rows[0].ok;
+  return ready;
+}
+
+async function storedMap(trx, tenantId) {
+  if (!(await hasTable(trx))) return new Map();
+  const rows = await trx('notification_preferences').where({ tenant_id: tenantId }).select('event_type', 'channel', 'enabled');
+  return new Map(rows.map((r) => [`${r.event_type}:${r.channel}`, r.enabled]));
+}
+
+/** ¿Sale el aviso `event` por el canal `channel`? (predeterminado si no hay fila). */
+async function isEnabled(trx, tenantId, event, channel) {
+  const def = CATALOG.find((e) => e.key === event)?.defaults[channel] ?? false;
+  if (!(await hasTable(trx))) return def;
+  const row = await trx('notification_preferences').where({ tenant_id: tenantId, event_type: event, channel }).first('enabled');
+  return row ? row.enabled : def;
+}
+
+/** ¿El colegio puede enviar correos ahora? (configuración propia activa o el SMTP general). */
+async function emailStatus(trx, tenantId) {
+  try {
+    const cfg = await mailer.resolveMailConfig(trx, tenantId);
+    return { ready: Boolean(cfg && cfg.enabled), source: cfg?.source || null };
+  } catch {
+    return { ready: false, source: 'tenant' };
+  }
+}
+
+/** GET: la matriz completa con el estado del correo. */
+async function getMatrix(trx, tenantId) {
+  const stored = await storedMap(trx, tenantId);
+  const value = (e, ch) => (stored.has(`${e.key}:${ch}`) ? stored.get(`${e.key}:${ch}`) : e.defaults[ch]);
+  return {
+    events: CATALOG.map((e) => ({ key: e.key, label: e.label, description: e.description, recipients: e.recipients, bell: value(e, 'bell'), email: value(e, 'email') })),
+    email: await emailStatus(trx, tenantId),
+  };
+}
+
+/** PUT: guarda una o varias celdas de la matriz. */
+async function savePreferences(trx, tenantId, userId, preferences) {
+  for (const p of preferences) {
+    if (!EVENT_KEYS.includes(p.event) || !CHANNELS.includes(p.channel)) {
+      throw ApiError.badRequest(`Aviso o canal desconocido: ${p.event} / ${p.channel}.`);
+    }
+  }
+  if (preferences.length) {
+    await trx('notification_preferences')
+      .insert(preferences.map((p) => ({ tenant_id: tenantId, event_type: p.event, channel: p.channel, enabled: p.enabled, updated_by: userId, updated_at: trx.fn.now() })))
+      .onConflict(['tenant_id', 'event_type', 'channel'])
+      .merge(['enabled', 'updated_by', 'updated_at']);
+  }
+  return getMatrix(trx, tenantId);
+}
+
+module.exports = { CATALOG, EVENT_KEYS, CHANNELS, isEnabled, getMatrix, savePreferences, emailStatus };

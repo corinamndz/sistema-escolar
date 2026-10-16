@@ -9,6 +9,10 @@ const { getEffectivePermissions } = require('../../middlewares/permission.middle
  *              Administrador y los roles de finanzas)
  *   guardians  los representantes (usuarios vinculados a un representante)
  * Lo leído se guarda por usuario en notification_reads.
+ *
+ * Avisos DIRIGIDOS (migración 036): con `target_guardian_ids`, solo los ven
+ * esos representantes (su pago, la sanción o el club de su hijo…). Sin él, lo
+ * ve todo el público.
  */
 
 const WINDOW_DAYS = 60; // la campana muestra lo de los últimos dos meses
@@ -23,38 +27,60 @@ async function hasTables(trx) {
   return tableReady;
 }
 
+/** ¿Existe la columna de destinatarios (migración 036)? */
+let targetsReady = false;
+async function hasTargets(trx) {
+  if (targetsReady) return true;
+  const { rows } = await trx.raw("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'target_guardian_ids') AS ok");
+  targetsReady = rows[0].ok;
+  return targetsReady;
+}
+
 /**
  * Crea una notificación. Con `dedupeKey`, no se repite: si ya existe en el
  * colegio, no hace nada. Devuelve la creada o null.
  */
-async function createNotification(trx, tenantId, { type, title, body, data = {}, audience, dedupeKey = null }) {
+async function createNotification(trx, tenantId, { type, title, body, data = {}, audience, dedupeKey = null, targetGuardianIds = null }) {
   if (!(await hasTables(trx))) return null;
+  if (targetGuardianIds && !targetGuardianIds.length) return null; // dirigido a nadie
+  if (targetGuardianIds && !(await hasTargets(trx))) return null; // sin la migración 036 no se puede dirigir
   const rows = await trx('notifications')
-    .insert({ tenant_id: tenantId, type, title, body, data: JSON.stringify(data), audience, dedupe_key: dedupeKey })
+    .insert({
+      tenant_id: tenantId,
+      type,
+      title,
+      body,
+      data: JSON.stringify(data),
+      audience,
+      dedupe_key: dedupeKey,
+      ...(targetGuardianIds ? { target_guardian_ids: [...new Set(targetGuardianIds)] } : {}),
+    })
     .onConflict(['tenant_id', 'dedupe_key'])
     .ignore()
     .returning('*');
   return rows[0] || null;
 }
 
-/** Públicos a los que pertenece el usuario. */
+/** Públicos a los que pertenece el usuario: { audiences, guardianId }. */
 async function audiencesOf(trx, tenantId, userId) {
-  const out = [];
+  const audiences = [];
   const perms = await getEffectivePermissions(trx, tenantId, userId);
-  if (perms.payments?.can_read) out.push('staff');
+  if (perms.payments?.can_read) audiences.push('staff');
   const guardian = await trx('guardians').where({ tenant_id: tenantId, user_id: userId }).first('id');
-  if (guardian) out.push('guardians');
-  return out;
+  if (guardian) audiences.push('guardians');
+  return { audiences, guardianId: guardian?.id || null, targets: await hasTargets(trx) };
 }
 
 /** Consulta de las notificaciones visibles para el usuario (con su estado de lectura). */
-function visibleQuery(trx, tenantId, userId, audiences) {
+function visibleQuery(trx, tenantId, userId, { audiences, guardianId, targets }) {
   return trx('notifications as n')
     .leftJoin('notification_reads as r', function joinRead() {
       this.on('r.notification_id', 'n.id').andOn('r.user_id', trx.raw('?', [userId]));
     })
     .where('n.tenant_id', tenantId)
     .andWhereRaw('n.audience && ?::text[]', [audiences])
+    // Dirigidas: solo si el usuario es uno de los representantes destinatarios.
+    .modify((q) => targets && q.andWhere((w) => w.whereNull('n.target_guardian_ids').orWhereRaw('?::uuid = ANY(n.target_guardian_ids)', [guardianId])))
     .andWhereRaw('n.created_at >= now() - (? * interval \'1 day\')', [WINDOW_DAYS]);
 }
 
@@ -68,13 +94,14 @@ function linkFor(n, audiences) {
 /** GET /notifications → { items, unread_count } del usuario. */
 async function listForUser(trx, tenantId, userId) {
   if (!(await hasTables(trx))) return { items: [], unread_count: 0 };
-  const audiences = await audiencesOf(trx, tenantId, userId);
+  const who = await audiencesOf(trx, tenantId, userId);
+  const { audiences } = who;
   if (!audiences.length) return { items: [], unread_count: 0 };
-  const rows = await visibleQuery(trx, tenantId, userId, audiences)
+  const rows = await visibleQuery(trx, tenantId, userId, who)
     .select('n.id', 'n.type', 'n.title', 'n.body', 'n.data', 'n.audience', 'n.created_at', 'r.read_at')
     .orderBy('n.created_at', 'desc')
     .limit(LIMIT);
-  const unread = await visibleQuery(trx, tenantId, userId, audiences).whereNull('r.read_at').count('* as n').first();
+  const unread = await visibleQuery(trx, tenantId, userId, who).whereNull('r.read_at').count('* as n').first();
   return {
     items: rows.map((n) => {
       const { links, ...data } = n.data || {};
@@ -86,8 +113,8 @@ async function listForUser(trx, tenantId, userId) {
 
 /** Marca una como leída (solo si el usuario puede verla: si no, 404). */
 async function markRead(trx, tenantId, userId, id) {
-  const audiences = (await hasTables(trx)) ? await audiencesOf(trx, tenantId, userId) : [];
-  const n = audiences.length ? await visibleQuery(trx, tenantId, userId, audiences).andWhere('n.id', id).first('n.id') : null;
+  const who = (await hasTables(trx)) ? await audiencesOf(trx, tenantId, userId) : { audiences: [] };
+  const n = who.audiences.length ? await visibleQuery(trx, tenantId, userId, who).andWhere('n.id', id).first('n.id') : null;
   if (!n) throw ApiError.notFound('Notificación no encontrada.');
   await trx('notification_reads').insert({ notification_id: id, user_id: userId, tenant_id: tenantId }).onConflict(['notification_id', 'user_id']).ignore();
   return { id, read: true };
@@ -96,9 +123,9 @@ async function markRead(trx, tenantId, userId, id) {
 /** Marca como leídas todas las visibles. */
 async function markAllRead(trx, tenantId, userId) {
   if (!(await hasTables(trx))) return { marked: 0 };
-  const audiences = await audiencesOf(trx, tenantId, userId);
-  if (!audiences.length) return { marked: 0 };
-  const ids = await visibleQuery(trx, tenantId, userId, audiences).whereNull('r.read_at').pluck('n.id');
+  const who = await audiencesOf(trx, tenantId, userId);
+  if (!who.audiences.length) return { marked: 0 };
+  const ids = await visibleQuery(trx, tenantId, userId, who).whereNull('r.read_at').pluck('n.id');
   if (ids.length) {
     await trx('notification_reads')
       .insert(ids.map((id) => ({ notification_id: id, user_id: userId, tenant_id: tenantId })))

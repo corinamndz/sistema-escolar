@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const notices = require('../notifications/notices');
 
 /**
  * Clubes y actividades extracurriculares (migración 026).
@@ -248,6 +249,8 @@ async function enroll(trx, tenantId, { clubId, customName, studentIds, schoolPer
   for (const s of toAdd) {
     await trx('club_memberships').insert({ tenant_id: tenantId, club_id: club.id, student_id: s.id, school_period_id: period.id, notes: notes || null });
   }
+  // Avisa a las familias de los recién inscritos (no a los que ya estaban).
+  await notices.clubEnrollment(trx, tenantId, { club, students: [...toAdd, ...toReactivate], schoolPeriodId: period.id });
   const name = (s) => `${s.first_name} ${s.last_name}`;
   return {
     club: { id: club.id, name: club.name, is_custom: club.is_custom },

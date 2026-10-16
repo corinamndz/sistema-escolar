@@ -2,6 +2,8 @@ const router = require('express').Router();
 
 // Rutas públicas (sin sesión): deben ir antes del montaje en '/', que exige autenticación.
 router.use('/public', require('../modules/tenants/tenant.public'));
+// Regreso desde Google al conectar la cuenta de correo del colegio (OAuth2).
+router.use('/integrations', require('../modules/tenants/integrations.routes'));
 router.use('/auth', require('../modules/auth/auth.routes'));
 router.use('/tenant', require('../modules/tenants/tenant.routes'));
 router.use('/roles', require('../modules/roles/role.routes'));

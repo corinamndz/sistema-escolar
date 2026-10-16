@@ -6906,3 +6906,106 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
   background: var(--color-warning-soft); color: var(--color-text); font-size: 13px;
 }
 .notif-rate__test > svg { flex-shrink: 0; margin-top: 2px; color: var(--color-warning); }
+
+/* ---------------------------------------------------------------------------
+   Configuración → Correo
+   --------------------------------------------------------------------------- */
+.mail-settings { display: flex; flex-direction: column; gap: 16px; }
+.mail-settings__presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mail-settings__preset { cursor: pointer; }
+.mail-settings__preset.is-on { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary); font-weight: 600; }
+.mail-settings__port { display: grid; grid-template-columns: 110px 1fr; gap: 12px; }
+.mail-settings__password { display: flex; gap: 8px; align-items: center; }
+.mail-settings__password > :first-child { flex: 1; }
+.mail-settings__help { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px 14px; background: var(--color-surface-muted); font-size: 14px; }
+.mail-settings__help summary { cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.mail-settings__help ol { margin: 10px 0 6px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.mail-settings__test { border-top: 1px solid var(--color-border); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.mail-settings__test-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.mail-settings__test-row .form-field { flex: 1; min-width: 240px; margin: 0; }
+.mail-settings__test-row .btn { margin-bottom: 22px; }
+.mail-settings__enable { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius-md); background: var(--color-primary-softer); cursor: pointer; }
+.mail-settings__enable input { margin-top: 3px; }
+.mail-settings__enable > span { display: flex; flex-direction: column; gap: 2px; }
+.mail-settings__remove { margin-right: auto; color: var(--color-danger); font-size: 13px; }
+.mail-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: flex-end; }
+.mail-status .text-sm { display: inline-flex; align-items: center; gap: 4px; }
+.mail-status__error { color: var(--color-warning); font-weight: 600; }
+@media (max-width: 560px) {
+  .mail-settings__port { grid-template-columns: 1fr; }
+  .mail-settings__test-row .btn { margin-bottom: 0; }
+}
+
+/* ---------------------------------------------------------------------------
+   «Conectar con Google» (botón según la guía de marca de Google)
+   --------------------------------------------------------------------------- */
+.gsi-button {
+  display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px 0 12px; align-self: flex-start;
+  background: #fff; color: #1f1f1f; border: 1px solid #747775; border-radius: 20px; cursor: pointer;
+  font-family: 'Roboto', var(--font-display, system-ui), sans-serif; font-size: 14px; font-weight: 500; letter-spacing: 0.25px;
+  transition: background-color 0.218s, box-shadow 0.218s;
+}
+.gsi-button:hover:not(:disabled) { background: #f8f9fa; box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15); }
+.gsi-button:focus-visible { outline: 2px solid #4285f4; outline-offset: 2px; }
+.gsi-button:disabled { opacity: 0.6; cursor: default; }
+.gsi-button__icon { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; }
+.gsi-button__icon .btn__spinner { border-color: rgba(31, 31, 31, 0.25); border-top-color: #1f1f1f; }
+
+.mail-google { display: flex; flex-direction: column; gap: 14px; }
+.mail-google__intro { display: flex; flex-direction: column; gap: 4px; }
+.mail-google__account {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); background: var(--color-surface-muted);
+}
+.mail-google__logo { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; background: #fff; border: 1px solid var(--color-border); flex-shrink: 0; }
+.mail-google__who { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.mail-google__who strong { overflow-wrap: anywhere; }
+.mail-google__dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.mail-google__dot.is-ok { background: var(--color-success); box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.15); }
+.mail-google__dot.is-error { background: var(--color-warning); box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.15); }
+.mail-google__enable { align-self: end; }
+.mail-google__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--color-border); padding-top: 14px; }
+.mail-alt { margin-top: 18px; border-top: 1px solid var(--color-border); padding-top: 12px; display: flex; flex-direction: column; gap: 14px; }
+.mail-alt__toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; font-size: 13px; }
+.mail-smtp { display: flex; flex-direction: column; gap: 12px; }
+
+.mail-smtp__note { margin: 0 0 14px; }
+
+/* ---------------------------------------------------------------------------
+   Configuración → Notificaciones (matriz evento × canal)
+   --------------------------------------------------------------------------- */
+.np-table { border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; margin-top: 4px; }
+.np-table__head, .np-table__row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 110px; align-items: center; gap: 12px; padding: 12px 16px; }
+.np-table__head { background: var(--color-surface-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+.np-table__row + .np-table__row { border-top: 1px solid var(--color-border); }
+.np-table__row:hover { background: var(--color-surface-muted); }
+.np-table__channel { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.np-event { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.np-event__icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+  background: var(--color-primary-soft); color: var(--color-primary);
+}
+.np-event__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.np-event__to { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--color-text-subtle); }
+.np-note { margin-top: 12px; }
+
+.np-toggle { position: relative; display: inline-flex; cursor: pointer; }
+.np-toggle input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+/* Apagado: gris neutro (#d1d5db); encendido: el color principal del colegio. Transición de 200 ms. */
+.np-toggle__track { width: 42px; height: 24px; border-radius: 999px; background: #d1d5db; transition: background-color 200ms ease-in-out; position: relative; }
+.np-toggle:hover:not(.is-disabled) .np-toggle__track { background: #c4c9d1; }
+.np-toggle__thumb { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.3); transition: transform 200ms ease-in-out; }
+.np-toggle.is-on .np-toggle__track, .np-toggle.is-on:hover:not(.is-disabled) .np-toggle__track { background: var(--color-primary); }
+.np-toggle.is-on .np-toggle__thumb { transform: translateX(18px); }
+.np-toggle input:focus-visible + .np-toggle__track { outline: 2px solid var(--color-primary-ring); outline-offset: 2px; }
+.np-toggle.is-disabled { cursor: default; opacity: 0.55; }
+.np-toggle.is-disabled input { cursor: default; }
+
+.notif-generic { display: flex; gap: 12px; align-items: flex-start; }
+.notif-generic p { margin: 4px 0 0; line-height: 1.5; }
+
+@media (max-width: 560px) {
+  .np-table__head, .np-table__row { grid-template-columns: minmax(0, 1fr) 64px 64px; padding: 10px 12px; gap: 8px; }
+  .np-table__head .np-table__channel { font-size: 10px; }
+  .np-event__icon { display: none; }
+}

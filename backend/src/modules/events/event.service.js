@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const notices = require('../notifications/notices');
 
 /**
  * Cartelera de eventos especiales del colegio (migración 028): actos
@@ -138,7 +139,9 @@ async function createEvent(trx, tenantId, userId, data) {
       created_by: userId || null,
     })
     .returning('id');
-  return getEvent(trx, tenantId, ev.id);
+  const created = await getEvent(trx, tenantId, ev.id);
+  await notices.schoolEvent(trx, tenantId, created); // avisa a las familias del público
+  return created;
 }
 
 async function updateEvent(trx, tenantId, id, data) {
@@ -169,7 +172,10 @@ async function updateEvent(trx, tenantId, id, data) {
   }
   Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k]);
   await trx('school_events').where({ id, tenant_id: tenantId }).update(patch);
-  return getEvent(trx, tenantId, id);
+  const updated = await getEvent(trx, tenantId, id);
+  // Publicar un borrador o cambiar fecha/hora vuelve a avisar (el mismo aviso no se repite).
+  await notices.schoolEvent(trx, tenantId, updated);
+  return updated;
 }
 
 async function deleteEvent(trx, tenantId, id) {

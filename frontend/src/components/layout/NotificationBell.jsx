@@ -9,7 +9,7 @@ import { SOURCE_LABELS, timeAgo } from '../../features/payments/components/BcvRa
 import { NOTIFICATIONS_REFRESH } from '../../lib/notificationEvents';
 
 const POLL_MS = 60 * 1000; // la tasa cambia pocas veces al día: un minuto de demora es suficiente
-const ICONS = { bcv_rate: 'trendingUp' };
+const ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star' };
 
 /**
  * Campana de notificaciones del Topbar. Consulta las del usuario al cargar,
@@ -137,11 +137,20 @@ function NotificationDetail({ notification: n, onClose }) {
   if (n.type !== 'bcv_rate') {
     return (
       <Modal title={n.title} onClose={onClose}>
-        <p>{n.body}</p>
+        <div className="notif-generic">
+          <span className="notif-item__icon">
+            <Icon name={ICONS[n.type] || 'bell'} size={18} />
+          </span>
+          <p>{n.body}</p>
+        </div>
+        <p className="text-sm text-muted">{new Date(n.created_at).toLocaleString('es-VE', { dateStyle: 'medium', timeStyle: 'short' })}</p>
         <div className="form-actions">
+          <button type="button" className="btn btn--secondary" onClick={onClose}>
+            Cerrar
+          </button>
           {n.link && (
             <Link to={n.link} className="btn btn--primary" onClick={onClose}>
-              Ver
+              {n.data?.link_label || 'Ver detalle'}
             </Link>
           )}
         </div>

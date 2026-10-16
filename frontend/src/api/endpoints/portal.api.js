@@ -15,6 +15,8 @@ const portalApi = {
   /** Horario semanal (solo lectura) de la sección del alumno. */
   getStudentSchedule: (studentId) => axiosClient.get(`/portal/students/${studentId}/schedule`).then((r) => r.data),
   /** Clubes y actividades extracurriculares del alumno (404 si no es su representado). */
+  /** Cartelera de eventos del colegio para la familia (todo el colegio + grado/sección de sus hijos). */
+  getEvents: (params = {}) => axiosClient.get('/portal/events', { params }).then((r) => r.data),
   getStudentClubs: (studentId) => axiosClient.get(`/portal/students/${studentId}/clubs`).then((r) => r.data),
   /** Cronograma de evaluaciones de la sección del alumno (404 si no es su representado). */
   getStudentEvaluations: (studentId, termNumber) =>

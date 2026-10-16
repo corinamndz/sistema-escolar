@@ -23,6 +23,8 @@ const MODULES = [
   { code: 'discipline', label: 'Convivencia', sortOrder: 12, extraActions: [] },
   // Clubes y actividades extracurriculares.
   { code: 'clubs', label: 'Clubes', sortOrder: 13, extraActions: [] },
+  // Cartelera de eventos especiales (actos, asambleas, eventos familiares…).
+  { code: 'events', label: 'Eventos y cartelera', sortOrder: 14, extraActions: [] },
 ];
 
 const MODULE_CODES = MODULES.map((m) => m.code);

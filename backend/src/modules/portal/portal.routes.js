@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const controller = require('./portal.controller');
 const paymentAccounts = require('../payments/paymentAccounts.controller');
+const events = require('../events/event.controller');
 const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 
@@ -17,6 +18,8 @@ router.get('/students/:studentId/sanctions', controller.getStudentSanctions);
 router.get('/students/:studentId/evaluations', controller.getStudentEvaluations);
 // Clubes y actividades extracurriculares del alumno.
 router.get('/students/:studentId/clubs', controller.getStudentClubs);
+// Cartelera de eventos del colegio (los de todo el colegio y los del grado/sección de sus hijos).
+router.get('/events', events.portalList);
 // Datos de pago del colegio (activos) para reportar un pago.
 router.get('/payment-accounts', paymentAccounts.listPublic);
 

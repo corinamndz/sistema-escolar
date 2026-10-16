@@ -9,6 +9,7 @@ import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { LevelBadge } from '../../academics/levels';
+import UpcomingEvents from '../../portal/components/UpcomingEvents';
 import { formatAmounts, formatDate, formatMoney } from '../../payments/paymentStatus';
 
 const STUDENT_STATUS = {
@@ -226,6 +227,8 @@ function GuardianPanel() {
           </div>
         )}
       </section>
+
+      <UpcomingEvents />
     </>
   );
 }

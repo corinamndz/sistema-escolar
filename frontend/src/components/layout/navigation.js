@@ -23,6 +23,9 @@ const NAV_SECTIONS = [
       { moduleCode: 'discipline', label: 'Convivencia', icon: 'shield', path: '/discipline', blockTeacher: true },
       // Clubes y actividades extracurriculares (coro, banda, deportes…).
       { moduleCode: 'clubs', label: 'Clubes', icon: 'star', path: '/clubs' },
+      // Cartelera de eventos: la administración la gestiona; las familias la consultan en el portal.
+      { moduleCode: 'events', label: 'Eventos y cartelera', icon: 'calendar', path: '/events' },
+      { moduleCode: 'portal_events', label: 'Cartelera', icon: 'calendar', path: '/portal/events', guardianOnly: true },
     ],
   },
   {

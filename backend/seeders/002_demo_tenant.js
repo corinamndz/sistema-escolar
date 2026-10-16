@@ -19,6 +19,8 @@ const ROLE_TEMPLATES = {
       discipline: { can_read: true },
       // Clubes: consulta (el coordinador de un club inscribe en el suyo).
       clubs: { can_read: true },
+      // Cartelera de eventos: consulta.
+      events: { can_read: true },
     },
   },
   Representante: {

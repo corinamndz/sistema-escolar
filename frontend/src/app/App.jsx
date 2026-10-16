@@ -19,6 +19,8 @@ import SchedulesPage from '../features/schedules/pages/SchedulesPage';
 import MySchedulePage from '../features/schedules/pages/MySchedulePage';
 import DisciplinePage from '../features/discipline/pages/DisciplinePage';
 import ClubsPage from '../features/clubs/pages/ClubsPage';
+import EventsPage from '../features/events/pages/EventsPage';
+import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
 import EvaluationPlansPage from '../features/evaluation-plans/pages/EvaluationPlansPage';
 import EvaluationPlanDetailPage from '../features/evaluation-plans/pages/EvaluationPlanDetailPage';
@@ -71,6 +73,9 @@ function App() {
             <Route element={<PermissionRoute module="clubs" />}>
               <Route path="clubs" element={<ClubsPage />} />
             </Route>
+            <Route element={<PermissionRoute module="events" />}>
+              <Route path="events" element={<EventsPage />} />
+            </Route>
             <Route element={<PermissionRoute module="discipline" blockTeacher />}>
               <Route path="discipline" element={<DisciplinePage />} />
             </Route>
@@ -108,6 +113,10 @@ function App() {
             </Route>
             {/* Portal de padres: detalle y calificaciones de un representado (el backend valida el vínculo) */}
             <Route path="portal/students/:studentId" element={<PortalStudentPage />} />
+            {/* Cartelera de eventos para las familias (el backend filtra por sus hijos) */}
+            <Route element={<PermissionRoute guardianOnly />}>
+              <Route path="portal/events" element={<PortalEventsPage />} />
+            </Route>
 
             <Route path="*" element={<NotFoundPage />} />
           </Route>

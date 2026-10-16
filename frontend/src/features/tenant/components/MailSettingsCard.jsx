@@ -13,6 +13,7 @@ import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import Switch from '../../../components/ui/Switch';
 import SmtpMailForm, { MailStatus } from './SmtpMailForm';
 
 const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
@@ -256,13 +257,9 @@ function GoogleConnected({ data, canEdit, onConnect, reconnecting, refetch }) {
         <Field label="Nombre del remitente" hint="Lo que verán las familias como «De:».">
           <Input value={fromName} onChange={(e) => setFromName(e.target.value)} maxLength={120} disabled={!canEdit} />
         </Field>
-        <label className="mail-settings__enable mail-google__enable">
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} disabled={!canEdit} />
-          <span>
-            <strong>Envíos automáticos activados</strong>
-            <span className="form-hint">Comprobantes de pago y avisos a los representantes.</span>
-          </span>
-        </label>
+        <div className="settings-switch mail-google__enable">
+          <Switch checked={enabled} onChange={setEnabled} disabled={!canEdit} label="Envíos automáticos activados" description="Comprobantes de pago y avisos a los representantes." />
+        </div>
       </div>
       {canEdit && dirty && (
         <div className="form-actions">

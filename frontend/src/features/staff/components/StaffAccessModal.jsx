@@ -13,7 +13,8 @@ import Badge from '../../../components/ui/Badge';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
-import { PASSWORD_RULES, PasswordChooser, Switch, formatDateTime } from '../../students/components/PortalAccessFields';
+import Switch from '../../../components/ui/Switch';
+import { PASSWORD_RULES, PasswordChooser, formatDateTime } from '../../students/components/PortalAccessFields';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // El rol del portal de padres no se asigna al personal (el backend también lo rechaza).

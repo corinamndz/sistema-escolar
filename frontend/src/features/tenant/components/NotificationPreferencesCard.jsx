@@ -7,6 +7,7 @@ import Card from '../../../components/ui/Card';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
+import Switch from '../../../components/ui/Switch';
 import { useToast } from '../../../components/ui/Toast';
 
 const ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star' };
@@ -14,18 +15,6 @@ const CHANNELS = [
   { key: 'bell', label: 'Campana', icon: 'bell' },
   { key: 'email', label: 'Correo', icon: 'mail' },
 ];
-
-/** Interruptor accesible (checkbox con estilo de toggle). */
-function Toggle({ checked, onChange, disabled, label }) {
-  return (
-    <label className={`np-toggle ${checked ? 'is-on' : ''} ${disabled ? 'is-disabled' : ''}`} title={label}>
-      <input type="checkbox" role="switch" aria-checked={checked} checked={checked} onChange={(e) => onChange(e.target.checked)} disabled={disabled} aria-label={label} />
-      <span className="np-toggle__track" aria-hidden="true">
-        <span className="np-toggle__thumb" />
-      </span>
-    </label>
-  );
-}
 
 /**
  * Configuración → Notificaciones: matriz de qué avisos salen por la campana
@@ -62,7 +51,7 @@ function NotificationPreferencesCard({ canEdit }) {
   const emailReady = data?.email?.ready;
 
   return (
-    <Card title="Notificaciones" subtitle="Elige qué avisos se envían por la campana del sistema y cuáles por correo electrónico. Los cambios se guardan al instante.">
+    <Card title="Avisos por canal" subtitle="Los cambios se guardan al instante.">
       <Alert>{error}</Alert>
       {data && !emailReady && (
         <Alert variant="warning">
@@ -99,11 +88,11 @@ function NotificationPreferencesCard({ canEdit }) {
             </span>
             {CHANNELS.map((c) => (
               <span key={c.key} role="cell" className="np-table__channel">
-                <Toggle
+                <Switch
                   checked={Boolean(r[c.key])}
                   onChange={(v) => change(r.key, c.key, v)}
                   disabled={!canEdit || saving === `${r.key}:${c.key}`}
-                  label={`${r.label} · ${c.label}`}
+                  ariaLabel={`${r.label} · ${c.label}`}
                 />
               </span>
             ))}

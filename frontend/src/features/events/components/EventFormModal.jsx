@@ -8,6 +8,7 @@ import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
+import Switch from '../../../components/ui/Switch';
 import { useToast } from '../../../components/ui/Toast';
 import { EVENT_CATEGORIES, longDate, todayStr } from '../eventCatalog';
 
@@ -181,13 +182,14 @@ function EventFormModal({ initial = {}, onClose, onSaved }) {
           <Field label="Descripción (opcional)" error={fieldErrors.description} full hint="Programa, qué deben traer, vestimenta, recomendaciones… Las tarjetas muestran el comienzo.">
             <textarea className="input" rows={4} maxLength={4000} value={form.description} onChange={set('description')} />
           </Field>
-          <label className="form-field form-field--full evt-publish">
-            <span>
-              <input type="checkbox" checked={form.isPublished} onChange={(e) => setForm((f) => ({ ...f, isPublished: e.target.checked }))} /> Publicar en el portal de
-              representantes
-            </span>
-            <span className="form-hint">Desmarcado, queda como borrador: solo lo ve la administración.</span>
-          </label>
+          <div className="form-field form-field--full settings-switch">
+            <Switch
+              checked={form.isPublished}
+              onChange={(isPublished) => setForm((f) => ({ ...f, isPublished }))}
+              label="Publicar en el portal de representantes"
+              description="Apagado, queda como borrador: solo lo ve la administración."
+            />
+          </div>
         </div>
         <div className="form-actions">
           <Button type="button" variant="secondary" onClick={onClose}>

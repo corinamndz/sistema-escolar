@@ -115,6 +115,8 @@ function NotificationBell({ dropdown }) {
                         <Icon name={ICONS[n.type] || 'bell'} size={16} />
                       </span>
                       <span className="notif-item__body">
+                        {/* El título (p. ej. el nombre del evento), salvo que el texto ya empiece con él. */}
+                        {n.title && !n.body.startsWith(n.title.replace(/ \(prueba\)$/, '')) && <span className="notif-item__title">{n.title}</span>}
                         <span className="notif-item__text">{n.body}</span>
                         <span className="notif-item__time">{timeAgo(n.created_at)}</span>
                       </span>

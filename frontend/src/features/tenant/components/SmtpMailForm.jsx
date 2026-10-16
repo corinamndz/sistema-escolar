@@ -11,6 +11,7 @@ import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import Switch from '../../../components/ui/Switch';
 
 const PRESETS = {
   gmail: { label: 'Gmail', host: 'smtp.gmail.com', port: 465, secure: true },
@@ -218,13 +219,15 @@ function SmtpMailForm({ data, refetch, canEdit, schoolName }) {
           )}
         </div>
 
-        <label className="mail-settings__enable">
-          <input type="checkbox" checked={form.enabled} onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))} disabled={!canEdit} />
-          <span>
-            <strong>Activar envíos automáticos</strong>
-            <span className="form-hint">Comprobantes de pago y avisos a los representantes. Te recomendamos enviar antes un correo de prueba.</span>
-          </span>
-        </label>
+        <div className="settings-switch">
+          <Switch
+            checked={form.enabled}
+            onChange={(enabled) => setForm((f) => ({ ...f, enabled }))}
+            disabled={!canEdit}
+            label="Activar envíos automáticos"
+            description="Comprobantes de pago y avisos a los representantes. Te recomendamos enviar antes un correo de prueba."
+          />
+        </div>
 
         {canEdit && (
           <div className="form-actions">

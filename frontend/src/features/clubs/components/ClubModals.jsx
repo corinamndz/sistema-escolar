@@ -95,7 +95,7 @@ export function ClubFormModal({ initial = {}, existingNames = [], onClose, onSav
   };
 
   return (
-    <Modal title={isEdit ? `Editar ${initial.name}` : 'Nuevo club o actividad'} onClose={onClose}>
+    <Modal title={isEdit ? `Editar ${initial.name}` : 'Nuevo club o actividad'} onClose={onClose} size="lg">
       <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <div className="form-grid">
@@ -146,6 +146,10 @@ export function ClubFormModal({ initial = {}, existingNames = [], onClose, onSav
               ))}
             </Select>
           </Field>
+          {/* Coordinador y cupo en una fila; las dos horas en la siguiente. */}
+          <Field label="Cupo por año (opcional)" error={fieldErrors.capacity} hint="Vacío = sin límite.">
+            <Input type="number" min="1" value={form.capacity} onChange={set('capacity')} />
+          </Field>
           <Field label="Hora de inicio (opcional)" error={fieldErrors.startTime}>
             <Input type="time" value={form.startTime} onChange={set('startTime')} />
           </Field>
@@ -159,9 +163,6 @@ export function ClubFormModal({ initial = {}, existingNames = [], onClose, onSav
             hint={initial.schedule_text && !form.sessionDates.length ? `Horario anterior (texto): «${initial.schedule_text}». Elige las fechas para reemplazarlo.` : undefined}
           >
             <MultiDatePicker value={form.sessionDates} onChange={(sessionDates) => setForm((f) => ({ ...f, sessionDates }))} />
-          </Field>
-          <Field label="Cupo por año (opcional)" error={fieldErrors.capacity} hint="Vacío = sin límite.">
-            <Input type="number" min="1" value={form.capacity} onChange={set('capacity')} />
           </Field>
           <Field label="Descripción (opcional)" error={fieldErrors.description} full>
             <textarea className="input" rows={2} maxLength={500} value={form.description} onChange={set('description')} />

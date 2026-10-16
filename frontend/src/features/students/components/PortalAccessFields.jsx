@@ -1,3 +1,4 @@
+import Switch from '../../../components/ui/Switch';
 import { useState } from 'react';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
@@ -75,21 +76,6 @@ export function buildPortalPayload(state) {
   const status = state.active ? 'active' : 'inactive';
   if (status !== state.existing.status) changes.status = status;
   return Object.keys(changes).length ? changes : undefined;
-}
-
-export function Switch({ checked, onChange, label, description }) {
-  return (
-    <label className="switch-row">
-      <span className="switch">
-        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-        <span className="switch__track" aria-hidden="true" />
-      </span>
-      <span>
-        <span className="switch-row__label">{label}</span>
-        {description && <span className="switch-row__desc">{description}</span>}
-      </span>
-    </label>
-  );
 }
 
 export function PasswordChooser({ state, setState, errors, serverError }) {

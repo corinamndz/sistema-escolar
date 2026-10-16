@@ -4,6 +4,7 @@ const grades = require('./grades.service');
 const academicRecord = require('../academics/academicRecord.service');
 const schedules = require('../schedules/schedule.service');
 const evaluationCalendar = require('../schedules/evaluationCalendar.service');
+const clubs = require('../clubs/club.service');
 const discipline = require('../discipline/discipline.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 
@@ -61,6 +62,17 @@ const getStudentEvaluations = asyncHandler(async (req, res) => {
   res.status(200).json(await evaluationCalendar.getStudentEvaluationCalendar(req.db, req.tenantId, studentId, { termNumber }));
 });
 
+/**
+ * GET /portal/students/:studentId/clubs — clubes y actividades del alumno
+ * (todos los años). SOLO de los alumnos vinculados al representante (404 si no).
+ */
+const getStudentClubs = asyncHandler(async (req, res) => {
+  const studentId = z.string().uuid().parse(req.params.studentId);
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
+  res.status(200).json(await clubs.studentClubs(req.db, req.tenantId, studentId));
+});
+
 module.exports = {
+  getStudentClubs,
   getStudentEvaluations,
   getStudentHistory, getStudentSchedule, getStudentSanctions, getMyPortal, getStudentGrades };

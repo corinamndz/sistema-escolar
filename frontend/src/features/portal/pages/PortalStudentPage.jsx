@@ -15,6 +15,7 @@ import GradesLockedNotice from '../components/GradesLockedNotice';
 import ScheduleGrid, { hueOf } from '../../schedules/components/ScheduleGrid';
 import { SanctionCard, SeverityTotals } from '../../discipline/components/SanctionParts';
 import PortalEvaluations from '../components/PortalEvaluations';
+import PortalClubs from '../components/PortalClubs';
 
 const TABS = [
   { key: 'grades', label: 'Calificaciones' },
@@ -22,6 +23,7 @@ const TABS = [
   { key: 'evaluations', label: 'Evaluaciones' },
   { key: 'history', label: 'Historial académico' },
   { key: 'discipline', label: 'Convivencia' },
+  { key: 'clubs', label: 'Clubes' },
   { key: 'info', label: 'Información' },
 ];
 
@@ -86,6 +88,7 @@ function PortalStudentPage() {
       {!student.grades_locked && tab === 'evaluations' && <PortalEvaluations studentId={studentId} />}
       {!student.grades_locked && tab === 'history' && <PortalHistory studentId={studentId} />}
       {!student.grades_locked && tab === 'discipline' && <PortalSanctions studentId={studentId} />}
+      {!student.grades_locked && tab === 'clubs' && <PortalClubs studentId={studentId} />}
 
       {!student.grades_locked && tab === 'info' && (
         <div className="grid grid--2">

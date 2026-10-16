@@ -14,6 +14,8 @@ const portalApi = {
   getStudentSanctions: (studentId) => axiosClient.get(`/portal/students/${studentId}/sanctions`).then((r) => r.data),
   /** Horario semanal (solo lectura) de la sección del alumno. */
   getStudentSchedule: (studentId) => axiosClient.get(`/portal/students/${studentId}/schedule`).then((r) => r.data),
+  /** Clubes y actividades extracurriculares del alumno (404 si no es su representado). */
+  getStudentClubs: (studentId) => axiosClient.get(`/portal/students/${studentId}/clubs`).then((r) => r.data),
   /** Cronograma de evaluaciones de la sección del alumno (404 si no es su representado). */
   getStudentEvaluations: (studentId, termNumber) =>
     axiosClient.get(`/portal/students/${studentId}/evaluations`, { params: { term_number: termNumber || undefined } }).then((r) => r.data),

@@ -18,6 +18,7 @@ import PromotionPage from '../features/academics/pages/PromotionPage';
 import SchedulesPage from '../features/schedules/pages/SchedulesPage';
 import MySchedulePage from '../features/schedules/pages/MySchedulePage';
 import DisciplinePage from '../features/discipline/pages/DisciplinePage';
+import ClubsPage from '../features/clubs/pages/ClubsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
 import EvaluationPlansPage from '../features/evaluation-plans/pages/EvaluationPlansPage';
 import EvaluationPlanDetailPage from '../features/evaluation-plans/pages/EvaluationPlanDetailPage';
@@ -66,6 +67,10 @@ function App() {
             </Route>
 
             {/* Convivencia: sanciones disciplinarias. */}
+            {/* Clubes: administración gestiona; docentes consultan (el coordinador inscribe en su club). */}
+            <Route element={<PermissionRoute module="clubs" />}>
+              <Route path="clubs" element={<ClubsPage />} />
+            </Route>
             <Route element={<PermissionRoute module="discipline" blockTeacher />}>
               <Route path="discipline" element={<DisciplinePage />} />
             </Route>

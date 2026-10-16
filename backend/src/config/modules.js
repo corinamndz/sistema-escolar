@@ -21,6 +21,8 @@ const MODULES = [
   { code: 'schedules', label: 'Horarios', sortOrder: 11, extraActions: [] },
   // Sanciones disciplinarias de los alumnos.
   { code: 'discipline', label: 'Convivencia', sortOrder: 12, extraActions: [] },
+  // Clubes y actividades extracurriculares.
+  { code: 'clubs', label: 'Clubes', sortOrder: 13, extraActions: [] },
 ];
 
 const MODULE_CODES = MODULES.map((m) => m.code);

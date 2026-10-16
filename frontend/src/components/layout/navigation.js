@@ -21,6 +21,8 @@ const NAV_SECTIONS = [
       // Sanciones disciplinarias: módulo de la administración. El docente consulta
       // las de sus alumnos en la ficha de cada uno; el representante, en el portal.
       { moduleCode: 'discipline', label: 'Convivencia', icon: 'shield', path: '/discipline', blockTeacher: true },
+      // Clubes y actividades extracurriculares (coro, banda, deportes…).
+      { moduleCode: 'clubs', label: 'Clubes', icon: 'star', path: '/clubs' },
     ],
   },
   {

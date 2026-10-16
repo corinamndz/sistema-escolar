@@ -17,6 +17,8 @@ const ROLE_TEMPLATES = {
       grading: { can_read: true, can_update: true },
       // Convivencia: solo consulta (y solo de los alumnos de su carga docente).
       discipline: { can_read: true },
+      // Clubes: consulta (el coordinador de un club inscribe en el suyo).
+      clubs: { can_read: true },
     },
   },
   Representante: {

@@ -19,6 +19,7 @@ import Spinner from '../../../components/ui/Spinner';
 import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import ImportButton from '../../../components/import/ImportButton';
+import ExportButton from '../../../components/ui/ExportButton';
 import { LEVEL_CODES, LevelBadge, LevelFilter } from '../../academics/levels';
 import StudentGroups, { sectionLabel } from '../components/StudentGroups';
 
@@ -233,6 +234,21 @@ function StudentsPage() {
       onImported={refetch}
     />
   );
+
+  const exportColumns = [
+    { header: 'Nombre',            value: (r) => r.first_name,                      width: 18 },
+    { header: 'Apellido',          value: (r) => r.last_name,                       width: 18 },
+    { header: 'Cédula/Documento',  value: (r) => r.national_id ?? '',               width: 16 },
+    { header: 'Grado',             value: (r) => r.grade_name ?? '',                width: 16 },
+    { header: 'Sección',           value: (r) => r.section_name ? sectionLabel(r.section_name) : '', width: 12 },
+    { header: 'Nivel',             value: (r) => r.level_code ? { initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria' }[r.level_code] ?? r.level_code : '', width: 14 },
+    { header: 'Estado',            value: (r) => STATUS_LABELS[r.status]?.[0] ?? r.status, width: 12 },
+    { header: 'Año escolar',       value: (r) => r.school_period_name ?? '',        width: 16 },
+    { header: 'Fecha de nacimiento', value: (r) => r.birth_date ? r.birth_date.slice(0, 10) : '', width: 18 },
+  ];
+  const exportButton = (
+    <ExportButton filename="alumnos" columns={exportColumns} rows={filtered} />
+  );
   // Fila de arriba, junto al buscador: grado, sección y limpiar filtros.
   const gradeSectionFilters = (
       <div className="filter-bar__selects">
@@ -307,7 +323,7 @@ function StudentsPage() {
           createLabel="Nuevo alumno"
           onCreate={() => setEditing({})}
           canCreate={canCreate}
-          headerActions={importButton}
+          headerActions={<>{importButton}{exportButton}</>}
           // "Ver" abre la ficha completa (representantes, sección actual), que ya es una página propia.
           onView={(r) => navigate(`/students/${r.id}`)}
           onEdit={setEditing}
@@ -328,6 +344,7 @@ function StudentsPage() {
               </div>
               <div className="data-table__header-actions">
                 {importButton}
+                {exportButton}
                 {canCreate && (
                   <Button icon="plus" onClick={() => setEditing({})}>
                     Nuevo alumno

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import studentsApi from '../../../api/endpoints/students.api';
+import ExportButton from '../../../components/ui/ExportButton';
 import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
@@ -386,6 +387,21 @@ function GuardiansPage() {
   const canCreate = can('guardians', 'create');
   const canEdit = can('guardians', 'update');
 
+  const exportColumns = [
+    { header: 'Nombre',           value: (g) => g.first_name,              width: 18 },
+    { header: 'Apellido',         value: (g) => g.last_name,               width: 18 },
+    { header: 'Cédula/Documento', value: (g) => g.national_id ?? '',       width: 16 },
+    { header: 'Teléfono',         value: (g) => g.phone ?? '',             width: 14 },
+    { header: 'Correo',           value: (g) => g.email ?? '',             width: 26 },
+    { header: 'Alumnos a cargo',  value: (g) => g.student_count,           width: 14 },
+    { header: 'Nombres de alumnos', value: (g) => (g.student_names || []).join(', '), width: 36 },
+    { header: 'Portal',           value: (g) => g.portal_status === 'active' ? 'Activo' : g.portal_username ? 'Inactivo' : 'Sin portal', width: 14 },
+    { header: 'Usuario portal',   value: (g) => g.portal_username ?? '',   width: 22 },
+  ];
+  const exportButton = (
+    <ExportButton filename="representantes" columns={exportColumns} rows={filtered} />
+  );
+
   // Fila de arriba: grado y sección junto al buscador.
   const gradeSectionFilters = (
     <div className="filter-bar__selects">
@@ -464,6 +480,7 @@ function GuardiansPage() {
           createLabel="Nuevo representante"
           onCreate={() => setEditing({})}
           canCreate={canCreate}
+          headerActions={exportButton}
           onView={(g) => setViewingId(g.id)}
           onEdit={setEditing}
           canEdit={canEdit}
@@ -493,6 +510,7 @@ function GuardiansPage() {
                 <p className="card__subtitle">Cada grupo lista los representantes con alumnos inscritos en esa sección.</p>
               </div>
               <div className="data-table__header-actions">
+                {exportButton}
                 {canCreate && (
                   <Button icon="plus" onClick={() => setEditing({})}>
                     Nuevo representante

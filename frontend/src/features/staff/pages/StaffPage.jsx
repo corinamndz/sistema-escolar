@@ -8,6 +8,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import DetailModal from '../../../components/ui/DetailModal';
 import ImportButton from '../../../components/import/ImportButton';
+import ExportButton from '../../../components/ui/ExportButton';
 import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Field from '../../../components/ui/Field';
@@ -285,6 +286,22 @@ function StaffPage() {
     ? [{ key: 'access', icon: 'lock', label: 'Gestionar acceso al sistema', onClick: setManagingAccess }]
     : [];
 
+  const exportColumns = [
+    { header: 'Nombre',              value: (r) => r.first_name,                     width: 18 },
+    { header: 'Apellido',            value: (r) => r.last_name,                      width: 18 },
+    { header: 'Cédula/Documento',    value: (r) => r.national_id ?? '',              width: 16 },
+    { header: 'Categoría',           value: (r) => STAFF_TYPE_LABELS[r.staff_type] ?? r.staff_type, width: 16 },
+    { header: 'Teléfono',            value: (r) => r.phone ?? '',                    width: 14 },
+    { header: 'Correo',              value: (r) => r.email ?? '',                    width: 26 },
+    { header: 'Estado',              value: (r) => r.status === 'active' ? 'Activo' : 'Inactivo', width: 12 },
+    { header: 'Fecha contratación',  value: (r) => r.hired_at ? r.hired_at.slice(0, 10) : '', width: 18 },
+    { header: 'Acceso al sistema',   value: (r) => r.access_status === 'active' ? 'Activo' : r.access_username ? 'Inactivo' : 'Sin usuario', width: 16 },
+    { header: 'Usuario de acceso',   value: (r) => r.access_username ?? '',          width: 24 },
+  ];
+  const exportButton = (
+    <ExportButton filename="personal" columns={exportColumns} rows={filtered} />
+  );
+
   // Categoría como selector junto al buscador.
   const categorySelect = (
     <div className="filter-bar__selects">
@@ -354,7 +371,7 @@ function StaffPage() {
           createLabel="Nuevo personal"
           onCreate={() => setEditing({})}
           canCreate={canCreate}
-          headerActions={importButton}
+          headerActions={<>{importButton}{exportButton}</>}
           rowActions={rowActions}
           onView={setViewing}
           onEdit={setEditing}
@@ -381,6 +398,7 @@ function StaffPage() {
               </div>
               <div className="data-table__header-actions">
                 {importButton}
+                {exportButton}
                 {canCreate && (
                   <Button icon="plus" onClick={() => setEditing({})}>
                     Nuevo personal

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import studentsApi from '../../../api/endpoints/students.api';
 import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
+import { useExpandedSet } from '../../../hooks/useExpandedSet';
 import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import Table from '../../../components/ui/Table';
@@ -11,12 +12,14 @@ import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
+import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
-import { LevelBadge } from '../../academics/levels';
+import { LEVELS, LevelBadge, LevelFilter } from '../../academics/levels';
+import { sectionLabel } from '../components/StudentGroups';
 import {
   PortalAccessFields,
   PortalStatusBadge,
@@ -28,8 +31,15 @@ import {
   formatDateTime,
 } from '../components/PortalAccessFields';
 
-const fullName = (p) => `${p.first_name} ${p.last_name}`;
-const initialsOf = (p) => `${p.first_name?.[0] || ''}${p.last_name?.[0] || ''}`.toUpperCase();
+const VIEW_KEY = 'guardians.view.v2';
+const EXPAND_KEY = 'guardians.expandedGroups';
+const NO_SECTION = 'none';
+
+const PORTAL_FILTERS = [
+  ['', 'Todos'],
+  ['active', 'Con portal'],
+  ['no-portal', 'Sin portal'],
+];
 
 const STUDENT_STATUS = {
   active: ['Activo', 'success'],
@@ -38,121 +48,537 @@ const STUDENT_STATUS = {
   withdrawn: ['Retirado', 'danger'],
 };
 
+const fullName = (p) => `${p.first_name} ${p.last_name}`;
+const initialsOf = (p) => `${p.first_name?.[0] || ''}${p.last_name?.[0] || ''}`.toUpperCase();
+const normalize = (v) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const searchText = (g) => [fullName(g), g.national_id, g.email, g.phone, g.portal_username, ...(g.student_names || [])].join(' ');
+const byText = (a, b) => (a || '').localeCompare(b || '', 'es', { numeric: true });
+const portalKey = (g) => (g.portal_status === 'active' ? 'active' : !g.portal_username ? 'no-portal' : null);
+
+function readView() {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'groups' ? 'groups' : 'list';
+  } catch {
+    return 'list';
+  }
+}
+
+function PortalFilter({ value, onChange, counts, total }) {
+  return (
+    <div className="level-filter" role="group" aria-label="Filtrar por acceso al portal">
+      {PORTAL_FILTERS.map(([code, label]) => (
+        <button
+          key={code || 'all'}
+          type="button"
+          className={`level-filter__item ${value === code ? 'level-filter__item--active' : ''}`}
+          onClick={() => onChange(code)}
+          aria-pressed={value === code}
+        >
+          {label}
+          <span className="level-filter__count">{code ? counts[code] || 0 : total}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Agrupa representantes por la sección de sus alumnos. Un representante con
+ *  alumnos en varias secciones aparece en cada grupo correspondiente. */
+function groupGuardians(rows, gradeIdFilter, sectionFilter) {
+  const map = new Map();
+  rows.forEach((g) => {
+    let enrolled = (g.students_detail || []).filter((s) => s.section_id);
+    if (gradeIdFilter) enrolled = enrolled.filter((s) => s.grade_id === gradeIdFilter);
+    if (sectionFilter) enrolled = enrolled.filter((s) => s.section_name === sectionFilter);
+
+    if (!enrolled.length) {
+      if (!map.has(NO_SECTION)) {
+        map.set(NO_SECTION, { key: NO_SECTION, sectionId: null, sectionName: null, gradeName: null, levelCode: null, levelSort: 99, gradeSort: 0, periodName: null, guardians: [] });
+      }
+      const group = map.get(NO_SECTION);
+      if (!group.guardians.find((x) => x.id === g.id)) group.guardians.push(g);
+    } else {
+      const seen = new Set();
+      enrolled.forEach((s) => {
+        if (seen.has(s.section_id)) return;
+        seen.add(s.section_id);
+        if (!map.has(s.section_id)) {
+          map.set(s.section_id, {
+            key: s.section_id,
+            sectionId: s.section_id,
+            sectionName: s.section_name,
+            gradeName: s.grade_name,
+            levelCode: s.level_code,
+            levelSort: s.level_sort ?? 99,
+            gradeSort: s.grade_sort ?? 0,
+            periodName: s.school_period_name,
+            guardians: [],
+          });
+        }
+        map.get(s.section_id).guardians.push(g);
+      });
+    }
+  });
+  return [...map.values()].sort(
+    (a, b) =>
+      (a.key === NO_SECTION) - (b.key === NO_SECTION) ||
+      a.levelSort - b.levelSort ||
+      a.gradeSort - b.gradeSort ||
+      byText(a.gradeName, b.gradeName) ||
+      byText(a.sectionName, b.sectionName)
+  );
+}
+
+function GuardianGroups({ rows, columns, searching, gradeId, section, onView, onEdit, canEdit, collapseSignal }) {
+  const groups = useMemo(() => groupGuardians(rows, gradeId, section), [rows, gradeId, section]);
+  const { isOpen, toggle, expandAll, collapseAll } = useExpandedSet(EXPAND_KEY);
+
+  const [lastSignal, setLastSignal] = useState(collapseSignal);
+  if (collapseSignal !== lastSignal) {
+    setLastSignal(collapseSignal);
+    if (collapseSignal?.action === 'collapse') collapseAll();
+    else expandAll(groups.map((g) => g.key));
+  }
+
+  let currentLevel = null;
+  return (
+    <div className="student-groups">
+      {groups.map((g) => {
+        const open = searching || isOpen(g.key);
+        const bodyId = `guardian-group-${g.key}`;
+        const count = g.guardians.length;
+        const isNone = g.key === NO_SECTION;
+        const levelKey = isNone ? NO_SECTION : g.levelCode;
+        const heading = levelKey !== currentLevel ? (isNone ? 'Sin inscripción vigente' : LEVELS[g.levelCode]?.name) : null;
+        currentLevel = levelKey;
+
+        return (
+          <div key={g.key}>
+            {heading && <h3 className="student-groups__level">{heading}</h3>}
+            <section className={`student-group ${open ? 'is-open' : ''} ${isNone ? 'student-group--none' : ''}`}>
+              <div className="student-group__header">
+                <button
+                  type="button"
+                  className="student-group__toggle"
+                  onClick={() => toggle(g.key)}
+                  aria-expanded={open}
+                  aria-controls={bodyId}
+                  disabled={searching}
+                >
+                  <Icon name="chevronDown" size={16} className="student-group__chevron" />
+                  <span className="student-group__title">
+                    {isNone ? (
+                      'Sin sección asignada'
+                    ) : (
+                      <>
+                        {g.gradeName} <span className="student-group__sep">·</span> {sectionLabel(g.sectionName)}
+                      </>
+                    )}
+                  </span>
+                  {!isNone && <LevelBadge code={g.levelCode} />}
+                  <span className="student-group__meta">
+                    {isNone ? 'Sus alumnos no tienen inscripción activa' : `Año escolar ${g.periodName}`}
+                  </span>
+                </button>
+                <div className="student-group__side">
+                  <span className="student-group__count">
+                    {count} {count === 1 ? 'representante' : 'representantes'}
+                  </span>
+                </div>
+              </div>
+              {open && (
+                <div id={bodyId} className="student-group__body">
+                  <DataTable
+                    bare
+                    columns={columns}
+                    rows={g.guardians}
+                    searchable={false}
+                    paginated={false}
+                    onView={onView}
+                    onEdit={onEdit}
+                    canEdit={canEdit}
+                    emptyMessage="Sin representantes."
+                  />
+                </div>
+              )}
+            </section>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function GuardiansPage() {
   const { can } = useAuth();
   const { data: rows, loading, error, refetch } = useFetch(() => studentsApi.listGuardians(), []);
-  const [editing, setEditing] = useState(null); // null = cerrado, {} = crear, {...} = editar
+  const [portalStatus, setPortalStatus] = useState('');
+  const [level, setLevel] = useState('');
+  const [gradeId, setGradeId] = useState('');
+  const [section, setSection] = useState('');
+  const [editing, setEditing] = useState(null);
   const [viewingId, setViewingId] = useState(null);
-  const [credentials, setCredentials] = useState(null); // { name, username, password } — se muestra una sola vez
+  const [credentials, setCredentials] = useState(null);
+  const [view, setView] = useState(readView);
+  const [query, setQuery] = useState('');
+  const [collapseSignal, setCollapseSignal] = useState(null);
 
-  const columns = [
-    {
-      key: 'name',
-      header: 'Representante',
-      render: (g) => (
-        <div className="cell-person">
-          <span className="avatar avatar--sm">{initialsOf(g)}</span>
-          <div>
-            <div className="cell-person__name">{fullName(g)}</div>
-            {g.national_id && <div className="cell-person__sub">{g.national_id}</div>}
-          </div>
+  const changeView = (v) => {
+    setView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      // preferencia no persistente
+    }
+  };
+
+  const all = rows || [];
+
+  // Filtros acumulativos: portal + nivel + grado + sección (+ búsqueda de texto).
+  const matches = (g, skip) =>
+    (skip === 'portal' || !portalStatus || portalKey(g) === portalStatus) &&
+    (skip === 'level' || !level || (g.students_detail || []).some((s) => s.level_code === level)) &&
+    (skip === 'grade' || !gradeId || (g.students_detail || []).some((s) => s.grade_id === gradeId)) &&
+    (skip === 'section' || !section || (g.students_detail || []).some((s) => s.section_name === section));
+
+  const forPortal = all.filter((g) => matches(g, 'portal'));
+  const forLevel = all.filter((g) => matches(g, 'level'));
+  const visible = all.filter((g) => matches(g));
+
+  const portalCounts = {
+    active: forPortal.filter((g) => g.portal_status === 'active').length,
+    'no-portal': forPortal.filter((g) => !g.portal_username).length,
+  };
+  const levelCounts = {};
+  forLevel.forEach((g) => {
+    new Set((g.students_detail || []).map((s) => s.level_code).filter(Boolean)).forEach((lc) => {
+      levelCounts[lc] = (levelCounts[lc] || 0) + 1;
+    });
+  });
+
+  const gradeOptions = useMemo(() => {
+    const map = new Map();
+    all.forEach((g) => {
+      (g.students_detail || [])
+        .filter((s) => s.grade_id && (!level || s.level_code === level))
+        .forEach((s) => {
+          if (!map.has(s.grade_id))
+            map.set(s.grade_id, {
+              id: s.grade_id,
+              name: s.grade_name,
+              order: `${s.level_sort ?? 99}-${String(s.grade_sort ?? 0).padStart(3, '0')}-${s.grade_name}`,
+            });
+        });
+    });
+    return [...map.values()].sort((a, b) => a.order.localeCompare(b.order, 'es', { numeric: true }));
+  }, [all, level]);
+
+  const validGradeId = gradeOptions.some((g) => g.id === gradeId) ? gradeId : '';
+
+  const sectionOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          all
+            .flatMap((g) => g.students_detail || [])
+            .filter((s) => s.section_name && (!level || s.level_code === level) && (!validGradeId || s.grade_id === validGradeId))
+            .map((s) => s.section_name)
+        ),
+      ].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })),
+    [all, level, validGradeId]
+  );
+
+  useEffect(() => {
+    if (gradeId && !gradeOptions.some((g) => g.id === gradeId)) setGradeId('');
+  }, [gradeId, gradeOptions]);
+  useEffect(() => {
+    if (section && !sectionOptions.includes(section)) setSection('');
+  }, [section, sectionOptions]);
+
+  const anyFilter = Boolean(portalStatus || level || gradeId || section);
+  const clearFilters = () => {
+    setPortalStatus('');
+    setLevel('');
+    setGradeId('');
+    setSection('');
+  };
+
+  const filtered = useMemo(() => {
+    const q = normalize(query.trim());
+    return q ? visible.filter((g) => normalize(searchText(g)).includes(q)) : visible;
+  }, [visible, query]);
+
+  // ── Columnas ──────────────────────────────────────────────────────────────
+  const nameColumn = {
+    key: 'name',
+    header: 'Representante',
+    render: (g) => (
+      <div className="cell-person">
+        <span className="avatar avatar--sm">{initialsOf(g)}</span>
+        <div>
+          <div className="cell-person__name">{fullName(g)}</div>
+        </div>
+      </div>
+    ),
+    sortValue: (g) => `${g.last_name} ${g.first_name}`,
+  };
+  const documentColumn = {
+    key: 'national_id',
+    header: 'Cédula / documento',
+    render: (g) => g.national_id || <span className="text-muted">—</span>,
+    sortValue: (g) => g.national_id || '',
+  };
+  const studentsColumn = {
+    key: 'students',
+    header: 'Alumnos a cargo',
+    render: (g) =>
+      g.student_count === 0 ? (
+        <span className="teacher-stack__missing">Sin alumnos</span>
+      ) : (
+        <div className="chip-list">
+          {(g.student_names || []).slice(0, 2).map((name) => (
+            <span key={name} className="chip">
+              {name}
+            </span>
+          ))}
+          {g.student_count > 2 && <span className="chip">+{g.student_count - 2}</span>}
         </div>
       ),
-      sortValue: (g) => `${g.last_name} ${g.first_name}`,
-    },
-    {
-      key: 'contact',
-      header: 'Contacto',
-      render: (g) =>
-        g.phone || g.email ? (
-          <div className="contact-stack">
-            {g.phone && (
-              <span>
-                <Icon name="user" size={13} /> {g.phone}
-              </span>
-            )}
-            {g.email && (
-              <span>
-                <Icon name="inbox" size={13} /> {g.email}
-              </span>
-            )}
-          </div>
-        ) : (
-          <span className="text-muted">Sin datos de contacto</span>
-        ),
-      sortValue: (g) => g.email || g.phone || null,
-    },
-    {
-      key: 'students',
-      header: 'Alumnos',
-      render: (g) =>
-        g.student_count === 0 ? (
-          <span className="teacher-stack__missing">Sin alumnos</span>
-        ) : (
-          <div className="chip-list">
-            {g.student_names.slice(0, 2).map((name) => (
-              <span key={name} className="chip">
-                {name}
-              </span>
-            ))}
-            {g.student_count > 2 && <span className="chip">+{g.student_count - 2}</span>}
-          </div>
-        ),
-      sortValue: (g) => g.student_count,
-    },
-    {
-      key: 'portal',
-      header: 'Portal',
-      render: (g) => (
-        <div title={g.portal_username || undefined}>
-          <PortalStatusBadge portal={portalOf(g)} />
-          {g.portal_username && <div className="cell-person__sub portal-username">{g.portal_username}</div>}
+    sortValue: (g) => g.student_count,
+  };
+  const contactColumn = {
+    key: 'contact',
+    header: 'Contacto',
+    render: (g) =>
+      g.phone || g.email ? (
+        <div className="contact-stack">
+          {g.phone && (
+            <span>
+              <Icon name="user" size={13} /> {g.phone}
+            </span>
+          )}
+          {g.email && (
+            <span>
+              <Icon name="inbox" size={13} /> {g.email}
+            </span>
+          )}
         </div>
+      ) : (
+        <span className="text-muted">Sin datos de contacto</span>
       ),
-      sortValue: (g) => ({ active: 0, inactive: 1 })[g.portal_status] ?? 2,
-    },
-  ];
+    sortValue: (g) => g.email || g.phone || null,
+  };
+  const portalColumn = {
+    key: 'portal',
+    header: 'Portal',
+    render: (g) => (
+      <div title={g.portal_username || undefined}>
+        <PortalStatusBadge portal={portalOf(g)} />
+        {g.portal_username && <div className="cell-person__sub portal-username">{g.portal_username}</div>}
+      </div>
+    ),
+    sortValue: (g) => ({ active: 0, inactive: 1 })[g.portal_status] ?? 2,
+  };
+
+  const listColumns = [nameColumn, documentColumn, studentsColumn, contactColumn, portalColumn];
+  const groupColumns = [nameColumn, documentColumn, contactColumn, portalColumn];
+
+  const canCreate = can('guardians', 'create');
+  const canEdit = can('guardians', 'update');
+
+  // Fila de arriba: grado y sección junto al buscador.
+  const gradeSectionFilters = (
+    <div className="filter-bar__selects">
+      <Select value={gradeId} onChange={(e) => setGradeId(e.target.value)} aria-label="Filtrar por grado" disabled={!gradeOptions.length}>
+        <option value="">Todos los grados</option>
+        {gradeOptions.map((g) => (
+          <option key={g.id} value={g.id}>
+            {g.name}
+          </option>
+        ))}
+      </Select>
+      <Select value={section} onChange={(e) => setSection(e.target.value)} aria-label="Filtrar por sección" disabled={!sectionOptions.length}>
+        <option value="">Todas las secciones</option>
+        {sectionOptions.map((name) => (
+          <option key={name} value={name}>
+            {sectionLabel(name)}
+          </option>
+        ))}
+      </Select>
+      {anyFilter && (
+        <Button variant="ghost" size="sm" icon="x" onClick={clearFilters}>
+          Limpiar filtros
+        </Button>
+      )}
+    </div>
+  );
+
+  // Fila de abajo: pastillas de portal y nivel.
+  const filters = (
+    <div className="filter-bar">
+      <PortalFilter value={portalStatus} onChange={setPortalStatus} counts={portalCounts} total={forPortal.length} />
+      <LevelFilter value={level} onChange={setLevel} counts={levelCounts} total={forLevel.length} />
+    </div>
+  );
+
+  const viewToggle = (
+    <div className="segmented" role="radiogroup" aria-label="Vista">
+      {[
+        ['list', 'Tabla', 'menu'],
+        ['groups', 'Por sección', 'layers'],
+      ].map(([key, label, icon]) => (
+        <button
+          key={key}
+          type="button"
+          role="radio"
+          aria-checked={view === key}
+          className={`segmented__item ${view === key ? 'segmented__item--active' : ''}`}
+          onClick={() => changeView(key)}
+        >
+          <Icon name={icon} size={15} /> {label}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div>
-      <PageHeader title="Representantes" subtitle="Padres, madres y representantes legales de los alumnos" />
-
-      <DataTable
-        title="Listado de representantes"
-        columns={columns}
-        rows={rows}
-        loading={loading}
-        error={error}
-        searchPlaceholder="Buscar por nombre, cédula, correo o alumno…"
-        getSearchText={(g) => [fullName(g), g.national_id, g.email, g.phone, g.portal_username, ...(g.student_names || [])].join(' ')}
-        emptyMessage="Aún no hay representantes registrados."
-        createLabel="Nuevo representante"
-        onCreate={() => setEditing({})}
-        canCreate={can('guardians', 'create')}
-        onView={(g) => setViewingId(g.id)}
-        onEdit={setEditing}
-        canEdit={can('guardians', 'update')}
-        onDelete={(g) => studentsApi.deleteGuardian(g.id)}
-        canDelete={can('guardians', 'delete')}
-        deleteConfirm={(g) => ({
-          title: `¿Eliminar a ${fullName(g)}?`,
-          message:
-            (g.student_count > 0
-              ? `Se quitará su vínculo con ${g.student_count} alumno(s) (los alumnos no se eliminan). `
-              : '') +
-            (g.portal_status === 'active' ? 'Su usuario del portal quedará inactivo. ' : '') +
-            'Si tiene pagos registrados no se podrá eliminar. Esta acción no se puede deshacer.',
-          successMessage: `${fullName(g)} fue eliminado`,
-        })}
-        onDeleted={refetch}
+      <PageHeader
+        title="Representantes"
+        subtitle="Padres, madres y representantes legales de los alumnos."
+        actions={viewToggle}
       />
+
+      {view === 'list' ? (
+        <DataTable
+          title="Listado de representantes"
+          columns={listColumns}
+          rows={visible}
+          loading={loading}
+          error={error}
+          searchPlaceholder="Buscar por nombre, cédula, correo o alumno…"
+          getSearchText={searchText}
+          filters={filters}
+          searchAddons={gradeSectionFilters}
+          emptyMessage={anyFilter ? 'Ningún representante con esos filtros.' : 'Aún no hay representantes registrados.'}
+          createLabel="Nuevo representante"
+          onCreate={() => setEditing({})}
+          canCreate={canCreate}
+          onView={(g) => setViewingId(g.id)}
+          onEdit={setEditing}
+          canEdit={canEdit}
+          onDelete={(g) => studentsApi.deleteGuardian(g.id)}
+          canDelete={can('guardians', 'delete')}
+          deleteConfirm={(g) => ({
+            title: `¿Eliminar a ${fullName(g)}?`,
+            message:
+              (g.student_count > 0
+                ? `Se quitará su vínculo con ${g.student_count} alumno(s) (los alumnos no se eliminan). `
+                : '') +
+              (g.portal_status === 'active' ? 'Su usuario del portal quedará inactivo. ' : '') +
+              'Si tiene pagos registrados no se podrá eliminar. Esta acción no se puede deshacer.',
+            successMessage: `${fullName(g)} fue eliminado`,
+          })}
+          onDeleted={refetch}
+        />
+      ) : (
+        <>
+          <div className="card data-table student-groups__toolbar">
+            <div className="data-table__header">
+              <div>
+                <h3 className="card__title">
+                  Representantes por grado y sección
+                  {!loading && rows && <span className="data-table__count">{filtered.length}</span>}
+                </h3>
+                <p className="card__subtitle">Cada grupo lista los representantes con alumnos inscritos en esa sección.</p>
+              </div>
+              <div className="data-table__header-actions">
+                {canCreate && (
+                  <Button icon="plus" onClick={() => setEditing({})}>
+                    Nuevo representante
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="data-table__toolbar data-table__toolbar--stacked">
+              <div className="data-table__search-row">
+                <div className="input-group data-table__search">
+                  <Icon name="search" size={17} className="input-group__icon" />
+                  <input
+                    type="search"
+                    className="input"
+                    placeholder="Buscar por nombre, cédula, correo o alumno…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    aria-label="Buscar representantes"
+                  />
+                  {query && (
+                    <button type="button" className="data-table__clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda">
+                      <Icon name="x" size={15} />
+                    </button>
+                  )}
+                </div>
+                <div className="data-table__search-addons">{gradeSectionFilters}</div>
+              </div>
+              <div className="data-table__filters">
+                {filters}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="chevronDown"
+                  onClick={() => setCollapseSignal({ action: 'expand', at: Date.now() })}
+                  disabled={Boolean(query)}
+                >
+                  Expandir todo
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="chevronRight"
+                  onClick={() => setCollapseSignal({ action: 'collapse', at: Date.now() })}
+                  disabled={Boolean(query)}
+                >
+                  Contraer todo
+                </Button>
+              </div>
+            </div>
+            <Alert>{error}</Alert>
+          </div>
+
+          {loading ? (
+            <Spinner />
+          ) : filtered.length === 0 ? (
+            <div className="card empty-state">
+              <div className="empty-state__icon">
+                <Icon name={query ? 'search' : 'users'} size={24} />
+              </div>
+              <div className="empty-state__title">
+                {query || anyFilter ? 'Sin resultados' : 'Aún no hay representantes registrados.'}
+              </div>
+              {query && <div className="text-sm">Ningún representante coincide con "{query}".</div>}
+            </div>
+          ) : (
+            <GuardianGroups
+              rows={filtered}
+              columns={groupColumns}
+              searching={Boolean(query)}
+              gradeId={validGradeId}
+              section={section}
+              onView={(g) => setViewingId(g.id)}
+              onEdit={setEditing}
+              canEdit={canEdit}
+              collapseSignal={collapseSignal}
+            />
+          )}
+        </>
+      )}
 
       {viewingId && (
         <GuardianDetailModal
           guardianId={viewingId}
           onClose={() => setViewingId(null)}
           onEdit={
-            can('guardians', 'update')
+            canEdit
               ? (g) => {
                   setViewingId(null);
                   setEditing(g);
@@ -324,7 +750,6 @@ function GuardianFormModal({ initial, onClose, onSaved }) {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((f) => ({ ...f, [name]: value }));
-    // El correo de acceso copia el de contacto mientras el admin no lo edite a mano.
     if (name === 'email') setPortal((p) => (p.emailTouched ? p : { ...p, email: value }));
   };
 
@@ -335,7 +760,6 @@ function GuardianFormModal({ initial, onClose, onSaved }) {
     e.preventDefault();
     if (portalInvalid) return;
     try {
-      // Los campos opcionales vacíos se envían como "" y el backend los guarda como null.
       const saved = await run({ ...form, portal: buildPortalPayload(portal) });
       const portalMsg = saved.temporaryPassword
         ? ' · usuario del portal listo'

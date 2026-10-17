@@ -108,7 +108,38 @@ async function listGuardians(trx, tenantId) {
         SELECT json_agg(s.first_name || ' ' || s.last_name ORDER BY s.last_name, s.first_name)
         FROM student_guardians sg JOIN students s ON s.id = sg.student_id
         WHERE sg.guardian_id = g.id
-      ), '[]'::json) AS student_names`)
+      ), '[]'::json) AS student_names`),
+      trx.raw(`COALESCE((
+        SELECT json_agg(json_build_object(
+          'student_id',  s.id,
+          'student_name', s.first_name || ' ' || s.last_name,
+          'section_id',  cur.section_id,
+          'section_name', cur.section_name,
+          'grade_id',    cur.grade_id,
+          'grade_name',  cur.grade_name,
+          'level_code',  cur.level_code,
+          'level_sort',  cur.level_sort,
+          'grade_sort',  cur.grade_sort,
+          'school_period_name', cur.school_period_name
+        ) ORDER BY sg.is_primary DESC, s.last_name, s.first_name)
+        FROM student_guardians sg
+        JOIN students s ON s.id = sg.student_id
+        LEFT JOIN LATERAL (
+          SELECT sec.id AS section_id, sec.name AS section_name,
+                 gr.id AS grade_id, gr.name AS grade_name, gr.sort_order AS grade_sort,
+                 gr.level_code, el.sort_order AS level_sort,
+                 sp.name AS school_period_name
+          FROM enrollments e
+          JOIN sections sec ON sec.id = e.section_id
+          JOIN grades gr ON gr.id = sec.grade_id
+          JOIN education_levels el ON el.code = gr.level_code
+          JOIN school_periods sp ON sp.id = sec.school_period_id
+          WHERE e.student_id = s.id AND e.status = 'active'
+          ORDER BY sp.is_active DESC, sp.start_date DESC NULLS LAST, e.enrolled_at DESC
+          LIMIT 1
+        ) cur ON true
+        WHERE sg.guardian_id = g.id
+      ), '[]'::json) AS students_detail`)
     )
     .orderBy(['g.first_name', 'g.last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
 }

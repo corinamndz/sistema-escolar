@@ -2665,6 +2665,93 @@ a.cell-person__name:hover {
 }
 .grade-big.grade--pass { background: var(--color-success-soft); border-color: var(--color-success-border); }
 .grade-big.grade--fail { background: var(--color-danger-soft); border-color: var(--color-danger-border); }
+.grade-big--green { background: var(--color-success-soft); border-color: var(--color-success-border); }
+.grade-big--yellow { background: var(--color-warning-soft); border-color: var(--color-warning-border); }
+.grade-big--red { background: var(--color-danger-soft); border-color: var(--color-danger-border); }
+.grade-big--green .grade-big__value { color: var(--color-success-text); }
+.grade-big--yellow .grade-big__value { color: var(--color-warning-text); }
+.grade-big--red .grade-big__value { color: var(--color-danger-text); }
+
+/* Semáforo de notas (portal): tres luces, se enciende la del rango. */
+.tl { display: inline-flex; gap: 4px; padding: 4px 6px; border-radius: 999px; background: var(--color-surface-muted); border: 1px solid var(--color-border); flex: none; }
+.tl-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; opacity: 0.22; }
+.tl-dot.is-on, .tl-legend .tl-dot { opacity: 1; }
+.tl-dot--green { background: var(--color-success); }
+.tl-dot--yellow { background: var(--color-warning); }
+.tl-dot--red { background: var(--color-danger); }
+.tl-dot--green.is-on { box-shadow: 0 0 6px var(--color-success); }
+.tl-dot--yellow.is-on { box-shadow: 0 0 6px var(--color-warning); }
+.tl-dot--red.is-on { box-shadow: 0 0 6px var(--color-danger); }
+
+.tl-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 14px; padding: 0; list-style: none; font-size: 12.5px; color: var(--color-text-muted); }
+.tl-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.tl-legend strong { color: var(--color-text-secondary); font-weight: 600; }
+
+/* Tarjetas de materia del portal */
+.grade-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.grade-card {
+  --gc-accent: var(--color-border-strong);
+  --gc-soft: var(--color-surface-muted);
+  --gc-text: var(--color-text);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 18px 18px 14px;
+  border: 1px solid var(--color-border);
+  border-top: 4px solid var(--gc-accent);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow var(--transition-base), transform var(--transition-base), border-color var(--transition-base);
+}
+.grade-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.grade-card:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.grade-card--green { --gc-accent: var(--color-success); --gc-soft: var(--color-success-soft); --gc-text: var(--color-success-text); }
+.grade-card--yellow { --gc-accent: var(--color-warning); --gc-soft: var(--color-warning-soft); --gc-text: var(--color-warning-text); }
+.grade-card--red { --gc-accent: var(--color-danger); --gc-soft: var(--color-danger-soft); --gc-text: var(--color-danger-text); }
+
+.grade-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.grade-card__title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: var(--font-display); font-size: 15.5px; font-weight: 700; line-height: 1.3; }
+.grade-card__teacher { font-size: 12.5px; color: var(--color-text-muted); }
+.grade-card__score { display: flex; align-items: baseline; gap: 4px; margin-top: 10px; }
+.grade-card__value { font-family: var(--font-display); font-size: 36px; font-weight: 800; line-height: 1; letter-spacing: -0.02em; color: var(--gc-text); }
+.grade-card--none .grade-card__value { color: var(--color-text-subtle); }
+.grade-card__scale { font-size: 14px; font-weight: 600; color: var(--color-text-subtle); }
+.grade-card__caption { font-size: 11.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-text-muted); }
+
+.grade-card__progress { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.grade-card__progress-head { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--color-text-secondary); }
+.grade-card__progress .progress-bar { display: block; }
+.grade-card__progress .progress-bar__fill { display: block; background: var(--gc-accent); }
+.grade-card--none .grade-card__progress .progress-bar__fill { background: var(--color-primary); }
+
+.grade-card__terms { margin: 12px 0 0; }
+.grade-chip--green { border-color: var(--color-success-border); background: var(--color-success-soft); }
+.grade-chip--yellow { border-color: var(--color-warning-border); background: var(--color-warning-soft); }
+.grade-chip--red { border-color: var(--color-danger-border); background: var(--color-danger-soft); }
+.grade-chip--green strong { color: var(--color-success-text); }
+.grade-chip--yellow strong { color: var(--color-warning-text); }
+.grade-chip--red strong { color: var(--color-danger-text); }
+
+.grade-card__foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--color-border); font-size: 12.5px; font-weight: 600; color: var(--gc-text); }
+.grade-card > :nth-last-child(2) { margin-bottom: 10px; }
+.grade-card--none .grade-card__foot { color: var(--color-text-muted); }
+.grade-card__more { display: inline-flex; align-items: center; gap: 2px; color: var(--color-text-muted); font-weight: 500; white-space: nowrap; }
+.grade-card:hover .grade-card__more { color: var(--color-primary-text); }
+
+/* Desglose en el modal: los planes sin el padding lateral de la tarjeta antigua. */
+.grade-detail .plan-grades { padding: 4px 0 18px; }
+.grade-detail .plan-grades + .plan-grades { padding-top: 18px; }
+
+@media (max-width: 640px) {
+  .grade-cards { grid-template-columns: minmax(0, 1fr); }
+}
 
 .grades-table td:first-child { font-weight: 400; }
 
@@ -7099,9 +7186,9 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
 /* ---------------------------------------------------------------------
    Contenido programático: Unidad → Temas → evaluaciones (acordeón)
    --------------------------------------------------------------------- */
-.pc-toolbar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; padding: 16px; margin-bottom: 16px; }
-.pc-toolbar__field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.pc-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 12px; }
+.pc-header { margin-bottom: 18px; }
+.pc-header .alert { margin: 14px 0 0; }
+.pc-toolbar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; padding-top: 16px; border-top: 1px solid var(--color-border); }
 .pc-units { display: flex; flex-direction: column; gap: 12px; }
 
 .pc-unit { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-xs); overflow: hidden; }

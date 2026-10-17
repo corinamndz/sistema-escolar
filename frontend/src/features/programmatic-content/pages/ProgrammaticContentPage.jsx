@@ -8,6 +8,7 @@ import { useFetch } from '../../../hooks/useFetch';
 import PageHeader from '../../../components/ui/PageHeader';
 import Button from '../../../components/ui/Button';
 import Select from '../../../components/ui/Select';
+import Field from '../../../components/ui/Field';
 import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
 import Spinner from '../../../components/ui/Spinner';
@@ -18,6 +19,7 @@ import { termLabel } from '../../evaluation-plans/terms';
 import { CATEGORY_LABELS } from '../categories';
 import ContentItemModal from '../components/ContentItemModal';
 import IncludeEvaluationModal from '../components/IncludeEvaluationModal';
+import ImportButton from '../../../components/import/ImportButton';
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -97,6 +99,11 @@ function ProgrammaticContentPage() {
     [selected?.subject_id, selected?.grade_id, periodId, version]
   );
   const reload = () => setVersion((v) => v + 1);
+  const handleImported = (report) => {
+    if (report.summary.invalid > 0) toast.warning('Importación con observaciones', report.message);
+    else toast.success(plural(report.summary.imported, 'tema importado', 'temas importados'), report.message);
+    reload();
+  };
 
   // Materias agrupadas con sus grados para el selector.
   const subjects = useMemo(() => {
@@ -113,6 +120,7 @@ function ProgrammaticContentPage() {
   const units = content ? content.units.map((u) => u.unit) : [];
   const periodClosed = Boolean(content?.school_period?.closed);
   const pair = content && { gradeId, subjectId, gradeName: content.grade_name, subjectName: content.subject_name };
+  const canCreate = can('evaluation_plans', 'create') && Boolean(content);
 
   const toggle = (setter, key) =>
     setter((s) => {
@@ -161,73 +169,100 @@ function ProgrammaticContentPage() {
         </div>
       ) : (
         <>
-          <div className="card pc-toolbar">
-            <label className="pc-toolbar__field">
-              <span className="student-card__label">Materia</span>
-              <Select
-                value={subjectId}
-                onChange={(e) => {
-                  const s = subjects.find((x) => x.id === e.target.value);
-                  setParam({ materia: s.id, grado: s.grades[0].grade_id });
-                }}
-              >
-                {subjects.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="pc-toolbar__field">
-              <span className="student-card__label">Grado</span>
-              <Select value={gradeId} onChange={(e) => setParam({ grado: e.target.value })}>
-                {(subjects.find((s) => s.id === subjectId)?.grades || []).map((g) => (
-                  <option key={g.grade_id} value={g.grade_id}>
-                    {g.grade_name} ({plural(g.content_count, 'tema', 'temas')})
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="pc-toolbar__field">
-              <span className="student-card__label">Evaluaciones del año</span>
-              <Select value={periodId} onChange={(e) => setParam({ ano: e.target.value })}>
-                {(periods || []).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                    {p.closed_at ? ' (finalizado)' : ''}
-                  </option>
-                ))}
-              </Select>
-            </label>
+          <div className="card data-table pc-header">
+            <div className="data-table__header">
+              <div>
+                <h3 className="card__title">
+                  {content ? `${content.subject_name} · ${content.grade_name}` : 'Temario'}
+                  {content && <span className="data-table__count">{items.length}</span>}
+                </h3>
+                <p className="card__subtitle">
+                  {content
+                    ? `${plural(units.length, 'unidad', 'unidades')} · ${plural(items.length, 'tema', 'temas')} · ${plural(evaluationCount, 'evaluación', 'evaluaciones')}${
+                        content.school_period ? ` en ${content.school_period.name}` : ''
+                      }`
+                    : 'Elige la materia y el grado para ver su temario.'}
+                </p>
+              </div>
+              {canCreate && (
+                <div className="data-table__header-actions">
+                  <ImportButton
+                    type="programmatic_content"
+                    label="Importar masivo"
+                    title="Importar contenido programático"
+                    description={`Los temas se agregan a ${content.subject_name} de ${content.grade_name}.`}
+                    params={{ gradeId, subjectId }}
+                    onImported={handleImported}
+                  />
+                  <Button icon="plus" onClick={() => setEditing({})}>
+                    Nuevo tema
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div className="pc-toolbar">
+              <Field label="Materia">
+                <Select
+                  value={subjectId}
+                  onChange={(e) => {
+                    const s = subjects.find((x) => x.id === e.target.value);
+                    setParam({ materia: s.id, grado: s.grades[0].grade_id });
+                  }}
+                >
+                  {subjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Grado">
+                <Select value={gradeId} onChange={(e) => setParam({ grado: e.target.value })}>
+                  {(subjects.find((s) => s.id === subjectId)?.grades || []).map((g) => (
+                    <option key={g.grade_id} value={g.grade_id}>
+                      {g.grade_name} ({plural(g.content_count, 'tema', 'temas')})
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Evaluaciones del año">
+                <Select value={periodId} onChange={(e) => setParam({ ano: e.target.value })}>
+                  {(periods || []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.closed_at ? ' (finalizado)' : ''}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <Alert>{error}</Alert>
           </div>
 
-          <Alert>{error}</Alert>
           {loading && !content ? (
             <Spinner />
           ) : (
             content && (
               <>
-                <div className="pc-summary">
-                  <span className="text-sm text-muted">
-                    {plural(units.length, 'unidad', 'unidades')} · {plural(items.length, 'tema', 'temas')} · {plural(evaluationCount, 'evaluación', 'evaluaciones')}
-                    {content.school_period && ` en ${content.school_period.name}`}
-                  </span>
-                  {can('evaluation_plans', 'create') && (
-                    <Button icon="plus" onClick={() => setEditing({})}>
-                      Nuevo tema
-                    </Button>
-                  )}
-                </div>
-
                 {items.length === 0 ? (
-                  <div className="card empty-state">
+                  <div className="empty-state">
                     <div className="empty-state__icon">
                       <Icon name="layers" size={24} />
                     </div>
                     <div className="empty-state__title">
                       {content.subject_name} de {content.grade_name} aún no tiene contenido programático
                     </div>
-                    <div className="text-sm">Agrega sus temas por unidad (ej. Unidad I · Estructura celular) y luego incluye las evaluaciones de cada uno.</div>
+                    <div className="text-sm">
+                      Agrega sus temas por unidad (ej. Unidad I · Estructura celular) o cárgalos todos desde la plantilla de Excel.
+                    </div>
+                    {canCreate && (
+                      <div className="empty-state__actions">
+                        <Button icon="plus" onClick={() => setEditing({})}>
+                          Nuevo tema
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="pc-units">

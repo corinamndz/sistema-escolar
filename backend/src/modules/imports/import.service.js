@@ -11,6 +11,7 @@ const IMPORTERS = Object.fromEntries(
     require('./importers/grades.importer'),
     require('./importers/classrooms.importer'),
     require('./importers/sections.importer'),
+    require('./importers/programmaticContent.importer'),
   ].map((imp) => [imp.type, imp])
 );
 

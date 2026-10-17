@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import portalApi from '../../../api/endpoints/portal.api';
 import { useFetch } from '../../../hooks/useFetch';
-import { useExpandedSet } from '../../../hooks/useExpandedSet';
 import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
 import Select from '../../../components/ui/Select';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
+import Modal from '../../../components/ui/Modal';
 import { formatDate } from '../../payments/paymentStatus';
 import { isQualitative, literalFor } from '../../grading/gradingScale';
 import LiteralBadge from '../../grading/components/LiteralBadge';
@@ -19,6 +19,38 @@ const fmt = (n, digits = 1) =>
 
 /** Clase de color según la nota: aprobado / reprobado / sin datos. */
 const gradeTone = (value, passing) => (value === null || value === undefined ? 'grade--none' : value >= passing ? 'grade--pass' : 'grade--fail');
+
+/**
+ * Semáforo sobre el promedio de lo ya calificado, con los cortes en escala de 20
+ * (16 y 10) y proporcionales en otras escalas.
+ */
+const LIGHTS = {
+  green: { label: 'Buen rendimiento', range: '16 o más' },
+  yellow: { label: 'Puede mejorar', range: '10 a 15' },
+  red: { label: 'Requiere atención', range: 'Menos de 10' },
+};
+function trafficLight(value, scale) {
+  if (value === null || value === undefined) return null;
+  const on20 = (Number(value) * 20) / scale;
+  if (on20 >= 16) return 'green';
+  if (on20 >= 10) return 'yellow';
+  return 'red';
+}
+
+/** Nota que decide el semáforo de un plan: la definitiva o el promedio de lo calificado. */
+const planScore = (plan) => (plan.status === 'final' ? plan.final_grade : plan.current_average);
+
+const mean = (values) => {
+  const v = values.filter((x) => x !== null && x !== undefined);
+  return v.length ? v.reduce((a, b) => a + Number(b), 0) / v.length : null;
+};
+
+/** Lapso por defecto: el último con alguna nota cargada (o el primero). */
+function defaultTermId(terms, subjects) {
+  const graded = new Set(subjects.flatMap((s) => s.plans.filter((p) => p.graded_count > 0).map((p) => p.term_id)));
+  const withGrades = terms.filter((t) => graded.has(t.id));
+  return (withGrades[withGrades.length - 1] || terms[0])?.id || '';
+}
 
 const PLAN_STATUS = {
   final: { label: 'Definitiva', variant: 'success' },
@@ -34,13 +66,12 @@ const PLAN_STATUS = {
  */
 function StudentGrades({ studentId }) {
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
-  const [termId, setTermId] = useState('');
+  const [pickedTermId, setPickedTermId] = useState(null); // null = lapso por defecto
+  const [openSubject, setOpenSubject] = useState(null);
   const { data, loading, error } = useFetch(
     () => portalApi.getStudentGrades(studentId, schoolPeriodId ? { schoolPeriodId } : undefined),
     [studentId, schoolPeriodId]
   );
-  // Materias CERRADAS por defecto; se recuerda (por alumno, en este navegador) cuáles abrió.
-  const { isOpen, toggle, expandAll, collapseAll } = useExpandedSet(`ui.grades.expanded.${studentId}`);
 
   if (loading) return <Spinner label="Cargando calificaciones…" />;
   if (error) return <Alert>{error}</Alert>;
@@ -52,6 +83,9 @@ function StudentGrades({ studentId }) {
     return <EmptyGrades title="Sin inscripciones" text="El alumno todavía no está inscrito en ninguna sección." />;
   }
 
+  const termId = pickedTermId ?? defaultTermId(terms, subjects);
+  const setTermId = setPickedTermId;
+
   // TODAS las materias se muestran, también las que aún no tienen plan (en
   // general o en el lapso elegido): se ven con "Sin plan de evaluación".
   const visible = subjects.map((s) => ({ ...s, plans: s.plans.filter((p) => !termId || p.term_id === termId) }));
@@ -61,13 +95,13 @@ function StudentGrades({ studentId }) {
   const averages = visible.flatMap((s) => s.plans.map((p) => p.current_average)).filter((v) => v !== null);
   const overall = averages.length ? averages.reduce((a, b) => a + b, 0) / averages.length : null;
   const finals = visible.flatMap((s) => s.plans).filter((p) => p.status === 'final').length;
-  const allCollapsed = visible.length > 0 && visible.every((s) => !isOpen(s.key));
+  const selectedSubject = openSubject && visible.find((s) => s.key === openSubject);
 
   return (
     <div>
       <div className="grades-toolbar">
         {periods.length > 1 && (
-          <Select sorted value={schoolPeriodId || data.school_period?.id} onChange={(e) => { setSchoolPeriodId(e.target.value); setTermId(''); }} aria-label="Año escolar">
+          <Select sorted value={schoolPeriodId || data.school_period?.id} onChange={(e) => { setSchoolPeriodId(e.target.value); setTermId(null); }} aria-label="Año escolar">
             {periods.map((p) => (
               <option key={p.id} value={p.id}>
                 Año escolar {p.name}
@@ -77,7 +111,7 @@ function StudentGrades({ studentId }) {
         )}
         {terms.length > 0 && (
           <div className="level-filter" role="group" aria-label="Lapso">
-            {[{ id: '', name: 'Todos los lapsos' }, ...terms].map((t) => (
+            {[...terms, { id: '', name: 'Todos los lapsos' }].map((t) => (
               <button
                 key={t.id || 'all'}
                 type="button"
@@ -89,16 +123,6 @@ function StudentGrades({ studentId }) {
               </button>
             ))}
           </div>
-        )}
-        {visible.length > 1 && (
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm grades-toolbar__toggle"
-            onClick={() => (allCollapsed ? expandAll(visible.map((s) => s.key)) : collapseAll())}
-          >
-            <Icon name="chevronDown" size={15} className={allCollapsed ? '' : 'is-flipped'} />
-            {allCollapsed ? 'Expandir todas' : 'Contraer todas'}
-          </button>
         )}
       </div>
 
@@ -139,43 +163,156 @@ function StudentGrades({ studentId }) {
             </p>
           </div>
 
-          <div className="subject-list">
+          {!isQualitative(data.grading_scale) && (
+            <ul className="tl-legend" aria-label="Significado de los colores">
+              {Object.entries(LIGHTS).map(([key, l]) => (
+                <li key={key}>
+                  <span className={`tl-dot tl-dot--${key}`} aria-hidden="true" />
+                  <strong>{l.label}</strong> {l.range}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="grade-cards">
             {visible.map((subject) => (
-              <SubjectCard
+              <SubjectGradeCard
                 key={subject.key}
                 subject={subject}
-                collapsed={!isOpen(subject.key)}
-                onToggle={() => toggle(subject.key)}
                 scale={scale}
-                passing={passing}
-                showTerm={!termId}
                 termName={termName}
+                allTerms={!termId}
+                onOpen={() => setOpenSubject(subject.key)}
               />
             ))}
           </div>
         </>
       )}
+
+      {selectedSubject && (
+        <Modal title={termName ? `${selectedSubject.name} · ${termName}` : selectedSubject.name} size="lg" onClose={() => setOpenSubject(null)}>
+          <SubjectDetail subject={selectedSubject} scale={scale} passing={passing} showTerm={!termId} termName={termName} />
+        </Modal>
+      )}
     </div>
   );
 }
 
-/** Resumen de una materia para la cabecera: una etiqueta por lapso con su nota. */
-function SubjectSummary({ plans, passing }) {
-  if (!plans.length) {
-    return (
-      <span className="subject-card__summary">
-        <span className="grade-chip grade--none" title="Aún no hay plan de evaluación">
-          <strong>—</strong>
-          <span className="grade-chip__kind">Sin plan</span>
+/** Semáforo de tres luces; enciende la que corresponde a la nota. */
+function TrafficLight({ light }) {
+  return (
+    <span className="tl" role="img" aria-label={light ? LIGHTS[light].label : 'Sin notas'}>
+      {['red', 'yellow', 'green'].map((k) => (
+        <span key={k} className={`tl-dot tl-dot--${k} ${light === k ? 'is-on' : ''}`} />
+      ))}
+    </span>
+  );
+}
+
+/**
+ * Tarjeta de una materia en el lapso elegido: acumulado, promedio de lo
+ * calificado con su semáforo y avance del plan. Con "Todos los lapsos", el
+ * semáforo usa la media de los lapsos y debajo va la nota de cada uno.
+ */
+function SubjectGradeCard({ subject, scale, termName, allTerms, onOpen }) {
+  const plans = subject.plans;
+  const qualitative = plans.some((p) => isQualitative(p.grading_scale));
+  const plan = plans.find((p) => p.graded_count > 0) || plans[0] || null;
+
+  const score = allTerms ? mean(plans.map(planScore)) : plan && planScore(plan);
+  const light = trafficLight(score, scale);
+  const headline = allTerms ? score : plan && (plan.final_grade ?? (plan.graded_count ? plan.accumulated : null));
+  const literal = qualitative ? literalFor(score) : null;
+  const gradedActivities = plans.reduce((n, p) => n + p.activities.filter((a) => a.raw_score !== null).length, 0);
+  const totalActivities = plans.reduce((n, p) => n + p.activities.length, 0);
+
+  let caption;
+  if (!plan) caption = termName ? `Sin plan de evaluación en ${termName}` : 'Sin plan de evaluación';
+  else if (allTerms) caption = 'Promedio de los lapsos';
+  else if (plan.status === 'final') caption = 'Nota definitiva';
+  else if (headline === null) caption = 'Aún sin notas';
+  else caption = 'Acumulado del lapso';
+
+  return (
+    <button type="button" className={`grade-card ${light ? `grade-card--${light}` : 'grade-card--none'}`} onClick={onOpen} aria-haspopup="dialog">
+      <span className="grade-card__head">
+        <span className="grade-card__title">
+          {subject.name}
+          {subject.code && <span className="chip">{subject.code}</span>}
         </span>
+        <TrafficLight light={light} />
       </span>
+      <span className="grade-card__teacher">{plan?.teacher_name ? `Prof. ${plan.teacher_name}` : 'Docente por asignar'}</span>
+
+      <span className="grade-card__score">
+        {literal ? (
+          <LiteralBadge level={literal} size="lg" showLabel />
+        ) : (
+          <>
+            <span className="grade-card__value">{fmt(headline)}</span>
+            <span className="grade-card__scale">/ {scale}</span>
+          </>
+        )}
+      </span>
+      <span className="grade-card__caption">{caption}</span>
+
+      {allTerms ? (
+        <SubjectSummary plans={plans} scale={scale} />
+      ) : (
+        plan && (
+          <span className="grade-card__progress">
+            <span className="grade-card__progress-head">
+              <span>Evaluado {fmt(plan.evaluated_weight, 0)}%</span>
+              {plan.status !== 'final' && plan.current_average !== null && !qualitative && <span>Promedio {fmt(plan.current_average)}</span>}
+            </span>
+            <span className="progress-bar">
+              <span className="progress-bar__fill" style={{ width: `${Math.min(100, plan.evaluated_weight)}%` }} />
+            </span>
+          </span>
+        )
+      )}
+
+      <span className="grade-card__foot">
+        <span>{light ? LIGHTS[light].label : totalActivities ? `${totalActivities} actividades por calificar` : 'Sin actividades'}</span>
+        {totalActivities > 0 && (
+          <span className="grade-card__more">
+            {gradedActivities}/{totalActivities} calificadas <Icon name="chevronRight" size={14} />
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+/** Desglose de la materia en el modal: un bloque por plan (lapso). */
+function SubjectDetail({ subject, scale, passing, showTerm, termName }) {
+  if (subject.plans.length === 0) {
+    return (
+      <p className="text-muted text-sm" style={{ margin: 0 }}>
+        {termName
+          ? `Aún no hay plan de evaluación de ${subject.name} para ${termName}.`
+          : `Aún no hay plan de evaluación de ${subject.name}: cuando el docente lo publique, aquí verás sus actividades y notas.`}
+      </p>
     );
   }
   return (
-    <span className="subject-card__summary">
+    <div className="grade-detail">
+      {subject.plans.map((plan) => (
+        <PlanGrades key={plan.plan_id} plan={plan} scale={scale} passing={passing} showTerm={showTerm} />
+      ))}
+    </div>
+  );
+}
+
+/** Una etiqueta por lapso con su nota, coloreada con el semáforo. */
+function SubjectSummary({ plans, scale }) {
+  if (!plans.length) return null;
+  return (
+    <span className="subject-card__summary grade-card__terms">
       {plans.map((plan) => {
         const value = plan.final_grade ?? (plan.graded_count ? plan.accumulated : null);
-        const tone = gradeTone(plan.status === 'final' ? plan.final_grade : plan.current_average, passing);
+        const light = trafficLight(planScore(plan), scale);
+        const tone = light ? `grade-chip--${light}` : 'grade--none';
         // Cualitativa: el literal del promedio (definitiva o de lo evaluado hasta hoy).
         const literal = isQualitative(plan.grading_scale) ? literalFor(plan.status === 'final' ? plan.final_grade : plan.current_average) : null;
         return (
@@ -187,49 +324,6 @@ function SubjectSummary({ plans, passing }) {
         );
       })}
     </span>
-  );
-}
-
-/**
- * Materia colapsable: toda la cabecera es un botón (con teclado y lector de
- * pantalla). Colapsada, solo queda el nombre y el resumen de notas; el
- * contenido se anima con grid-template-rows y queda `inert` (fuera del orden
- * de tabulación) mientras no se ve.
- */
-export function SubjectCard({ subject, collapsed, onToggle, scale, passing, showTerm, termName = null }) {
-  const bodyId = `subject-body-${String(subject.key).replace(/[^a-z0-9-]/gi, '-')}`;
-  return (
-    <section className={`subject-card ${collapsed ? 'is-collapsed' : ''}`}>
-      <h3 className="subject-card__head">
-        <button type="button" className="subject-card__toggle" onClick={onToggle} aria-expanded={!collapsed} aria-controls={bodyId}>
-          <span className="subject-card__title">
-            {subject.name}
-            {subject.code && <span className="chip">{subject.code}</span>}
-          </span>
-          <SubjectSummary plans={subject.plans} passing={passing} />
-          <Icon name="chevronDown" size={18} className="subject-card__chevron" />
-        </button>
-      </h3>
-      <div id={bodyId} className="subject-card__body" aria-hidden={collapsed} {...(collapsed ? { inert: '' } : {})}>
-        <div className="subject-card__inner">
-          {subject.plans.length === 0 && (
-            <div className="plan-grades plan-grades--pending">
-              <div className="plan-grades__head">
-                <div className="cell-person__sub">
-                  {termName
-                    ? `Aún no hay plan de evaluación de ${subject.name} para ${termName}.`
-                    : `Aún no hay plan de evaluación de ${subject.name}: cuando el docente lo publique, aquí verás sus actividades y notas.`}
-                </div>
-                <Badge variant="neutral">Sin plan</Badge>
-              </div>
-            </div>
-          )}
-          {subject.plans.map((plan) => (
-            <PlanGrades key={plan.plan_id} plan={plan} scale={scale} passing={passing} showTerm={showTerm} />
-          ))}
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -267,7 +361,7 @@ function PlanGrades({ plan, scale, passing, showTerm }) {
                 </span>
               </div>
             ) : (
-              <div className={`grade-big ${gradeTone(plan.status === 'final' ? headline : plan.current_average, passing)}`}>
+              <div className={`grade-big grade-big--${trafficLight(planScore(plan), scale) || 'none'}`}>
                 <span className="grade-big__value">{fmt(headline)}</span>
                 <span className="grade-big__scale">/ {scale}</span>
                 <span className="grade-big__label">{plan.status === 'final' ? 'Nota definitiva' : 'Acumulado'}</span>
@@ -305,6 +399,7 @@ function PlanGrades({ plan, scale, passing, showTerm }) {
                   <th style={{ textAlign: 'right' }}>Vale</th>
                   <th style={{ textAlign: 'right' }}>Nota</th>
                   {!qualitative && <th style={{ textAlign: 'right' }}>Puntos</th>}
+                  <th>Estado</th>
                 </tr>
               </thead>
               <tbody>
@@ -333,6 +428,9 @@ function PlanGrades({ plan, scale, passing, showTerm }) {
                         {a.raw_score === null ? '—' : `${fmt((a.earned_percent / 100) * scale, 2)} de ${fmt((a.weight_percent / 100) * scale, 2)}`}
                       </td>
                     )}
+                    <td data-label="Estado">
+                      {a.raw_score === null ? <Badge variant="neutral">Pendiente</Badge> : <Badge variant="success">Calificada</Badge>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

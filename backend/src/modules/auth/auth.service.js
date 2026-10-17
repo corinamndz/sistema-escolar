@@ -76,6 +76,7 @@ async function login({ tenantSlug, username, password }) {
         tenantId: tenant.id,
         tenantName: tenant.name,
         tenantSlug: tenant.slug,
+        mustChangePassword: !!user.must_change_password,
       },
     };
   });
@@ -131,7 +132,7 @@ async function changePassword(trx, tenantId, userId, { currentPassword, newPassw
   if (!ok) throw ApiError.unauthorized('La contraseña actual no es correcta.');
 
   const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-  await trx('users').where({ id: userId }).update({ password_hash: passwordHash });
+  await trx('users').where({ id: userId }).update({ password_hash: passwordHash, must_change_password: false });
   invalidatePermissionsCache(tenantId, userId);
 }
 
@@ -157,6 +158,7 @@ async function getMe(trx, tenantId, userId) {
       'u.full_name',
       'u.status',
       'u.last_login_at',
+      'u.must_change_password',
       't.id as tenant_id',
       't.name as tenant_name',
       't.slug as tenant_slug',
@@ -176,6 +178,7 @@ async function getMe(trx, tenantId, userId) {
     fullName: user.full_name,
     status: user.status,
     lastLoginAt: user.last_login_at,
+    mustChangePassword: !!user.must_change_password,
     tenantId: user.tenant_id,
     tenantName: user.tenant_name,
     tenantSlug: user.tenant_slug,

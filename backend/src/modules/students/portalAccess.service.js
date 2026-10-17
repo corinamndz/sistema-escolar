@@ -7,6 +7,7 @@ const {
   deactivateUser,
 } = require('../auth/userAccount.service');
 const { invalidatePermissionsCache } = require('../../middlewares/permission.middleware');
+const { sendWelcomeEmail } = require('../../services/email/welcomeEmail');
 
 /**
  * Usuario de acceso al portal para representantes.
@@ -78,17 +79,30 @@ async function applyPortalAccess(trx, tenantId, guardian, portal) {
     await assertUsernameAvailable(trx, tenantId, username);
     const roleId = await getGuardianRoleId(trx, tenantId);
 
+    const passwordHash = await hashFor(portal.password);
     const [user] = await trx('users')
       .insert({
         tenant_id: tenantId,
         username,
-        password_hash: await hashFor(portal.password),
+        password_hash: passwordHash,
         full_name: fullName,
         status: 'active',
+        must_change_password: temporaryPassword !== null,
       })
       .returning('id');
     await trx('user_roles').insert({ user_id: user.id, role_id: roleId });
     await trx('guardians').where({ id: guardian.id }).update({ user_id: user.id });
+
+    if (temporaryPassword !== null) {
+      const tenant = await trx('tenants').where('id', tenantId).select('name').first();
+      await sendWelcomeEmail(trx, tenantId, {
+        to: username,
+        schoolName: tenant?.name ?? '',
+        fullName,
+        username,
+        temporaryPassword,
+      });
+    }
 
     return { access: await getPortalAccess(trx, tenantId, user.id), temporaryPassword };
   }
@@ -105,6 +119,7 @@ async function applyPortalAccess(trx, tenantId, guardian, portal) {
   }
   if (portal.resetPassword || portal.password) {
     payload.password_hash = await hashFor(portal.password);
+    payload.must_change_password = temporaryPassword !== null;
   }
   if (portal.status && portal.status !== current.status) {
     payload.status = portal.status;
@@ -112,6 +127,18 @@ async function applyPortalAccess(trx, tenantId, guardian, portal) {
 
   await trx('users').where({ id: current.id }).update({ ...payload, updated_at: trx.fn.now() });
   if (payload.status || payload.password_hash) invalidatePermissionsCache(tenantId, current.id);
+
+  if (temporaryPassword !== null) {
+    const tenant = await trx('tenants').where('id', tenantId).select('name').first();
+    const emailTo = payload.username ?? current.username;
+    await sendWelcomeEmail(trx, tenantId, {
+      to: emailTo,
+      schoolName: tenant?.name ?? '',
+      fullName,
+      username: emailTo,
+      temporaryPassword,
+    });
+  }
 
   return { access: await getPortalAccess(trx, tenantId, current.id), temporaryPassword };
 }

@@ -1,6 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const { invalidatePermissionsCache } = require('../../middlewares/permission.middleware');
 const { normalizeEmail, assertUsernameAvailable, hashOrGenerate, deactivateUser } = require('../auth/userAccount.service');
+const { sendWelcomeEmail } = require('../../services/email/welcomeEmail');
 
 /**
  * Usuario de acceso al sistema de un miembro del personal, gestionado como
@@ -73,17 +74,30 @@ async function createStaffAccess(trx, tenantId, staffId, { email, password, role
   const validRoles = await assertRoles(trx, tenantId, roleIds);
   const { hash, temporaryPassword } = await hashOrGenerate(password);
 
+  const fullName = `${staff.first_name} ${staff.last_name}`;
   const [user] = await trx('users')
     .insert({
       tenant_id: tenantId,
       username,
       password_hash: hash,
-      full_name: `${staff.first_name} ${staff.last_name}`,
+      full_name: fullName,
       status: 'active',
+      must_change_password: temporaryPassword !== null,
     })
     .returning('id');
   await trx('user_roles').insert(validRoles.map((roleId) => ({ user_id: user.id, role_id: roleId })));
   await trx('staff').where({ id: staffId }).update({ user_id: user.id });
+
+  if (temporaryPassword !== null) {
+    const tenant = await trx('tenants').where('id', tenantId).select('name').first();
+    await sendWelcomeEmail(trx, tenantId, {
+      to: username,
+      schoolName: tenant?.name ?? '',
+      fullName,
+      username,
+      temporaryPassword,
+    });
+  }
 
   return { access: await getAccount(trx, tenantId, user.id), temporaryPassword };
 }
@@ -109,6 +123,7 @@ async function updateStaffAccess(trx, tenantId, staffId, changes, actorUserId) {
     const result = await hashOrGenerate(changes.password);
     payload.password_hash = result.hash;
     temporaryPassword = result.temporaryPassword;
+    payload.must_change_password = temporaryPassword !== null;
   }
   if (changes.status && changes.status !== account.status) {
     if (isSelf && changes.status === 'inactive') {
@@ -137,6 +152,18 @@ async function updateStaffAccess(trx, tenantId, staffId, changes, actorUserId) {
   await trx('users').where({ id: account.id }).update({ ...payload, updated_at: trx.fn.now() });
   // Los permisos efectivos se cachean por usuario: se invalidan si cambió algo que los afecta.
   if (rolesChanged || payload.status || payload.password_hash) invalidatePermissionsCache(tenantId, account.id);
+
+  if (temporaryPassword !== null) {
+    const tenant = await trx('tenants').where('id', tenantId).select('name').first();
+    const emailTo = payload.username ?? account.username;
+    await sendWelcomeEmail(trx, tenantId, {
+      to: emailTo,
+      schoolName: tenant?.name ?? '',
+      fullName: payload.full_name,
+      username: emailTo,
+      temporaryPassword,
+    });
+  }
 
   return { access: await getAccount(trx, tenantId, account.id), temporaryPassword };
 }

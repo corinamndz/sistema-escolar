@@ -75,6 +75,7 @@ function AuthProvider({ children }) {
       user,
       permissions,
       isAuthenticated: Boolean(user),
+      mustChangePassword: Boolean(user?.mustChangePassword),
       initializing,
       login,
       logout,

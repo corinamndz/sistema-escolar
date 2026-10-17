@@ -142,8 +142,31 @@ function SchoolIdentity({ branding }) {
   );
 }
 
+/**
+ * Hay una sesión abierta de OTRO colegio y el enlace pide uno distinto
+ * (ej. el panel superadmin abre /login?colegio=nuevo): se pregunta en vez de
+ * mandar al inicio del colegio anterior.
+ */
+function SwitchSchoolNotice({ user, targetName, onSwitch, onStay }) {
+  const currentName = user.tenantName || user.tenantSlug;
+  return (
+    <div className="login-switch">
+      <Alert variant="warning">
+        Tienes una sesión abierta en <strong>{currentName}</strong> como <strong>{user.fullName || user.username}</strong>.
+        Este enlace es para <strong>{targetName}</strong>.
+      </Alert>
+      <Button type="button" size="lg" className="btn--block" onClick={onSwitch}>
+        Cerrar sesión e ingresar a {targetName} <Icon name="arrowRight" size={17} />
+      </Button>
+      <Button type="button" variant="secondary" className="btn--block" onClick={onStay}>
+        Seguir en {currentName}
+      </Button>
+    </div>
+  );
+}
+
 function LoginPage() {
-  const { login, isAuthenticated } = useAuth();
+  const { login, logout, user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { run, loading, error } = useMutation(login);
@@ -161,9 +184,21 @@ function LoginPage() {
     if (!editingSchool && status === 'not_found') setEditingSchool(true);
   }, [editingSchool, status]);
 
-  if (isAuthenticated) {
+  // Colegio pedido explícitamente por el enlace o el subdominio (no el "recordado").
+  const linkedSlug = ['url', 'subdomain'].includes(initial.source) ? initial.slug : null;
+  const sessionSlug = normalizeSlug(user?.tenantSlug);
+  const switchingSchool = Boolean(isAuthenticated && linkedSlug && sessionSlug && linkedSlug !== sessionSlug);
+
+  if (isAuthenticated && !switchingSchool) {
     return <Navigate to={location.state?.from?.pathname || '/'} replace />;
   }
+
+  // Recarga completa al cambiar de colegio: no queda en memoria nada del anterior
+  // (permisos, tema, datos en caché) y el login arranca con el colegio del enlace.
+  const switchToLinkedSchool = () => {
+    logout();
+    window.location.replace(`/login?colegio=${encodeURIComponent(linkedSlug)}`);
+  };
 
   const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
@@ -251,6 +286,15 @@ function LoginPage() {
             )}
           </header>
 
+          {switchingSchool ? (
+            <SwitchSchoolNotice
+              user={user}
+              targetName={schoolName || linkedSlug}
+              onSwitch={switchToLinkedSchool}
+              onStay={() => navigate('/', { replace: true })}
+            />
+          ) : (
+            <>
           <Alert>{error}</Alert>
 
           <form onSubmit={handleSubmit}>
@@ -330,6 +374,8 @@ function LoginPage() {
               Ingresar <Icon name="arrowRight" size={17} />
             </Button>
           </form>
+            </>
+          )}
 
           {import.meta.env.DEV && (
             <div className="login-demo">

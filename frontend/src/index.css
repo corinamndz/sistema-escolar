@@ -3873,6 +3873,10 @@ a.cell-person__name:hover {
 .login-school-chip .icon { color: var(--color-primary-text); }
 .login-school-chip .btn { margin-left: auto; }
 
+/* Sesión abierta en otro colegio al llegar por enlace (?colegio=…) */
+.login-switch { display: grid; gap: 12px; }
+.login-switch .alert { margin-bottom: 4px; }
+
 .login-hero::after {
   content: '';
   position: absolute;

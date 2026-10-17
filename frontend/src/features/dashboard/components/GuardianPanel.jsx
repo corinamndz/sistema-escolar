@@ -198,6 +198,8 @@ function GuardianPanel() {
         />
       </div>
 
+      <UpcomingEvents />
+
       <section className="card">
         <div className="card__header">
           <div>
@@ -227,8 +229,6 @@ function GuardianPanel() {
           </div>
         )}
       </section>
-
-      <UpcomingEvents />
     </>
   );
 }

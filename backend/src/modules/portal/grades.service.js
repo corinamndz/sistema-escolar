@@ -1,6 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const { exclusionOf } = require('../academics/sectionSubjects');
 const { scaleDefinition } = require('../grading/gradingScale');
+const { loadActivityStructure } = require('../evaluation-plans/evaluationPlan.service');
 
 /**
  * Calificaciones acumuladas de un alumno para el portal del representante.
@@ -270,5 +271,76 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
   return { ...base, passing_grade: passingGrade, school_period: { id: period.id, name: period.name }, sections, terms, subjects, grading_scale: gradingScale, scale_def: scaleDefinition() };
 }
 
+/**
+ * Plan de evaluación completo (solo lectura) de una materia para el portal:
+ * referencias, estrategia, criterios e indicadores con puntaje, ponderación y
+ * la fecha de aplicación en la sección del alumno. Solo planes de una sección
+ * en la que el alumno está o estuvo inscrito (404 si no); no expone otras
+ * secciones ni datos de otros alumnos.
+ */
+async function getStudentPlanDetail(trx, tenantId, studentId, planId) {
+  const section = await trx('evaluation_plan_sections as eps')
+    .join('enrollments as e', 'e.section_id', 'eps.section_id')
+    .join('sections as sec', 'sec.id', 'eps.section_id')
+    .join('grades as g', 'g.id', 'sec.grade_id')
+    .where({ 'eps.plan_id': planId, 'e.student_id': studentId, 'e.tenant_id': tenantId })
+    .select('sec.id', 'sec.name', 'g.name as grade_name', 'g.grading_scale')
+    .orderByRaw("(e.status = 'active') DESC")
+    .first();
+  if (!section) throw ApiError.notFound('Plan de evaluación no encontrado.');
+
+  const plan = await trx('evaluation_plans as ep')
+    .join('terms as t', 't.id', 'ep.term_id')
+    .leftJoin('subjects as sub', 'sub.id', 'ep.subject_id')
+    .leftJoin('staff as st', 'st.id', 'ep.teacher_id')
+    .where({ 'ep.id': planId, 'ep.tenant_id': tenantId })
+    .select(
+      'ep.id',
+      'ep.format',
+      trx.raw('COALESCE(sub.name, ep.subject) AS subject'),
+      'sub.code as subject_code',
+      't.name as term_name',
+      't.term_number',
+      trx.raw("NULLIF(concat_ws(' ', st.first_name, st.last_name), '') AS teacher_name")
+    )
+    .first();
+  if (!plan) throw ApiError.notFound('Plan de evaluación no encontrado.');
+
+  const rows = await trx('evaluation_activities')
+    .where({ tenant_id: tenantId, evaluation_plan_id: planId })
+    .select('id', 'title', 'category', 'weight_percent', 'instrument', 'strategy', 'content_refs', 'max_score', 'programmatic_content_id',
+      trx.raw("to_char(planned_date, 'YYYY-MM-DD') AS planned_date"))
+    .orderByRaw('planned_date ASC NULLS LAST, created_at ASC');
+  const structure = await loadActivityStructure(trx, rows.map((a) => a.id));
+  const contentIds = [...new Set(rows.map((a) => a.programmatic_content_id).filter(Boolean))];
+  const contents = new Map(
+    (contentIds.length ? await trx('programmatic_content').whereIn('id', contentIds).select('id', 'unit', 'topic') : []).map((c) => [c.id, c])
+  );
+
+  const activities = rows.map(({ programmatic_content_id: contentId, planned_date: plannedDate, ...a }) => {
+    const { criteria = [], section_dates: dates = [] } = structure.get(a.id) || {};
+    const own = dates.find((d) => d.section_id === section.id);
+    return {
+      ...a,
+      weight_percent: Number(a.weight_percent),
+      max_score: Number(a.max_score),
+      content_refs: a.content_refs || [],
+      criteria: criteria.map(({ position, ...c }) => ({ ...c, indicators: c.indicators.map(({ position: _p, ...i }) => i) })),
+      // Fecha en la sección del alumno; si el plan no la tiene por sección, la estimada de la actividad.
+      section_dates: own ? [own] : plannedDate ? [{ section_id: section.id, applied_on: plannedDate }] : [],
+      programmatic_content: contents.get(contentId) || null,
+    };
+  });
+
+  return {
+    ...plan,
+    grade_name: section.grade_name,
+    grading_scale: section.grading_scale || 'quantitative',
+    section: { id: section.id, name: section.name },
+    total_weight: round2(activities.reduce((n, a) => n + a.weight_percent, 0)),
+    activities,
+  };
+}
+
 module.exports = {
-  assertGuardianOfStudent, assertGradesUnlocked, overdueCount, GRADES_LOCKED_MESSAGE, getStudentGrades, GRADE_SCALE, PASSING_GRADE };
+  assertGuardianOfStudent, assertGradesUnlocked, overdueCount, GRADES_LOCKED_MESSAGE, getStudentGrades, getStudentPlanDetail, GRADE_SCALE, PASSING_GRADE };

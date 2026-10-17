@@ -11,6 +11,7 @@ router.use(authMiddleware, tenantMiddleware);
 
 router.get('/me', controller.getMyPortal);
 router.get('/students/:studentId/grades', controller.getStudentGrades);
+router.get('/students/:studentId/evaluation-plans/:planId', controller.getStudentPlanDetail);
 router.get('/students/:studentId/history', controller.getStudentHistory);
 router.get('/students/:studentId/schedule', controller.getStudentSchedule);
 router.get('/students/:studentId/sanctions', controller.getStudentSanctions);

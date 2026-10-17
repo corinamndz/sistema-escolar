@@ -48,6 +48,15 @@ const getStudentGrades = asyncHandler(async (req, res) => {
   res.status(200).json(await grades.getStudentGrades(req.db, req.tenantId, req.user.id, studentId, { schoolPeriodId }));
 });
 
+/** GET /portal/students/:studentId/evaluation-plans/:planId — plan de evaluación completo (solo lectura). */
+const getStudentPlanDetail = asyncHandler(async (req, res) => {
+  const studentId = z.string().uuid().parse(req.params.studentId);
+  const planId = z.string().uuid().parse(req.params.planId);
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
+  await grades.assertGradesUnlocked(req.db, req.tenantId, studentId); // 403 si tiene cuotas vencidas
+  res.status(200).json(await grades.getStudentPlanDetail(req.db, req.tenantId, studentId, planId));
+});
+
 /**
  * GET /portal/students/:studentId/evaluations?term_number= — cronograma de
  * evaluaciones de la sección del alumno. SOLO de los alumnos vinculados a la
@@ -75,4 +84,5 @@ const getStudentClubs = asyncHandler(async (req, res) => {
 module.exports = {
   getStudentClubs,
   getStudentEvaluations,
+  getStudentPlanDetail,
   getStudentHistory, getStudentSchedule, getStudentSanctions, getMyPortal, getStudentGrades };

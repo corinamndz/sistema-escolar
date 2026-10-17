@@ -2745,6 +2745,19 @@ a.cell-person__name:hover {
 .grade-card__more { display: inline-flex; align-items: center; gap: 2px; color: var(--color-text-muted); font-weight: 500; white-space: nowrap; }
 .grade-card:hover .grade-card__more { color: var(--color-primary-text); }
 
+/* Plan de evaluación completo (portal) */
+.eplan-intro { margin: -4px 0 14px; }
+.eplan-card__icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: none; border-radius: var(--radius-md); background: var(--color-primary-soft); color: var(--color-primary-text); }
+.eplan-card__stats { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; font-size: 13px; color: var(--color-text-muted); }
+.eplan-card__stats strong { font-family: var(--font-display); font-size: 17px; color: var(--color-text); }
+.eplan-card .grade-card__foot { color: var(--color-primary-text); }
+.eplan-card.is-disabled { cursor: default; opacity: 0.75; box-shadow: none; border-style: dashed; }
+.eplan-card.is-disabled:hover { transform: none; box-shadow: none; }
+.eplan-detail { display: flex; flex-direction: column; gap: 18px; }
+.eplan-detail .card + .card { margin-top: 0; }
+.eplan__title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.eplan__meta { display: flex; flex-wrap: wrap; gap: 6px; }
+
 /* Desglose en el modal: los planes sin el padding lateral de la tarjeta antigua. */
 .grade-detail .plan-grades { padding: 4px 0 18px; }
 .grade-detail .plan-grades + .plan-grades { padding-top: 18px; }
@@ -6870,7 +6883,7 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
 .evt-audience select { min-width: 240px; flex: 1; }
 
 /* Inicio del portal */
-.evt-upcoming { margin-top: 24px; }
+.evt-upcoming { margin-top: 0; }
 .evt-upcoming__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
 .evt-upcoming__item {
   display: flex; gap: 12px; align-items: center; padding: 8px; text-align: left; border: 1px solid var(--color-border);

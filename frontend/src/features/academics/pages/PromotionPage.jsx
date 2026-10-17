@@ -481,7 +481,7 @@ function PromotionGroup({ group, open, onToggle, rows, preview, canEdit, canCrea
     <section className={`student-group promotion-group ${open ? 'is-open' : ''}`}>
       <div className="student-group__header">
         <button type="button" className="student-group__toggle" onClick={onToggle} aria-expanded={open} aria-controls={bodyId}>
-          <Icon name="chevronDown" size={18} className="student-group__chevron" />
+          <Icon name="chevronDown" size={16} className="student-group__chevron" />
           <span className="student-group__title">
             {group.grade.name} <span className="student-group__sep">·</span> Sección {group.sectionName}
           </span>

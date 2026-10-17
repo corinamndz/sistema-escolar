@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import studentsApi from '../../../api/endpoints/students.api';
+import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
@@ -16,11 +17,21 @@ import Badge from '../../../components/ui/Badge';
 import Icon from '../../../components/ui/Icon';
 import Spinner from '../../../components/ui/Spinner';
 import { useToast } from '../../../components/ui/Toast';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import ImportButton from '../../../components/import/ImportButton';
+import { LEVEL_CODES, LevelBadge, LevelFilter } from '../../academics/levels';
 import StudentGroups, { sectionLabel } from '../components/StudentGroups';
 
 const STATUS_LABELS = { active: ['Activo', 'success'], inactive: ['Inactivo', 'neutral'], graduated: ['Egresado', 'primary'], withdrawn: ['Retirado', 'danger'] };
-const VIEW_KEY = 'students.view';
+const STATUS_FILTERS = [
+  ['', 'Todos'],
+  ['active', 'Activos'],
+  ['inactive', 'Inactivos'],
+  ['graduated', 'Egresados'],
+  ['withdrawn', 'Retirados'],
+];
+// Clave nueva: la vista inicial pasó a ser la tabla (la preferencia anterior era "Por sección").
+const VIEW_KEY = 'students.view.v2';
 
 const fullName = (r) => `${r.first_name} ${r.last_name}`;
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es', { timeZone: 'UTC' }) : null);
@@ -30,17 +41,51 @@ const searchText = (r) => [fullName(r), r.national_id, r.grade_name, r.section_n
 
 function readView() {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'groups';
+    return localStorage.getItem(VIEW_KEY) === 'groups' ? 'groups' : 'list';
   } catch {
-    return 'groups';
+    return 'list';
   }
 }
 
+/** Filtro rápido por estado, con el mismo estilo de "pastillas" que el filtro por nivel. */
+function StatusFilter({ value, onChange, counts, total }) {
+  return (
+    <div className="level-filter" role="group" aria-label="Filtrar por estado">
+      {STATUS_FILTERS.map(([code, label]) => (
+        <button
+          key={code || 'all'}
+          type="button"
+          className={`level-filter__item ${value === code ? 'level-filter__item--active' : ''}`}
+          onClick={() => onChange(code)}
+          aria-pressed={value === code}
+        >
+          {label}
+          <span className="level-filter__count">{code ? counts[code] || 0 : total}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const countBy = (rows, key) => rows.reduce((acc, r) => (r[key] ? { ...acc, [r[key]]: (acc[r[key]] || 0) + 1 } : acc), {});
+
+/**
+ * Alumnos. Vista inicial: TABLA general (como Materias), con búsqueda y filtros
+ * rápidos por estado y nivel educativo; acciones por fila: ver ficha, editar y
+ * retirar / reactivar (los alumnos no se eliminan: se cambia su estado). La
+ * vista "Por sección" agrupa la misma lista filtrada por grado y sección.
+ */
 function StudentsPage() {
   const { can } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
+  const confirm = useConfirm();
+  // Se cargan todos los alumnos: los filtros (estado, nivel, grado, sección, búsqueda) son locales y muestran sus totales.
+  const { data: rows, loading, error, refetch } = useFetch(() => studentsApi.list(), []);
   const [status, setStatus] = useState('');
-  const { data: rows, loading, error, refetch } = useFetch(() => studentsApi.list(status ? { status } : undefined), [status]);
+  const [level, setLevel] = useState('');
+  const [gradeId, setGradeId] = useState('');
+  const [section, setSection] = useState(''); // nombre de la sección ("A"): sin grado, filtra la A de todos los grados
   const [editing, setEditing] = useState(null); // null = cerrado, {} = crear, {...} = editar
   const [view, setView] = useState(readView);
   const [query, setQuery] = useState('');
@@ -55,45 +100,129 @@ function StudentsPage() {
     }
   };
 
+  // Filtros acumulativos: estado + nivel + grado + sección (+ búsqueda de texto).
+  // Cada grupo de pastillas cuenta sobre lo que dejan los DEMÁS filtros, y las
+  // opciones de grado y sección salen de los alumnos que dejan los filtros previos.
+  const all = rows || [];
+  const matches = (r, skip) =>
+    (skip === 'status' || !status || r.status === status) &&
+    (skip === 'level' || !level || r.level_code === level) &&
+    (skip === 'grade' || !gradeId || r.grade_id === gradeId) &&
+    (skip === 'section' || !section || r.section_name === section);
+  const forStatus = all.filter((r) => matches(r, 'status'));
+  const forLevel = all.filter((r) => matches(r, 'level'));
+  const statusCounts = countBy(forStatus, 'status');
+  const levelCounts = countBy(forLevel, 'level_code');
+  const visible = all.filter((r) => matches(r));
+
+  // Grados: los del nivel elegido, en orden de la jerarquía escolar.
+  const gradeOptions = useMemo(() => {
+    const map = new Map();
+    all
+      .filter((r) => r.grade_id && (!level || r.level_code === level))
+      .forEach((r) => map.set(r.grade_id, { id: r.grade_id, name: r.grade_name, order: `${r.level_sort}-${String(r.grade_sort).padStart(3, '0')}-${r.grade_name}` }));
+    return [...map.values()].sort((a, b) => a.order.localeCompare(b.order, 'es', { numeric: true }));
+  }, [all, level]);
+  // Secciones: las del grado elegido (o de todos los grados del nivel), por nombre.
+  // Con el grado que sigue siendo válido: si el nivel lo dejó fuera, se calculan
+  // como sin grado (si no, la sección elegida se perdería junto con el grado).
+  const validGradeId = gradeOptions.some((g) => g.id === gradeId) ? gradeId : '';
+  const sectionOptions = useMemo(
+    () =>
+      [...new Set(all.filter((r) => r.section_name && (!level || r.level_code === level) && (!validGradeId || r.grade_id === validGradeId)).map((r) => r.section_name))].sort((a, b) =>
+        a.localeCompare(b, 'es', { numeric: true })
+      ),
+    [all, level, validGradeId]
+  );
+  // Un grado o sección que ya no está entre las opciones (cambió el nivel o el grado) se limpia.
+  useEffect(() => {
+    if (gradeId && !gradeOptions.some((g) => g.id === gradeId)) setGradeId('');
+  }, [gradeId, gradeOptions]);
+  useEffect(() => {
+    if (section && !sectionOptions.includes(section)) setSection('');
+  }, [section, sectionOptions]);
+  const anyFilter = Boolean(status || level || gradeId || section);
+  const clearFilters = () => {
+    setStatus('');
+    setLevel('');
+    setGradeId('');
+    setSection('');
+  };
+  const filtered = useMemo(() => {
+    const q = normalize(query.trim());
+    return q ? visible.filter((r) => normalize(searchText(r)).includes(q)) : visible;
+  }, [visible, query]);
+
+  const canEdit = can('students', 'update');
+
+  /** Retirar o reactivar desde la fila (con confirmación). */
+  const changeStatus = async (r, next) => {
+    const withdraw = next === 'withdrawn';
+    const ok = await confirm({
+      title: withdraw ? `¿Retirar a ${fullName(r)}?` : `¿Reactivar a ${fullName(r)}?`,
+      message: withdraw
+        ? 'Quedará como Retirado. Su historial, notas e inscripciones se conservan, y puedes reactivarlo cuando quieras.'
+        : 'Volverá a estar Activo.',
+      danger: withdraw,
+      confirmLabel: withdraw ? 'Retirar' : 'Reactivar',
+    });
+    if (!ok) return;
+    try {
+      await studentsApi.update(r.id, { status: next });
+      toast.success(withdraw ? 'Alumno retirado' : 'Alumno reactivado', fullName(r));
+      refetch();
+    } catch (err) {
+      toast.error('No se pudo cambiar el estado', getErrorMessage(err));
+    }
+  };
+
+  const rowActions = canEdit
+    ? [
+        { key: 'withdraw', icon: 'logout', label: 'Retirar alumno', show: (r) => r.status === 'active', onClick: (r) => changeStatus(r, 'withdrawn') },
+        { key: 'reactivate', icon: 'checkCircle', label: 'Reactivar alumno', show: (r) => r.status !== 'active', onClick: (r) => changeStatus(r, 'active') },
+      ]
+    : [];
+
   const nameColumn = {
     key: 'name',
     header: 'Alumno',
     render: (r) => (
-      <Link to={`/students/${r.id}`} className="cell-person__name">
-        {fullName(r)}
-      </Link>
+      <div>
+        <Link to={`/students/${r.id}`} className="cell-person__name">
+          {fullName(r)}
+        </Link>
+        {r.birth_date && <div className="cell-person__sub">Nac. {formatDate(r.birth_date)}</div>}
+      </div>
     ),
     sortValue: (r) => `${r.last_name} ${r.first_name}`,
   };
-  const baseColumns = [
-    { key: 'national_id', header: 'Documento', render: (r) => r.national_id || '—' },
-    { key: 'birth_date', header: 'Nacimiento', render: (r) => formatDate(r.birth_date) || '—', sortValue: (r) => r.birth_date },
-    {
-      key: 'status',
-      header: 'Estado',
-      render: (r) => {
-        const [label, variant] = STATUS_LABELS[r.status] || ['—', 'neutral'];
-        return <Badge variant={variant}>{label}</Badge>;
-      },
-      sortValue: (r) => r.status,
+  const documentColumn = { key: 'national_id', header: 'Cédula / documento', render: (r) => r.national_id || <span className="text-muted">—</span>, sortValue: (r) => r.national_id || '' };
+  const statusColumn = {
+    key: 'status',
+    header: 'Estado',
+    render: (r) => {
+      const [label, variant] = STATUS_LABELS[r.status] || ['—', 'neutral'];
+      return <Badge variant={variant}>{label}</Badge>;
     },
-  ];
-  // En la lista plana se agrega la columna de grado y sección (en la vista agrupada ya está en la cabecera).
+    sortValue: (r) => r.status,
+  };
   const listColumns = [
     nameColumn,
+    documentColumn,
     {
       key: 'section',
       header: 'Grado y sección',
       render: (r) => (r.section_id ? `${r.grade_name} · ${sectionLabel(r.section_name)}` : <span className="text-muted">Sin inscripción</span>),
       sortValue: (r) => (r.section_id ? `${r.level_sort}-${String(r.grade_sort).padStart(3, '0')}-${r.grade_name}-${r.section_name}` : '~'),
     },
-    ...baseColumns,
+    {
+      key: 'level',
+      header: 'Nivel',
+      render: (r) => (r.level_code ? <LevelBadge code={r.level_code} /> : <span className="text-muted">—</span>),
+      sortValue: (r) => (r.level_code ? LEVEL_CODES.indexOf(r.level_code) : 9),
+    },
+    statusColumn,
   ];
-
-  const filtered = useMemo(() => {
-    const q = normalize(query.trim());
-    return q ? (rows || []).filter((r) => normalize(searchText(r)).includes(q)) : rows || [];
-  }, [rows, query]);
 
   const canCreate = can('students', 'create');
   const importButton = canCreate && (
@@ -104,22 +233,45 @@ function StudentsPage() {
       onImported={refetch}
     />
   );
-  const statusFilter = (
-    <Select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filtrar por estado">
-      <option value="">Todos los estados</option>
-      {Object.entries(STATUS_LABELS).map(([value, [label]]) => (
-        <option key={value} value={value}>
-          {label}
-        </option>
-      ))}
-    </Select>
+  // Fila de arriba, junto al buscador: grado, sección y limpiar filtros.
+  const gradeSectionFilters = (
+      <div className="filter-bar__selects">
+        <Select value={gradeId} onChange={(e) => setGradeId(e.target.value)} aria-label="Filtrar por grado" disabled={!gradeOptions.length}>
+          <option value="">Todos los grados</option>
+          {gradeOptions.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </Select>
+        <Select value={section} onChange={(e) => setSection(e.target.value)} aria-label="Filtrar por sección" disabled={!sectionOptions.length}>
+          <option value="">Todas las secciones</option>
+          {sectionOptions.map((name) => (
+            <option key={name} value={name}>
+              {sectionLabel(name)}
+            </option>
+          ))}
+        </Select>
+        {anyFilter && (
+          <Button variant="ghost" size="sm" icon="x" onClick={clearFilters}>
+            Limpiar filtros
+          </Button>
+        )}
+      </div>
+  );
+  // Fila de abajo: pastillas de estado y nivel.
+  const filters = (
+    <div className="filter-bar">
+      <StatusFilter value={status} onChange={setStatus} counts={statusCounts} total={forStatus.length} />
+      <LevelFilter value={level} onChange={setLevel} counts={levelCounts} total={forLevel.length} />
+    </div>
   );
 
   const viewToggle = (
     <div className="segmented" role="radiogroup" aria-label="Vista">
       {[
+        ['list', 'Tabla', 'menu'],
         ['groups', 'Por sección', 'layers'],
-        ['list', 'Lista', 'menu'],
       ].map(([key, label, icon]) => (
         <button
           key={key}
@@ -137,19 +289,21 @@ function StudentsPage() {
 
   return (
     <div>
-      <PageHeader title="Alumnos" subtitle="Matrícula del colegio" actions={viewToggle} />
+      <PageHeader title="Alumnos" subtitle="Matrícula del colegio: busca, filtra por estado, nivel, grado o sección y abre la ficha de cada alumno." actions={viewToggle} />
 
       {view === 'list' ? (
         <DataTable
-          title="Listado de alumnos"
+          title="Alumnos del colegio"
+          description="El grado y la sección son los de su inscripción vigente."
           columns={listColumns}
-          rows={rows}
+          rows={visible}
           loading={loading}
           error={error}
-          searchPlaceholder="Buscar por nombre, documento, grado o sección…"
+          searchPlaceholder="Buscar por nombre, apellido, documento, grado o sección…"
           getSearchText={searchText}
-          filters={statusFilter}
-          emptyMessage="Aún no hay alumnos registrados."
+          filters={filters}
+          searchAddons={gradeSectionFilters}
+          emptyMessage={anyFilter ? 'Ningún alumno con esos filtros.' : 'Aún no hay alumnos registrados.'}
           createLabel="Nuevo alumno"
           onCreate={() => setEditing({})}
           canCreate={canCreate}
@@ -157,8 +311,9 @@ function StudentsPage() {
           // "Ver" abre la ficha completa (representantes, sección actual), que ya es una página propia.
           onView={(r) => navigate(`/students/${r.id}`)}
           onEdit={setEditing}
-          canEdit={can('students', 'update')}
-          // Sin onDelete: el backend no expone DELETE /students/:id. Para dar de baja se cambia el estado.
+          canEdit={canEdit}
+          // Sin eliminar: el backend no expone DELETE /students/:id; se retira (cambia el estado).
+          rowActions={rowActions}
         />
       ) : (
         <>
@@ -167,7 +322,7 @@ function StudentsPage() {
               <div>
                 <h3 className="card__title">
                   Matrícula por grado y sección
-                  {!loading && rows && <span className="data-table__count">{rows.length}</span>}
+                  {!loading && rows && <span className="data-table__count">{filtered.length}</span>}
                 </h3>
                 <p className="card__subtitle">Cada grupo muestra los alumnos inscritos en esa sección del año escolar vigente.</p>
               </div>
@@ -180,25 +335,29 @@ function StudentsPage() {
                 )}
               </div>
             </div>
-            <div className="data-table__toolbar">
-              <div className="input-group data-table__search">
-                <Icon name="search" size={17} className="input-group__icon" />
-                <input
-                  type="search"
-                  className="input"
-                  placeholder="Buscar por nombre, documento, grado o sección…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Buscar alumnos"
-                />
-                {query && (
-                  <button type="button" className="data-table__clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda">
-                    <Icon name="x" size={15} />
-                  </button>
-                )}
+            {/* Misma distribución que la tabla: buscador + grado/sección arriba, pastillas abajo. */}
+            <div className="data-table__toolbar data-table__toolbar--stacked">
+              <div className="data-table__search-row">
+                <div className="input-group data-table__search">
+                  <Icon name="search" size={17} className="input-group__icon" />
+                  <input
+                    type="search"
+                    className="input"
+                    placeholder="Buscar por nombre, apellido, documento, grado o sección…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    aria-label="Buscar alumnos"
+                  />
+                  {query && (
+                    <button type="button" className="data-table__clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda">
+                      <Icon name="x" size={15} />
+                    </button>
+                  )}
+                </div>
+                <div className="data-table__search-addons">{gradeSectionFilters}</div>
               </div>
               <div className="data-table__filters">
-                {statusFilter}
+                {filters}
                 <Button variant="ghost" size="sm" icon="chevronDown" onClick={() => setCollapseSignal({ action: 'expand', at: Date.now() })} disabled={Boolean(query)}>
                   Expandir todo
                 </Button>
@@ -217,20 +376,21 @@ function StudentsPage() {
               <div className="empty-state__icon">
                 <Icon name={query ? 'search' : 'users'} size={24} />
               </div>
-              <div className="empty-state__title">{query ? 'Sin resultados' : 'Aún no hay alumnos registrados.'}</div>
+              <div className="empty-state__title">{query || anyFilter ? 'Sin resultados' : 'Aún no hay alumnos registrados.'}</div>
               {query && <div className="text-sm">Ningún alumno coincide con “{query}”.</div>}
             </div>
           ) : (
             <StudentGroups
               rows={filtered}
-              columns={[nameColumn, ...baseColumns]}
+              columns={[nameColumn, documentColumn, statusColumn]}
               searching={Boolean(query)}
-              // Cupos solo tienen sentido sin filtro de estado (con filtro, el conteo no es la matrícula de la sección).
-              showCapacity={!status && !query}
+              // Cupos solo tienen sentido sin filtros (con filtro, el conteo no es la matrícula de la sección).
+              showCapacity={!anyFilter && !query}
               collapseSignal={collapseSignal}
               onView={(r) => navigate(`/students/${r.id}`)}
               onEdit={setEditing}
-              canEdit={can('students', 'update')}
+              canEdit={canEdit}
+              rowActions={rowActions}
             />
           )}
         </>

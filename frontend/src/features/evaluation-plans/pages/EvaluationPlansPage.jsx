@@ -291,7 +291,7 @@ function EvaluationPlansPage() {
                 {/* Nivel 1: la materia */}
                 <div className="student-group__header">
                   <button type="button" className="student-group__toggle" onClick={() => toggle(s.key)} aria-expanded={open} aria-controls={bodyId} disabled={Boolean(query)}>
-                    <Icon name="chevronDown" size={18} className="student-group__chevron" />
+                    <Icon name="chevronDown" size={16} className="student-group__chevron" />
                     <span className="student-group__title">{s.name}</span>
                     {s.code && <span className="chip">{s.code}</span>}
                     <span className="student-group__meta">

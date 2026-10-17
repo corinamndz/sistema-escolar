@@ -65,6 +65,9 @@ const allowed = (rule, row) => (typeof rule === 'function' ? rule(row) : rule !=
  * antes de Ver / Editar / Eliminar.
  *
  * `bare` omite la tarjeta contenedora (para usarla dentro de otra tarjeta).
+ *
+ * `searchAddons`: controles en la MISMA fila que el buscador (ej. selectores de
+ * grado y sección); `filters` (pastillas de estado, nivel…) va en la fila de abajo.
  */
 function DataTable({
   columns,
@@ -81,6 +84,7 @@ function DataTable({
   searchPlaceholder = 'Buscar…',
   getSearchText = defaultSearchText,
   filters = null,
+  searchAddons = null,
   // Paginación
   pageSize: initialPageSize = 10,
   // false: muestra todas las filas, sin pie de paginación (ej. tablas dentro de un grupo)
@@ -214,25 +218,36 @@ function DataTable({
     </div>
   );
 
-  const toolbar = (showSearch || filters) && (
-    <div className="data-table__toolbar">
-      {showSearch && (
-        <div className="input-group data-table__search">
-          <Icon name="search" size={17} className="input-group__icon" />
-          <input
-            type="search"
-            className="input"
-            placeholder={searchPlaceholder}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Buscar en la tabla"
-          />
-          {query && (
-            <button type="button" className="data-table__clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda">
-              <Icon name="x" size={15} />
-            </button>
-          )}
+  const searchInput = showSearch && (
+    <div className="input-group data-table__search">
+      <Icon name="search" size={17} className="input-group__icon" />
+      <input
+        type="search"
+        className="input"
+        placeholder={searchPlaceholder}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        aria-label="Buscar en la tabla"
+      />
+      {query && (
+        <button type="button" className="data-table__clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda">
+          <Icon name="x" size={15} />
+        </button>
+      )}
+    </div>
+  );
+
+  // Con `searchAddons`, el buscador y esos controles comparten la fila de arriba
+  // y los `filters` (pastillas) quedan en la fila de abajo, a todo el ancho.
+  const toolbar = (showSearch || filters || searchAddons) && (
+    <div className={`data-table__toolbar ${searchAddons ? 'data-table__toolbar--stacked' : ''}`}>
+      {searchAddons ? (
+        <div className="data-table__search-row">
+          {searchInput}
+          <div className="data-table__search-addons">{searchAddons}</div>
         </div>
+      ) : (
+        searchInput
       )}
       {filters && <div className="data-table__filters">{filters}</div>}
     </div>

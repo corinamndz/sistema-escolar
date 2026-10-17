@@ -56,7 +56,7 @@ export function groupStudents(rows) {
  * navegador. Mientras hay una búsqueda activa se muestran todos abiertos para
  * no esconder resultados.
  */
-function StudentGroups({ rows, columns, searching, showCapacity, onView, onEdit, canEdit, collapseSignal }) {
+function StudentGroups({ rows, columns, searching, showCapacity, onView, onEdit, canEdit, rowActions = [], collapseSignal }) {
   // El docente no accede al detalle de secciones (módulo de Grados y secciones).
   const { user } = useAuth();
   const canOpenSection = !user?.isRestrictedTeacher;
@@ -92,7 +92,7 @@ function StudentGroups({ rows, columns, searching, showCapacity, onView, onEdit,
             <section className={`student-group ${open ? 'is-open' : ''} ${isNone ? 'student-group--none' : ''}`}>
               <div className="student-group__header">
                 <button type="button" className="student-group__toggle" onClick={() => toggle(g.key)} aria-expanded={open} aria-controls={bodyId} disabled={searching}>
-                  <Icon name="chevronDown" size={18} className="student-group__chevron" />
+                  <Icon name="chevronDown" size={16} className="student-group__chevron" />
                   <span className="student-group__title">
                     {isNone ? (
                       'Sin sección asignada'
@@ -122,7 +122,7 @@ function StudentGroups({ rows, columns, searching, showCapacity, onView, onEdit,
                   </span>
                   {!isNone && canOpenSection && (
                     <Link to={`/academics/sections/${g.sectionId}`} className="student-group__link" title="Abrir la sección">
-                      <Icon name="arrowRight" size={16} />
+                      <Icon name="arrowRight" size={15} />
                       <span className="sr-only">Abrir la sección {g.gradeName} {g.sectionName}</span>
                     </Link>
                   )}
@@ -140,6 +140,7 @@ function StudentGroups({ rows, columns, searching, showCapacity, onView, onEdit,
                     onView={onView}
                     onEdit={onEdit}
                     canEdit={canEdit}
+                    rowActions={rowActions}
                     emptyMessage="Sin alumnos."
                   />
                 </div>

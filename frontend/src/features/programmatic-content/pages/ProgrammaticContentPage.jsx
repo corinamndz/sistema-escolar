@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import programmaticContentApi from '../../../api/endpoints/programmaticContent.api';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
 import { getErrorMessage } from '../../../api/axiosClient';
@@ -30,10 +31,34 @@ function shortDate(value) {
   return new Date(y, m - 1, d).toLocaleDateString('es', { day: 'numeric', month: 'short' });
 }
 
-/** Una evaluación de un tema: actividad, tipo, peso, plan (lapso y secciones) y fecha. */
-function ActivityRow({ activity: a }) {
+const UNIT_DROP = 'unit:';
+
+/** Textos en español para el lector de pantalla durante el arrastre (teclado: espacio para tomar y soltar). */
+const DND_A11Y = {
+  screenReaderInstructions: {
+    draggable: 'Para mover la evaluación a otro tema, pulsa espacio, usa las flechas para elegir el tema y vuelve a pulsar espacio. Escape cancela.',
+  },
+  announcements: {
+    onDragStart: ({ active }) => `Moviendo ${active.data.current?.activity?.title || 'la evaluación'}.`,
+    onDragOver: ({ over }) => (over ? `Sobre ${over.data.current?.label || 'un destino'}.` : 'Fuera de los temas.'),
+    onDragEnd: ({ over }) => (over ? `Soltada en ${over.data.current?.label || 'el destino'}.` : 'Movimiento cancelado.'),
+    onDragCancel: () => 'Movimiento cancelado.',
+  },
+};
+
+/**
+ * Una evaluación de un tema: actividad, tipo, peso, plan (lapso y secciones) y
+ * fecha. Con `draggable`, el asa permite moverla a otro tema (de cualquier unidad).
+ */
+function ActivityRow({ activity: a, topicId, draggable }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: a.id, data: { activity: a, topicId }, disabled: !draggable });
   return (
-    <li className="pc-activity">
+    <li ref={setNodeRef} className={`pc-activity ${draggable ? 'pc-activity--draggable' : ''} ${isDragging ? 'is-dragging' : ''}`}>
+      {draggable && (
+        <button type="button" className="pc-drag-handle" aria-label={`Mover ${a.title} a otro tema`} title="Arrastra para moverla a otro tema" {...attributes} {...listeners}>
+          <Icon name="grip" size={16} />
+        </button>
+      )}
       <div className="pc-activity__main">
         <span className="pc-activity__title">{a.title}</span>
         <span className="pc-activity__meta">
@@ -47,6 +72,27 @@ function ActivityRow({ activity: a }) {
         Ver plan <Icon name="arrowRight" size={13} />
       </Link>
     </li>
+  );
+}
+
+/** Tema como destino del arrastre: se resalta cuando la evaluación viene de otro tema. */
+function DroppableTopic({ item, unit, className, children }) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: item.id, data: { label: `${unit} · ${item.topic}` } });
+  const target = isOver && active?.data.current?.topicId !== item.id;
+  return (
+    <article ref={setNodeRef} className={`${className} ${target ? 'is-drop-target' : ''}`}>
+      {children}
+    </article>
+  );
+}
+
+/** Cabecera de unidad como destino: al pasar por encima de una unidad cerrada, se abre para elegir el tema. */
+function DroppableUnitHead({ unit, children, ...props }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `${UNIT_DROP}${unit}`, data: { label: unit } });
+  return (
+    <button ref={setNodeRef} type="button" className={`pc-unit__head ${isOver ? 'is-drop-hover' : ''}`} {...props}>
+      {children}
+    </button>
   );
 }
 
@@ -94,7 +140,7 @@ function ProgrammaticContentPage() {
   }, [periods, periodId]);
 
   const selected = options?.find((o) => o.subject_id === subjectId && o.grade_id === gradeId);
-  const { data: content, loading, error } = useFetch(
+  const { data: content, setData: setContent, loading, error } = useFetch(
     () => (selected ? programmaticContentApi.get({ gradeId, subjectId, schoolPeriodId: periodId || undefined }) : Promise.resolve(null)),
     [selected?.subject_id, selected?.grade_id, periodId, version]
   );
@@ -146,6 +192,68 @@ function ProgrammaticContentPage() {
       reload();
     } catch (err) {
       toast.error('No se pudo eliminar', getErrorMessage(err));
+    }
+  };
+
+  // ---- Mover una evaluación a otro tema (arrastrar y soltar) ----
+  const [dragging, setDragging] = useState(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
+    useSensor(KeyboardSensor)
+  );
+  const canMove = (a) => can('evaluation_plans', 'update') && !periodClosed && a.plan.status !== 'closed';
+
+  /** Copia del contenido con la evaluación movida de un tema a otro (para mostrarlo al instante). */
+  const withActivityMoved = (data, activityId, toTopicId) => {
+    let moved = null;
+    const stripped = data.units.map((u) => ({
+      ...u,
+      items: u.items.map((i) => {
+        const found = i.activities.find((x) => x.id === activityId);
+        if (found) moved = found;
+        return found ? { ...i, activities: i.activities.filter((x) => x.id !== activityId) } : i;
+      }),
+    }));
+    if (!moved) return data;
+    return {
+      ...data,
+      units: stripped.map((u) => ({ ...u, items: u.items.map((i) => (i.id === toTopicId ? { ...i, activities: [...i.activities, moved] } : i)) })),
+    };
+  };
+
+  const handleDragOver = ({ over }) => {
+    const id = over?.id ? String(over.id) : '';
+    if (id.startsWith(UNIT_DROP)) {
+      const unit = id.slice(UNIT_DROP.length);
+      setClosedUnits((s) => (s.has(unit) ? new Set([...s].filter((x) => x !== unit)) : s));
+    }
+  };
+
+  const handleDragEnd = async ({ active, over }) => {
+    setDragging(null);
+    if (!over || !content) return;
+    const fromTopicId = active.data.current.topicId;
+    const activity = active.data.current.activity;
+    let toTopicId = String(over.id);
+    // Soltada sobre la cabecera de una unidad: vale si la unidad tiene un solo tema.
+    if (toTopicId.startsWith(UNIT_DROP)) {
+      const unit = content.units.find((u) => u.unit === toTopicId.slice(UNIT_DROP.length));
+      if (!unit || unit.items.length !== 1) return;
+      toTopicId = unit.items[0].id;
+    }
+    if (toTopicId === fromTopicId) return;
+
+    const target = items.find((i) => i.id === toTopicId);
+    const previous = content;
+    setContent(withActivityMoved(content, activity.id, toTopicId));
+    setOpenTopics((s) => new Set(s).add(toTopicId));
+    try {
+      await evaluationPlansApi.setActivityContent(activity.plan.id, activity.id, toTopicId);
+      toast.success('Evaluación movida', `${activity.title} → ${target.unit} · ${target.topic}`);
+    } catch (err) {
+      setContent(previous);
+      toast.error('No se pudo mover la evaluación', getErrorMessage(err));
     }
   };
 
@@ -265,25 +373,33 @@ function ProgrammaticContentPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="pc-units">
+                  <DndContext
+                    sensors={sensors}
+                    accessibility={DND_A11Y}
+                    onDragStart={({ active }) => setDragging(active.data.current.activity)}
+                    onDragOver={handleDragOver}
+                    onDragEnd={handleDragEnd}
+                    onDragCancel={() => setDragging(null)}
+                  >
+                  <div className={`pc-units ${dragging ? 'is-dragging' : ''}`}>
                     {content.units.map((u) => {
                       const open = !closedUnits.has(u.unit);
                       const unitEvaluations = u.items.reduce((n, i) => n + i.activities.length, 0);
                       return (
                         <section key={u.unit} className={`pc-unit ${open ? 'is-open' : ''}`}>
-                          <button type="button" className="pc-unit__head" onClick={() => toggle(setClosedUnits, u.unit)} aria-expanded={open}>
+                          <DroppableUnitHead unit={u.unit} onClick={() => toggle(setClosedUnits, u.unit)} aria-expanded={open}>
                             <Icon name="chevronDown" size={16} className="pc-unit__chevron" />
                             <span className="pc-unit__name">{u.unit}</span>
                             <span className="pc-unit__meta">
                               {plural(u.items.length, 'tema', 'temas')} · {plural(unitEvaluations, 'evaluación', 'evaluaciones')}
                             </span>
-                          </button>
+                          </DroppableUnitHead>
                           {open && (
                             <div className="pc-unit__body">
                               {u.items.map((item) => {
                                 const expanded = openTopics.has(item.id);
                                 return (
-                                  <article key={item.id} className={`pc-topic ${expanded ? 'is-open' : ''}`}>
+                                  <DroppableTopic key={item.id} item={item} unit={u.unit} className={`pc-topic ${expanded ? 'is-open' : ''}`}>
                                     <div className="pc-topic__head">
                                       <button type="button" className="pc-topic__toggle" onClick={() => toggle(setOpenTopics, item.id)} aria-expanded={expanded}>
                                         <span className="pc-topic__title">{item.topic}</span>
@@ -338,13 +454,18 @@ function ProgrammaticContentPage() {
                                         ) : (
                                           <ul className="pc-activities">
                                             {item.activities.map((a) => (
-                                              <ActivityRow key={a.id} activity={a} />
+                                              <ActivityRow key={a.id} activity={a} topicId={item.id} draggable={canMove(a)} />
                                             ))}
                                           </ul>
                                         )}
+                                        {item.activities.some(canMove) && (
+                                          <p className="pc-drag-hint">
+                                            <Icon name="grip" size={13} /> Arrastra una evaluación desde su asa hasta otro tema (o a otra unidad) para moverla.
+                                          </p>
+                                        )}
                                       </div>
                                     )}
-                                  </article>
+                                  </DroppableTopic>
                                 );
                               })}
                               {can('evaluation_plans', 'create') && (
@@ -358,6 +479,16 @@ function ProgrammaticContentPage() {
                       );
                     })}
                   </div>
+                  <DragOverlay dropAnimation={null}>
+                    {dragging && (
+                      <div className="pc-drag-preview">
+                        <Icon name="grip" size={15} />
+                        <strong>{dragging.title}</strong>
+                        <span>{dragging.weight_percent}%</span>
+                      </div>
+                    )}
+                  </DragOverlay>
+                  </DndContext>
                 )}
               </>
             )

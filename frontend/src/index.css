@@ -7240,6 +7240,55 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
 
 .pc-activities { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .pc-activity { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--color-surface-muted); }
+
+/* Inicio: KPIs y gráficos gerenciales */
+.dashboard-kpis, .dashboard-charts { margin-bottom: 24px; }
+.chart-skeleton { height: 330px; }
+.chart-donut { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 12px 24px; }
+.chart-donut__chart { position: relative; min-width: 0; }
+.chart-donut__center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.chart-donut__center strong { font-family: var(--font-display); font-size: 30px; font-weight: 800; line-height: 1; color: var(--color-text); }
+.chart-donut__center span { margin-top: 4px; font-size: 12px; color: var(--color-text-muted); }
+.chart-legend { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.chart-legend li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); background: var(--color-surface-muted); font-size: 13.5px; }
+.chart-legend__dot { width: 10px; height: 10px; border-radius: 50%; }
+.chart-legend__label { color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-legend strong { font-family: var(--font-display); font-size: 15px; color: var(--color-text); }
+.chart-legend__pct { min-width: 38px; text-align: right; font-size: 12px; font-weight: 600; color: var(--color-text-muted); }
+.chart-tooltip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-md); font-size: 13px; color: var(--color-text); }
+.chart-tooltip__dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.chart-tooltip span:last-child { color: var(--color-text-muted); }
+.chart-note { margin: 10px 0 0; font-size: 12px; color: var(--color-text-muted); }
+.chart-empty { padding: 32px 16px; }
+@media (max-width: 640px) {
+  .chart-donut { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Proyecto pedagógico de aula dentro de las actividades del plan */
+.project-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary-text); font-size: 12px; font-weight: 700; }
+.project-block { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px; }
+.project-block__list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--color-text-secondary); }
+.project-block__list li + li { margin-top: 2px; }
+.project-block__form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
+.project-block__form .input { flex: 1 1 200px; min-width: 0; }
+.project-block .alert { margin: 0; }
+.project-pending { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
+.project-pending .alert { flex: 1 1 320px; margin: 0; }
+
+/* Mover evaluaciones entre temas (arrastrar y soltar) */
+.pc-activity--draggable { padding-left: 6px; }
+.pc-activity.is-dragging { opacity: 0.4; outline: 2px dashed var(--color-border-strong); outline-offset: -2px; }
+.pc-drag-handle { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 30px; flex: none; padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-text-subtle); cursor: grab; touch-action: none; }
+.pc-drag-handle:hover { background: var(--color-surface); color: var(--color-text-secondary); }
+.pc-drag-handle:active { cursor: grabbing; }
+.pc-drag-handle:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.pc-drag-hint { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 12px; color: var(--color-text-subtle); }
+.pc-units.is-dragging .pc-topic { border-style: dashed; border-color: var(--color-border-strong); }
+.pc-units.is-dragging .pc-topic.is-drop-target { border-style: solid; border-color: var(--color-primary); background: var(--color-primary-softer); box-shadow: 0 0 0 3px var(--color-primary-soft); }
+.pc-unit__head.is-drop-hover { background: var(--color-primary-softer); }
+.pc-drag-preview { display: inline-flex; align-items: center; gap: 8px; max-width: 360px; padding: 8px 14px; border: 1px solid var(--color-primary); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-lg, var(--shadow-md)); color: var(--color-text); font-size: 13.5px; cursor: grabbing; }
+.pc-drag-preview strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-drag-preview span { color: var(--color-text-muted); font-weight: 600; }
 .pc-activity__main { display: flex; flex: 1 1 220px; flex-direction: column; min-width: 0; }
 .pc-activity__title { font-weight: 600; }
 .pc-activity__meta { font-size: 12.5px; color: var(--color-text-muted); }
@@ -7264,6 +7313,12 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
 /* Incluir evaluación: bloque del formato detallado */
 .pc-detailed { margin-top: 16px; padding: 14px 16px 4px; border: 1px solid var(--color-border-active); border-radius: var(--radius-md); background: var(--color-primary-softer); }
 .pc-detailed__title { margin: 0 0 12px; font-size: 14px; color: var(--color-primary-text); }
+.form-actions__hint { display: flex; align-items: center; margin-right: auto; font-size: 13px; font-weight: 600; color: var(--color-warning-text); }
+@media (max-width: 640px) { .form-actions__hint { margin-right: 0; text-align: center; justify-content: center; } }
+.pc-detailed__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 12px; }
+.pc-detailed__head .pc-detailed__title { margin: 0; }
+.pc-detailed__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pc-detailed .alert { margin-bottom: 12px; }
 .planner-instrument { font-size: 12.5px; font-weight: 600; color: var(--color-text-secondary); }
 /* Puntaje del indicador: el contenedor con el sufijo "pts" no se estira (la casilla y su sufijo quedan juntos). */
 .nested-editor__row > .input-group:has(.nested-editor__points) { flex: 0 0 120px; }

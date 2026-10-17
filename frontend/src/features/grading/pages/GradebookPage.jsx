@@ -98,7 +98,14 @@ function GradebookPage() {
       </Card>
 
       {plan?.pedagogicalProject && (
-        <Card title="Evaluación cualitativa de competencias">
+        <Card
+          title={`Competencias del proyecto · ${plan.pedagogicalProject.title}`}
+          subtitle={
+            plan.pedagogicalProject.evaluation_activity_id
+              ? 'Evaluación cualitativa. La nota del proyecto se carga en su columna de la tabla de arriba y cuenta en el acumulado con su ponderación.'
+              : 'Evaluación cualitativa. El proyecto aún no tiene ponderación en el plan: asígnala desde el plan de evaluación para que cuente en la nota.'
+          }
+        >
           <CompetencyGrid project={plan.pedagogicalProject} students={gradebook.rows.map((r) => r.student)} />
         </Card>
       )}

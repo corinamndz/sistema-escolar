@@ -69,14 +69,14 @@ export function FormatPicker({ value, onChange, disabled }) {
  * referencias, estrategia, criterios e indicadores (con puntaje), ponderación
  * y fecha de aplicación en cada sección del plan.
  */
-export function PlannerTable({ activities, sections, categoryLabels, renderActions }) {
+export function PlannerTable({ activities, sections, categoryLabels, renderActions, renderTitleExtra }) {
   if (!activities.length) return <p className="text-muted">Aún no hay actividades en este plan.</p>;
   return (
     <div className="table-wrap">
       <table className="table planner-table">
         <thead>
           <tr>
-            <th>Referencias teórico-prácticas</th>
+            <th>Unidad / Tema</th>
             <th>Estrategia evaluativa</th>
             <th>Criterios e indicadores</th>
             <th className="planner-table__num">Puntaje</th>
@@ -120,6 +120,7 @@ export function PlannerTable({ activities, sections, categoryLabels, renderActio
                   {a.instrument && <div className="planner-instrument">Instrumento: {INSTRUMENT_LABELS[a.instrument] || a.instrument}</div>}
                   {a.strategy && <div>{a.strategy}</div>}
                   <Badge variant="primary">{categoryLabels[a.category] || a.category}</Badge>
+                  {renderTitleExtra?.(a)}
                 </td>
                 <td>
                   {a.criteria.length ? (

@@ -66,5 +66,5 @@ const importsApi = {
   importFile: (type, file, params, onProgress) => upload(`/imports/${type}`, file, params, onProgress),
 };
 
-export { saveBlob };
+export { saveBlob, unwrapBlobError, fileNameFrom, upload };
 export default importsApi;

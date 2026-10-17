@@ -142,10 +142,13 @@ const updatePlan = asyncHandler(async (req, res) => {
 
 // ---- Proyecto pedagógico y competencias ----
 const createProject = asyncHandler(async (req, res) => {
+  // `title` puede omitirse al ponderar un proyecto anterior a la integración (se conserva el suyo).
   const schema = z.object({
-    title: z.string().min(1),
-    description: z.string().optional(),
-    competencies: z.array(z.string().min(1)).default([]),
+    title: z.string().trim().min(1).max(200).optional(),
+    description: z.preprocess((v) => (v === '' ? null : v), z.string().trim().max(1000).nullable().optional()),
+    weightPercent: twoDecimals.pipe(z.number().positive('Debe ser mayor que 0.').max(100, 'No puede superar 100%.')),
+    plannedDate: z.preprocess((v) => (v === '' ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida.').nullable().optional()),
+    competencies: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
   });
   const data = schema.parse(req.body);
   res.status(201).json(await service.createPedagogicalProject(req.db, req.tenantId, req.params.planId, data));
@@ -237,6 +240,13 @@ const updateActivity = asyncHandler(async (req, res) => {
   res.status(200).json(activity);
 });
 
+/** PATCH /evaluation-plans/:planId/activities/:activityId/content — mueve la actividad a otro tema (o la desvincula con null). */
+const setActivityContent = asyncHandler(async (req, res) => {
+  const { programmaticContentId } = z.object({ programmaticContentId: z.string().uuid('El contenido no es válido.').nullable() }).parse(req.body);
+  const activityId = z.string().uuid().parse(req.params.activityId);
+  res.status(200).json(await service.setActivityContent(req.db, req.tenantId, req.params.planId, activityId, programmaticContentId));
+});
+
 const deleteActivity = asyncHandler(async (req, res) => {
   await service.deleteActivity(req.db, req.tenantId, req.params.planId, req.params.activityId);
   res.status(204).send();
@@ -267,4 +277,5 @@ module.exports = {
   createActivity,
   updateActivity,
   deleteActivity,
+  setActivityContent,
 };

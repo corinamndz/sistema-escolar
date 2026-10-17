@@ -1,4 +1,5 @@
 import { axiosClient } from '../axiosClient';
+import { fileNameFrom, saveBlob, unwrapBlobError, upload } from './imports.api';
 
 const evaluationPlansApi = {
   listTerms: (schoolPeriodId) =>
@@ -22,6 +23,16 @@ const evaluationPlansApi = {
     axiosClient.post(`/evaluation-plans/projects/${projectId}/competencies`, data).then((r) => r.data),
 
   createActivity: (planId, data) => axiosClient.post(`/evaluation-plans/${planId}/activities`, data).then((r) => r.data),
+  /** Mueve una actividad a otro tema del contenido programático (null la desvincula). */
+  setActivityContent: (planId, activityId, programmaticContentId) =>
+    axiosClient.patch(`/evaluation-plans/${planId}/activities/${activityId}/content`, { programmaticContentId }).then((r) => r.data),
+  /** Plantilla .xlsx de una evaluación detallada. `params`: { sections: 'A,B', topic }. */
+  downloadActivityTemplate: async (params) => {
+    const res = await axiosClient.get('/evaluation-plans/activity-template', { params, responseType: 'blob' }).catch(unwrapBlobError);
+    saveBlob(res.data, fileNameFrom(res.headers, 'plantilla-evaluacion-detallada.xlsx'));
+  },
+  /** Lee el Excel y devuelve los datos para el formulario: { activity, summary, warnings } (no guarda nada). */
+  parseActivityExcel: (file, params) => upload('/evaluation-plans/activity-template/parse', file, params),
   updateActivity: (planId, activityId, data) =>
     axiosClient.put(`/evaluation-plans/${planId}/activities/${activityId}`, data).then((r) => r.data),
   deleteActivity: (planId, activityId) =>

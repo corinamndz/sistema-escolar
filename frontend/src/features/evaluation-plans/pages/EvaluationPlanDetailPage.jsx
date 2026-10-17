@@ -93,8 +93,10 @@ function EvaluationPlanDetailPage() {
 
   const handleDeleteActivity = async (activity) => {
     const ok = await confirm({
-      title: '¿Eliminar esta actividad?',
-      message: `"${activity.title}" (${Number(activity.weight_percent)}%) se quitará del plan y su porcentaje quedará disponible.`,
+      title: activity.project ? '¿Eliminar el proyecto pedagógico?' : '¿Eliminar esta actividad?',
+      message: activity.project
+        ? `"${activity.title}" (${Number(activity.weight_percent)}%) se quitará del plan junto con sus ${activity.project.competencies.length} competencia(s); su porcentaje quedará disponible.`
+        : `"${activity.title}" (${Number(activity.weight_percent)}%) se quitará del plan y su porcentaje quedará disponible.`,
       danger: true,
     });
     if (!ok) return;
@@ -121,6 +123,7 @@ function EvaluationPlanDetailPage() {
           <div className="cell-person__name">{a.title}</div>
           {a.programmatic_content && <ContentTag content={a.programmatic_content} />}
           {a.description && <div className="cell-person__sub activity-description">{a.description}</div>}
+          {a.project && <ProjectBlock project={a.project} canEdit={!closed} onChanged={refetch} />}
         </div>
       ),
       sortValue: (a) => a.title,
@@ -161,7 +164,9 @@ function EvaluationPlanDetailPage() {
   ];
 
   const totalWeight = Number(plan.totalWeight) || 0;
-  const remaining = Math.max(0, 100 - totalWeight);
+  const remaining = Math.max(0, Math.round((100 - totalWeight) * 100) / 100);
+  // Proyecto anterior a la integración: existe pero aún no es una actividad ponderada del plan.
+  const unweightedProject = plan.pedagogicalProject && !plan.pedagogicalProject.evaluation_activity_id ? plan.pedagogicalProject : null;
   const meterState = totalWeight > 100 ? 'over' : totalWeight === 100 ? 'complete' : 'partial';
 
   return (
@@ -260,51 +265,61 @@ function EvaluationPlanDetailPage() {
 
       <Card
         title={`Actividades de evaluación · ${termLabel(plan.term_number, plan.term_name)}`}
+        subtitle="Incluye el proyecto pedagógico de aula: se pondera y se califica como una actividad más del lapso."
         actions={
           <RequirePermission module="evaluation_plans" action="create">
             {!closed && (
-              <Button
-                size="sm"
-                icon="plus"
-                onClick={() => setActivityModal({})}
-                disabled={remaining <= 0}
-                title={remaining <= 0 ? 'El plan ya suma 100%' : undefined}
-              >
-                Nueva actividad
-              </Button>
+              <div className="table__actions">
+                {!plan.pedagogicalProject && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon="sparkles"
+                    onClick={() => setShowProjectForm(true)}
+                    disabled={remaining <= 0}
+                    title={remaining <= 0 ? 'El plan ya suma 100%' : 'Agregar el proyecto pedagógico de aula con su ponderación'}
+                  >
+                    Proyecto pedagógico
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  icon="plus"
+                  onClick={() => setActivityModal({})}
+                  disabled={remaining <= 0}
+                  title={remaining <= 0 ? 'El plan ya suma 100%' : undefined}
+                >
+                  Nueva actividad
+                </Button>
+              </div>
             )}
           </RequirePermission>
         }
       >
         <Alert>{deleteError}</Alert>
+        {unweightedProject && (
+          <div className="project-pending">
+            <Alert variant="warning">
+              El proyecto pedagógico «{unweightedProject.title}» aún no tiene ponderación: no cuenta en la nota del lapso. Asígnale su porcentaje
+              para que se califique dentro del plan.
+            </Alert>
+            {!closed && can('evaluation_plans', 'create') && (
+              <Button size="sm" icon="sparkles" onClick={() => setShowProjectForm(true)} disabled={remaining <= 0} title={remaining <= 0 ? 'El plan ya suma 100%' : undefined}>
+                Asignar ponderación
+              </Button>
+            )}
+          </div>
+        )}
         {plan.format === 'detailed' ? (
           <PlannerTable
             activities={plan.activities}
             sections={plan.sections}
             categoryLabels={CATEGORY_LABELS}
+            renderTitleExtra={(a) => a.project && <ProjectBlock project={a.project} canEdit={!closed} onChanged={refetch} />}
             renderActions={closed ? null : (a) => activityColumns.find((c) => c.key === 'actions').render(a)}
           />
         ) : (
           <Table columns={activityColumns} rows={plan.activities} emptyMessage="Aún no hay actividades en este plan." />
-        )}
-      </Card>
-
-      <Card
-        title="Proyecto pedagógico de aula"
-        actions={
-          !plan.pedagogicalProject && (
-            <RequirePermission module="evaluation_plans" action="create">
-              <Button size="sm" onClick={() => setShowProjectForm(true)}>
-                + Crear proyecto
-              </Button>
-            </RequirePermission>
-          )
-        }
-      >
-        {plan.pedagogicalProject ? (
-          <ProjectView project={plan.pedagogicalProject} onChanged={refetch} />
-        ) : (
-          <p className="text-muted">Este plan no tiene proyecto pedagógico (es opcional).</p>
         )}
       </Card>
 
@@ -322,7 +337,14 @@ function EvaluationPlanDetailPage() {
       )}
 
       {showProjectForm && (
-        <ProjectFormModal planId={id} onClose={() => setShowProjectForm(false)} onCreated={refetch} />
+        <ProjectFormModal
+          planId={id}
+          plan={plan}
+          existing={unweightedProject}
+          remaining={remaining}
+          onClose={() => setShowProjectForm(false)}
+          onCreated={refetch}
+        />
       )}
     </div>
   );
@@ -448,8 +470,8 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
               </Select>
             </Field>
           )}
-          <Field label="Tipo" error={fieldErrors.category}>
-            <Select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
+          <Field label="Tipo" error={fieldErrors.category} hint={initial.project ? 'Es el proyecto pedagógico de aula: su tipo es siempre Proyecto.' : undefined}>
+            <Select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} disabled={Boolean(initial.project)}>
               <option value="formative">Formativa</option>
               <option value="exam">Examen</option>
               <option value="project">Proyecto</option>
@@ -566,59 +588,136 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
   );
 }
 
-function ProjectFormModal({ planId, onClose, onCreated }) {
-  const [form, setForm] = useState({ title: '', description: '' });
+/**
+ * Proyecto pedagógico de aula como actividad del plan: título, descripción,
+ * ponderación (suma al 100% del lapso), fecha y competencias esperadas.
+ * Con `existing` (proyecto anterior a la integración) solo se le asigna la
+ * ponderación y la fecha: conserva su título y sus competencias.
+ */
+function ProjectFormModal({ planId, plan, existing, remaining, onClose, onCreated }) {
+  const [form, setForm] = useState({ title: '', description: '', weightPercent: '', plannedDate: '' });
   const [competencies, setCompetencies] = useState(['']);
   const { run, loading, error, fieldErrors } = useMutation((data) => evaluationPlansApi.createProject(planId, data));
+  const toast = useToast();
 
-  const updateCompetency = (index, value) => {
-    setCompetencies((list) => list.map((c, i) => (i === index ? value : c)));
-  };
+  const typed = form.weightPercent === '' ? null : Number(form.weightPercent);
+  const weightError =
+    typed === null ? null : !(typed > 0) ? 'Debe ser mayor que 0.' : typed > remaining ? `Excede lo disponible en el plan (${remaining}%).` : null;
+  const afterSave = typed && !weightError ? Math.round((100 - remaining + typed) * 100) / 100 : null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (weightError || !typed) return;
     try {
-      await run({ ...form, competencies: competencies.map((c) => c.trim()).filter(Boolean) });
+      await run({
+        ...(existing ? {} : { title: form.title.trim(), description: form.description.trim() }),
+        weightPercent: typed,
+        plannedDate: form.plannedDate,
+        competencies: existing ? [] : competencies.map((c) => c.trim()).filter(Boolean),
+      });
+      toast.success(existing ? 'Ponderación asignada' : 'Proyecto agregado al plan', `${existing?.title || form.title.trim()} · ${typed}%`);
       onCreated();
       onClose();
     } catch {
-      // error visible en el modal
+      // error visible en el modal (incluye el 422 si excede el 100%)
     }
   };
 
   return (
-    <Modal title="Nuevo proyecto pedagógico" onClose={onClose}>
+    <Modal title={existing ? 'Ponderar proyecto pedagógico' : 'Proyecto pedagógico de aula'} onClose={onClose}>
+      <p className="text-sm text-muted" style={{ marginTop: -6 }}>
+        El proyecto se agrega como una actividad del {termLabel(plan.term_number, plan.term_name)}: su ponderación suma al 100% del plan y su nota cuenta
+        en el acumulado y en la nota definitiva de {plan.subject}. Las competencias se evalúan además de forma cualitativa.
+      </p>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
-        <Field label="Título" error={fieldErrors.title}>
-          <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} required />
-        </Field>
-        <div style={{ height: 12 }} />
-        <Field label="Descripción" error={fieldErrors.description}>
-          <textarea
-            className="input"
-            rows={3}
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-          />
-        </Field>
-        <div style={{ height: 12 }} />
-        <Field label="Competencias esperadas">
-          {competencies.map((c, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-              <Input value={c} onChange={(e) => updateCompetency(i, e.target.value)} placeholder={`Competencia ${i + 1}`} />
-            </div>
-          ))}
-          <Button type="button" variant="secondary" size="sm" onClick={() => setCompetencies((l) => [...l, ''])}>
-            + Agregar competencia
-          </Button>
-        </Field>
+        <div className="form-grid">
+          {existing ? (
+            <Field label="Proyecto" full>
+              <div className="project-chip">
+                <Icon name="sparkles" size={14} /> {existing.title}
+                <span className="text-muted"> · {existing.competencies.length} competencia(s)</span>
+              </div>
+            </Field>
+          ) : (
+            <>
+              <Field label="Título del proyecto" error={fieldErrors.title} required full>
+                <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} maxLength={200} required autoFocus />
+              </Field>
+              <Field label="Descripción" error={fieldErrors.description} full hint="Opcional.">
+                <textarea className="input" rows={3} maxLength={1000} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+              </Field>
+            </>
+          )}
+          <Field
+            label="Ponderación"
+            required
+            error={weightError || fieldErrors.weightPercent}
+            hint={afterSave !== null ? `Disponible: ${remaining}% · el plan quedará en ${afterSave}%${afterSave === 100 ? ' ✓' : ''}` : `Disponible en este plan: ${remaining}%`}
+          >
+            <Input
+              type="number"
+              min="0.01"
+              max="100"
+              step="0.01"
+              suffix="%"
+              value={form.weightPercent}
+              onChange={(e) => setForm((f) => ({ ...f, weightPercent: e.target.value }))}
+              error={weightError}
+              className={afterSave === 100 ? 'input--success' : ''}
+              required
+            />
+          </Field>
+          <Field
+            label="Fecha estimada"
+            error={fieldErrors.plannedDate}
+            hint={plan.term_start && plan.term_end ? `Dentro del lapso: ${formatDay(plan.term_start)} – ${formatDay(plan.term_end)}` : 'Opcional.'}
+          >
+            <Input
+              type="date"
+              value={form.plannedDate}
+              min={plan.term_start || undefined}
+              max={plan.term_end || undefined}
+              onChange={(e) => setForm((f) => ({ ...f, plannedDate: e.target.value }))}
+            />
+          </Field>
+          {!existing && (
+            <Field label="Competencias esperadas" full hint="Se evalúan de forma cualitativa (logrado / en proceso) en Calificaciones.">
+              <div className="nested-editor">
+                {competencies.map((c, i) => (
+                  <div key={i} className="nested-editor__row">
+                    <Input
+                      value={c}
+                      onChange={(e) => setCompetencies((list) => list.map((x, j) => (j === i ? e.target.value : x)))}
+                      placeholder={`Competencia ${i + 1}`}
+                      aria-label={`Competencia ${i + 1}`}
+                    />
+                    {competencies.length > 1 && (
+                      <button
+                        type="button"
+                        className="row-action row-action--delete"
+                        onClick={() => setCompetencies((list) => list.filter((_, j) => j !== i))}
+                        aria-label="Quitar competencia"
+                        title="Quitar competencia"
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <Button type="button" variant="ghost" size="sm" icon="plus" onClick={() => setCompetencies((l) => [...l, ''])}>
+                  Agregar competencia
+                </Button>
+              </div>
+            </Field>
+          )}
+        </div>
         <div className="form-actions">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" loading={loading}>
-            Crear proyecto
+          <Button type="submit" loading={loading} disabled={!typed || Boolean(weightError) || (!existing && !form.title.trim())}>
+            {existing ? 'Asignar ponderación' : 'Agregar al plan'}
           </Button>
         </div>
       </form>
@@ -626,15 +725,17 @@ function ProjectFormModal({ planId, onClose, onCreated }) {
   );
 }
 
-function ProjectView({ project, onChanged }) {
+/** Dentro de la fila de la actividad: distintivo del proyecto y sus competencias (se pueden agregar más). */
+function ProjectBlock({ project, canEdit, onChanged }) {
   const [adding, setAdding] = useState(false);
   const [description, setDescription] = useState('');
   const { run, loading, error } = useMutation((data) => evaluationPlansApi.addCompetency(project.id, data));
+  const { can } = useAuth();
 
   const handleAdd = async (e) => {
     e.preventDefault();
     try {
-      await run({ description });
+      await run({ description: description.trim() });
       setDescription('');
       setAdding(false);
       onChanged();
@@ -644,34 +745,37 @@ function ProjectView({ project, onChanged }) {
   };
 
   return (
-    <div>
-      <h4 style={{ margin: '0 0 4px' }}>{project.title}</h4>
-      {project.description && <p>{project.description}</p>}
-
-      <ul style={{ paddingLeft: 18 }}>
-        {project.competencies.map((c) => (
-          <li key={c.id}>{c.description}</li>
-        ))}
-      </ul>
-
+    <div className="project-block">
+      <span className="project-chip">
+        <Icon name="sparkles" size={13} /> Proyecto pedagógico de aula
+      </span>
+      {project.competencies.length > 0 ? (
+        <ul className="project-block__list">
+          {project.competencies.map((c) => (
+            <li key={c.id}>{c.description}</li>
+          ))}
+        </ul>
+      ) : (
+        <div className="cell-person__sub">Sin competencias definidas.</div>
+      )}
       <Alert>{error}</Alert>
-
       {adding ? (
-        <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8 }}>
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Nueva competencia" required />
+        <form onSubmit={handleAdd} className="project-block__form">
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Nueva competencia" aria-label="Nueva competencia" required autoFocus />
           <Button type="submit" size="sm" loading={loading}>
             Agregar
           </Button>
-          <Button type="button" size="sm" variant="secondary" onClick={() => setAdding(false)}>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>
             Cancelar
           </Button>
         </form>
       ) : (
-        <RequirePermission module="evaluation_plans" action="update">
-          <Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
-            + Agregar competencia
+        canEdit &&
+        can('evaluation_plans', 'update') && (
+          <Button size="sm" variant="ghost" icon="plus" onClick={() => setAdding(true)}>
+            Competencia
           </Button>
-        </RequirePermission>
+        )
       )}
     </div>
   );

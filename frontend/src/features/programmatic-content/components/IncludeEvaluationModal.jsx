@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
 import { getErrorMessage } from '../../../api/axiosClient';
 import Modal from '../../../components/ui/Modal';
@@ -8,8 +8,9 @@ import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import { useToast } from '../../../components/ui/Toast';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { TERM_OPTIONS, termLabel } from '../../evaluation-plans/terms';
-import { CriteriaEditor, FormatPicker, detailedBody, detailedFormFrom } from '../../evaluation-plans/components/DetailedPlanner';
+import { ContentRefsEditor, CriteriaEditor, FormatPicker, detailedBody, detailedFormFrom } from '../../evaluation-plans/components/DetailedPlanner';
 import { INSTRUMENT_LABELS } from '../../evaluation-plans/instruments';
 import { CATEGORY_LABELS } from '../categories';
 
@@ -44,6 +45,12 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
   const [detail, setDetail] = useState(() => ({ ...detailedFormFrom({}, []), instrument: '' }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const confirm = useConfirm();
+  const fileInput = useRef(null);
+  const [downloading, setDownloading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [imported, setImported] = useState(null); // { fileName, summary, warnings }
+  const [importError, setImportError] = useState(null);
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
   const setD = (key) => (e) => setDetail((d) => ({ ...d, [key]: e.target.value }));
 
@@ -55,7 +62,13 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
   const typed = form.weightPercent === '' ? null : Number(form.weightPercent);
   const weightError = typed === null ? null : !(typed > 0) ? 'Debe ser mayor que 0.' : typed > remaining ? `Excede lo disponible en el plan (${remaining}%).` : null;
   const needsSections = planId === NEW_PLAN && newPlan.sectionIds.length === 0;
-  const canSave = form.title.trim() && typed && !weightError && !needsSections;
+  // Formato detallado: los indicadores deben sumar exactamente el puntaje de la actividad (mismo cálculo que CriteriaEditor).
+  const toNum = (v) => Number(String(v ?? '').replace(',', '.'));
+  const indicatorPoints = detail.criteria.flatMap((c) => c.indicators).map((i) => toNum(i.points));
+  const pointsTotal = round2(indicatorPoints.reduce((n, p) => n + (Number.isFinite(p) ? p : 0), 0));
+  const maxScore = toNum(detail.maxScore);
+  const pointsMismatch = detailed && (!(maxScore > 0) || indicatorPoints.length === 0 || pointsTotal !== round2(maxScore));
+  const canSave = form.title.trim() && typed && !weightError && !needsSections && !pointsMismatch;
 
   // Al cambiar de plan, el formato sugerido es el del plan (uno detallado sigue en detallado).
   const choosePlan = (id) => {
@@ -63,6 +76,67 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
     const p = content.plans.find((x) => x.id === id);
     if (p) setFormat(p.format);
   };
+  const sectionParams = () => ({ sections: sections.map((s) => s.name).join(',') || undefined });
+
+  const downloadTemplate = async () => {
+    setDownloading(true);
+    try {
+      await evaluationPlansApi.downloadActivityTemplate({ ...sectionParams(), topic: item.topic });
+    } catch (err) {
+      toast.error('No se pudo descargar la plantilla', getErrorMessage(err));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const pickFile = async () => {
+    const hasData = form.title.trim() || detail.criteria.some((c) => c.title.trim() || c.indicators.some((i) => i.description.trim()));
+    if (hasData) {
+      const ok = await confirm({
+        title: '¿Reemplazar lo que ya escribiste?',
+        message: 'Los datos del Excel reemplazarán la actividad, los criterios e indicadores y las fechas del formulario.',
+        confirmLabel: 'Elegir archivo',
+      });
+      if (!ok) return;
+    }
+    fileInput.current?.click();
+  };
+
+  // El Excel llena el formulario; el usuario revisa y guarda (nada se guarda al importar).
+  const importFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      const { activity: a, summary, warnings } = await evaluationPlansApi.parseActivityExcel(file, sectionParams());
+      setForm((f) => ({
+        ...f,
+        title: a.title || '',
+        category: a.category || 'formative',
+        weightPercent: a.weightPercent === null ? '' : String(a.weightPercent),
+        description: a.description || '',
+        plannedDate: a.date || '',
+      }));
+      setDetail((d) => ({
+        ...d,
+        instrument: a.instrument || '',
+        strategy: a.strategy || '',
+        maxScore: a.maxScore ?? d.maxScore,
+        contentRefs: a.contentRefs.map((t) => ({ topic: t.topic, subtopics: t.subtopics.length ? t.subtopics : [''] })),
+        criteria: a.criteria.map((c) => ({ title: c.title, indicators: c.indicators.map((i) => ({ description: i.description, points: String(i.points) })) })),
+        sectionDates: Object.fromEntries(sections.map((s) => [s.id, a.sectionDates[s.name] || a.date || ''])),
+      }));
+      setImported({ fileName: file.name, summary, warnings });
+    } catch (err) {
+      setImported(null);
+      setImportError(getErrorMessage(err));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const toggleSection = (id) =>
     setNewPlan((p) => ({ ...p, sectionIds: p.sectionIds.includes(id) ? p.sectionIds.filter((x) => x !== id) : [...p.sectionIds, id] }));
 
@@ -73,11 +147,10 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
     if (detailed) {
       // Solo las fechas de las secciones de la actividad (pudo cambiar el plan elegido).
       const sectionIds = new Set(sections.map((s) => s.id));
-      const result = detailedBody({ ...detail, contentRefs: [], sectionDates: Object.fromEntries(Object.entries(detail.sectionDates).filter(([id]) => sectionIds.has(id))) });
+      const result = detailedBody({ ...detail, sectionDates: Object.fromEntries(Object.entries(detail.sectionDates).filter(([id]) => sectionIds.has(id))) });
       if (result.error) return setError(result.error);
       if (!result.body.criteria.length) return setError('El formato detallado requiere al menos un criterio con sus indicadores.');
-      const { contentRefs: _refs, ...body } = result.body;
-      extra = { ...body, instrument: detail.instrument || null, planFormat: 'detailed' };
+      extra = { ...result.body, instrument: detail.instrument || null, planFormat: 'detailed' };
     }
     setSaving(true);
     setError(null);
@@ -191,7 +264,28 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
 
         {detailed && (
           <div className="pc-detailed">
-            <h4 className="pc-detailed__title">Evaluación detallada</h4>
+            <div className="pc-detailed__head">
+              <h4 className="pc-detailed__title">Evaluación detallada</h4>
+              <div className="pc-detailed__actions">
+                <Button type="button" size="sm" variant="ghost" icon="download" onClick={downloadTemplate} loading={downloading} loadingText="Generando…">
+                  Plantilla
+                </Button>
+                <Button type="button" size="sm" variant="secondary" icon="spreadsheet" onClick={pickFile} loading={importing} loadingText="Leyendo…">
+                  Importar detalle desde Excel
+                </Button>
+                <input ref={fileInput} type="file" accept=".xlsx,.csv" hidden onChange={importFile} />
+              </div>
+            </div>
+            <Alert>{importError}</Alert>
+            {imported && (
+              <Alert variant={imported.warnings.length ? 'warning' : 'success'}>
+                Se cargaron {imported.summary.criteria} criterio{imported.summary.criteria === 1 ? '' : 's'} y {imported.summary.indicators} indicador
+                {imported.summary.indicators === 1 ? '' : 'es'} ({imported.summary.total} pts) desde «{imported.fileName}». Revisa los datos y pulsa «Incluir evaluación» para guardar.
+                {imported.warnings.map((w) => (
+                  <div key={w}>{w}</div>
+                ))}
+              </Alert>
+            )}
             <div className="form-grid">
               <Field label="Instrumento de evaluación" hint="Opcional.">
                 <Select value={detail.instrument} onChange={setD('instrument')}>
@@ -208,6 +302,9 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
               </Field>
               <Field label="Puntaje de la actividad" required hint="Los indicadores deben sumar este puntaje (ej. 20).">
                 <Input inputMode="decimal" value={detail.maxScore} onChange={setD('maxScore')} suffix="pts" required />
+              </Field>
+              <Field label="Referencias teórico-prácticas adicionales" full hint={`Opcional: el tema «${item.topic}» ya queda como referencia.`}>
+                <ContentRefsEditor value={detail.contentRefs} onChange={(contentRefs) => setDetail((d) => ({ ...d, contentRefs }))} />
               </Field>
               <Field label="Criterios e indicadores de logro" required full hint="Cada criterio con sus indicadores y el puntaje de cada uno.">
                 <CriteriaEditor value={detail.criteria} onChange={(criteria) => setDetail((d) => ({ ...d, criteria }))} maxScore={detail.maxScore} />
@@ -232,10 +329,22 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
         )}
 
         <div className="form-actions">
+          {pointsMismatch && (
+            <span className="form-actions__hint" role="status">
+              {maxScore > 0 && indicatorPoints.length
+                ? `Los indicadores suman ${pointsTotal} de ${round2(maxScore)} pts: ajústalos para poder guardar.`
+                : 'Indica el puntaje de la actividad y de sus indicadores para poder guardar.'}
+            </span>
+          )}
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" loading={saving} disabled={!canSave}>
+          <Button
+            type="submit"
+            loading={saving}
+            disabled={!canSave}
+            title={pointsMismatch ? 'Los puntajes de los indicadores deben sumar el puntaje de la actividad' : undefined}
+          >
             Incluir evaluación
           </Button>
         </div>

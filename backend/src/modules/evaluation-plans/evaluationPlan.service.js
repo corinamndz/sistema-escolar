@@ -190,6 +190,10 @@ async function getPlanWithActivities(trx, tenantId, planId) {
     competencies = await trx('project_competencies')
       .where({ tenant_id: tenantId, pedagogical_project_id: project.id });
   }
+  // La actividad del proyecto lo lleva consigo (se lista como una actividad más del plan).
+  const projectView = project ? { ...project, competencies } : null;
+  const linked = project?.evaluation_activity_id ? activities.find((a) => a.id === project.evaluation_activity_id) : null;
+  if (linked) linked.project = projectView;
 
   // Secciones del mismo grado y año que se podrían sumar al plan (para la edición).
   const sections = await listPlanSections(trx, planId);
@@ -227,7 +231,7 @@ async function getPlanWithActivities(trx, tenantId, planId) {
     move_targets: moveTargets,
     activities,
     totalWeight,
-    pedagogicalProject: project ? { ...project, competencies } : null,
+    pedagogicalProject: projectView,
   };
 }
 
@@ -593,17 +597,41 @@ async function updatePlan(trx, tenantId, planId, { format, sectionIds, termNumbe
 
 // ---------- Proyectos pedagógicos y competencias ----------
 
-async function createPedagogicalProject(trx, tenantId, planId, { title, description, competencies = [] }) {
-  await getPlanWithActivities(trx, tenantId, planId); // valida que el plan exista
-
+/**
+ * Proyecto pedagógico de aula = una actividad del plan (categoría 'project')
+ * con su ponderación, más sus competencias (evaluación cualitativa). La
+ * actividad pasa por upsertActivity: plan abierto, suma ≤ 100% y fecha dentro
+ * del lapso, igual que cualquier otra. Un proyecto anterior a la integración
+ * (sin actividad) se pondera con esta misma llamada.
+ */
+async function createPedagogicalProject(trx, tenantId, planId, { title, description, weightPercent, plannedDate, competencies = [] }) {
   const existing = await trx('pedagogical_projects')
     .where({ tenant_id: tenantId, evaluation_plan_id: planId })
     .first();
-  if (existing) throw ApiError.conflict('Este plan ya tiene un proyecto pedagógico.');
+  if (existing?.evaluation_activity_id) throw ApiError.conflict('Este plan ya tiene un proyecto pedagógico.');
 
-  const [project] = await trx('pedagogical_projects')
-    .insert({ tenant_id: tenantId, evaluation_plan_id: planId, title, description })
-    .returning('*');
+  const projectTitle = title || existing?.title;
+  if (!projectTitle) throw ApiError.badRequest('Escribe el título del proyecto.', [{ path: 'title', message: 'Obligatorio.' }]);
+  const projectDescription = description ?? existing?.description ?? null;
+  const activity = await upsertActivity(trx, tenantId, planId, {
+    title: projectTitle,
+    category: 'project',
+    weightPercent,
+    description: projectDescription ? String(projectDescription).slice(0, 1000) : null,
+    plannedDate: plannedDate || null,
+  });
+
+  let project;
+  if (existing) {
+    [project] = await trx('pedagogical_projects')
+      .where({ id: existing.id })
+      .update({ title: projectTitle, description: projectDescription, evaluation_activity_id: activity.id })
+      .returning('*');
+  } else {
+    [project] = await trx('pedagogical_projects')
+      .insert({ tenant_id: tenantId, evaluation_plan_id: planId, title: projectTitle, description: projectDescription, evaluation_activity_id: activity.id })
+      .returning('*');
+  }
 
   if (competencies.length > 0) {
     await trx('project_competencies').insert(
@@ -789,6 +817,23 @@ async function saveCriteria(trx, tenantId, activityId, criteria, hasScores) {
  * indicadores (puntos) y fecha de aplicación por sección. La suma de
  * porcentajes del plan nunca supera 100% (y para cerrarlo debe ser 100%).
  */
+/**
+ * Cambia el tema del contenido programático que evalúa una actividad (y con él
+ * su unidad), sin tocar lo demás. `contentId` null la desvincula. Mismas reglas
+ * que al editarla: plan abierto y contenido de la misma materia y grado.
+ */
+async function setActivityContent(trx, tenantId, planId, activityId, contentId) {
+  const plan = await getOpenPlan(trx, tenantId, planId);
+  const activity = await trx('evaluation_activities').where({ id: activityId, tenant_id: tenantId, evaluation_plan_id: planId }).first();
+  if (!activity) throw ApiError.notFound('Actividad no encontrada.');
+  const content = contentId ? await assertContentForPlan(trx, tenantId, contentId, plan) : null;
+  await trx('evaluation_activities').where({ id: activityId }).update({ programmatic_content_id: contentId });
+  return {
+    id: activityId,
+    programmatic_content: content ? { id: content.id, unit: content.unit, topic: content.topic } : null,
+  };
+}
+
 async function upsertActivity(
   trx,
   tenantId,
@@ -846,6 +891,9 @@ async function upsertActivity(
 
   const existing = activityId ? activities.find((a) => a.id === activityId) : null;
   if (activityId && !existing) throw ApiError.notFound('Actividad no encontrada en este plan.');
+  // La actividad del proyecto pedagógico siempre es de tipo "Proyecto".
+  const linkedProject = existing ? await trx('pedagogical_projects').where({ evaluation_activity_id: activityId }).first('id') : null;
+  if (linkedProject) category = 'project';
   const hasScores = existing ? Boolean(await trx('activity_scores').where({ evaluation_activity_id: activityId }).first()) : false;
 
   // Sin estructura enviada, se conserva la actual (editar solo título/porcentaje no borra indicadores).
@@ -903,6 +951,11 @@ async function upsertActivity(
       .returning('*');
   }
 
+  // El proyecto toma el título y la descripción de su actividad.
+  if (linkedProject) {
+    await trx('pedagogical_projects').where({ id: linkedProject.id }).update({ title, description: description ?? null });
+  }
+
   if (criteria !== undefined) await saveCriteria(trx, tenantId, saved.id, criteria, hasScores);
   if (sectionDates !== undefined) {
     await trx('activity_section_dates').where({ activity_id: saved.id }).delete();
@@ -926,6 +979,15 @@ async function deleteActivity(trx, tenantId, planId, activityId) {
   const hasScores = await trx('activity_scores').where({ evaluation_activity_id: activityId }).first();
   if (hasScores) {
     throw ApiError.conflict('No se puede eliminar: ya hay calificaciones registradas para esta actividad.');
+  }
+  // Actividad de un proyecto pedagógico: se borra con él (y sus competencias), salvo que ya estén evaluadas.
+  const assessed = await trx('competency_assessments as ca')
+    .join('project_competencies as pc', 'pc.id', 'ca.project_competency_id')
+    .join('pedagogical_projects as pp', 'pp.id', 'pc.pedagogical_project_id')
+    .where('pp.evaluation_activity_id', activityId)
+    .first('ca.id');
+  if (assessed) {
+    throw ApiError.conflict('No se puede eliminar: el proyecto pedagógico ya tiene competencias evaluadas.');
   }
 
   await trx('evaluation_activities').where({ id: activityId }).delete();
@@ -967,6 +1029,7 @@ module.exports = {
   updatePlan,
   listPlanSections,
   loadActivityStructure,
+  setActivityContent,
   closePlan,
   reopenPlan,
   listTerms,

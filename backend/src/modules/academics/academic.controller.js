@@ -100,6 +100,15 @@ const withdraw = asyncHandler(async (req, res) => {
   res.status(204).send();
 });
 
+const enrollBulk = asyncHandler(async (req, res) => {
+  const schema = z.object({
+    studentIds: z.array(z.string().uuid()).min(1, 'Selecciona al menos un alumno.'),
+    sectionId: z.string().uuid(),
+  });
+  const data = schema.parse(req.body);
+  res.status(201).json(await service.enrollStudentBulk(req.db, req.tenantId, data));
+});
+
 module.exports = {
   deleteSection,
   getPeriodDeletionImpact,
@@ -117,5 +126,6 @@ module.exports = {
   updateSection,
   getRoster,
   enroll,
+  enrollBulk,
   withdraw,
 };

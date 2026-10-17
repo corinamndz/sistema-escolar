@@ -59,7 +59,11 @@ const linkSchema = z.object({
 
 const listStudents = asyncHandler(async (req, res) => {
   const scope = await teacherScope.getTeacherScope(req);
-  const rows = await service.listStudents(req.db, req.tenantId, { status: req.query.status, scope });
+  const rows = await service.listStudents(req.db, req.tenantId, {
+    status: req.query.status,
+    availableFor: req.query.availableFor || null,
+    scope,
+  });
   res.status(200).json(rows);
 });
 

@@ -70,6 +70,7 @@ router.put('/sections/:id/teachers', update, assignments.setSectionAssignments);
 router.get('/teaching-load', read, assignments.listTeachingLoad);
 
 router.post('/enrollments', update, controller.enroll);
+router.post('/enrollments/bulk', update, controller.enrollBulk);
 router.delete('/enrollments/:id', update, controller.withdraw);
 
 module.exports = router;

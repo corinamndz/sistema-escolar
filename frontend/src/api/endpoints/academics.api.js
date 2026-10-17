@@ -72,6 +72,7 @@ const academicsApi = {
   getTeachingLoad: (params) => get('/academics/teaching-load', params),
 
   enroll: (data) => post('/academics/enrollments', data),
+  enrollBulk: (data) => post('/academics/enrollments/bulk', data),
   withdraw: (id) => del(`/academics/enrollments/${id}`),
 };
 

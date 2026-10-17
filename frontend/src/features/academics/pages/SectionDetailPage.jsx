@@ -10,8 +10,6 @@ import Card from '../../../components/ui/Card';
 import Table from '../../../components/ui/Table';
 import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
-import Field from '../../../components/ui/Field';
-import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
@@ -208,42 +206,150 @@ function SectionDetailPage() {
 }
 
 function EnrollModal({ sectionId, onClose, onEnrolled }) {
-  const { data: students, loading: loadingStudents } = useFetch(() => studentsApi.list({ status: 'active' }), []);
-  const [studentId, setStudentId] = useState('');
-  const { run, loading, error } = useMutation(academicsApi.enroll);
+  const { data: students = [], loading: loadingStudents } = useFetch(
+    () => studentsApi.list({ status: 'active', availableFor: sectionId }),
+    [sectionId]
+  );
+  const [selected, setSelected] = useState(new Set());
+  const [search, setSearch] = useState('');
+  const { run, loading, error } = useMutation(academicsApi.enrollBulk);
+
+  const filtered = (students ?? []).filter((s) => {
+    const q = search.trim().toLowerCase();
+    return !q || `${s.first_name} ${s.last_name}`.toLowerCase().includes(q);
+  });
+
+  const toggle = (id) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleAll = () =>
+    setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((s) => s.id)));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!selected.size) return;
     try {
-      await run({ studentId, sectionId });
+      await run({ studentIds: [...selected], sectionId });
       onEnrolled();
       onClose();
     } catch {
-      // error visible en el modal (ej. cupo lleno, ya inscrito)
+      // error visible en el modal (ej. cupo insuficiente)
     }
   };
 
+  const allChecked = filtered.length > 0 && filtered.every((s) => selected.has(s.id));
+
   return (
-    <Modal title="Inscribir alumno" onClose={onClose}>
+    <Modal title="Inscribir alumnos" onClose={onClose}>
       <Alert>{error}</Alert>
       {loadingStudents ? (
         <Spinner />
+      ) : students.length === 0 ? (
+        <p style={{ margin: '0 0 16px', color: 'var(--color-text-secondary)', fontSize: '14px' }}>
+          No hay alumnos disponibles para inscribir en este año escolar.
+        </p>
       ) : (
         <form onSubmit={handleSubmit}>
-          <Field label="Alumno">
-            <Select sorted value={studentId} onChange={(e) => setStudentId(e.target.value)} required>
-              <option value="">Selecciona…</option>
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>
-              ))}
-            </Select>
-          </Field>
+          <div className="form-field" style={{ marginBottom: '12px' }}>
+            <input
+              className="form-field__input"
+              type="search"
+              placeholder="Buscar alumno…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <div
+            style={{
+              border: '1px solid var(--color-border)',
+              borderRadius: '8px',
+              maxHeight: '280px',
+              overflowY: 'auto',
+              marginBottom: '8px',
+            }}
+          >
+            {/* Cabecera: seleccionar todos los filtrados */}
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '8px 12px',
+                borderBottom: '1px solid var(--color-border)',
+                background: 'var(--color-surface-raised)',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 600,
+                position: 'sticky',
+                top: 0,
+                zIndex: 1,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={toggleAll}
+                style={{ cursor: 'pointer' }}
+              />
+              Seleccionar todos ({filtered.length})
+            </label>
+
+            {filtered.length === 0 ? (
+              <p style={{ margin: '12px', color: 'var(--color-text-secondary)', fontSize: '14px' }}>
+                Sin resultados para «{search}»
+              </p>
+            ) : (
+              filtered.map((s) => (
+                <label
+                  key={s.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 12px',
+                    borderBottom: '1px solid var(--color-border-subtle)',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    background: selected.has(s.id) ? 'var(--color-primary-soft)' : 'transparent',
+                    transition: 'background 0.1s',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(s.id)}
+                    onChange={() => toggle(s.id)}
+                    style={{ cursor: 'pointer', flexShrink: 0 }}
+                  />
+                  <span>
+                    {s.last_name}, {s.first_name}
+                    {s.national_id && (
+                      <span style={{ color: 'var(--color-text-secondary)', marginLeft: '6px', fontSize: '13px' }}>
+                        {s.national_id}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
+
+          <p style={{ margin: '0 0 16px', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+            {selected.size === 0
+              ? 'Ningún alumno seleccionado'
+              : `${selected.size} alumno${selected.size !== 1 ? 's' : ''} seleccionado${selected.size !== 1 ? 's' : ''}`}
+          </p>
+
           <div className="form-actions">
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" loading={loading}>
-              Inscribir
+            <Button type="submit" loading={loading} disabled={selected.size === 0}>
+              Inscribir {selected.size > 0 ? `(${selected.size})` : ''}
             </Button>
           </div>
         </form>

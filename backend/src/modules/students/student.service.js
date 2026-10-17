@@ -11,7 +11,7 @@ const teacherScope = require('../access/teacherScope');
  * activas en más de un año, se toma la del año activo más reciente. Los
  * campos de inscripción vienen en null si no está inscrito.
  */
-async function listStudents(trx, tenantId, { status, scope = null } = {}) {
+async function listStudents(trx, tenantId, { status, scope = null, availableFor = null } = {}) {
   const query = trx('students as s')
     .joinRaw(
       `LEFT JOIN LATERAL (
@@ -33,6 +33,19 @@ async function listStudents(trx, tenantId, { status, scope = null } = {}) {
     .select('s.*', 'cur.*')
     .orderBy(['s.last_name', 's.first_name']);
   if (status) query.andWhere('s.status', status);
+  // Solo alumnos SIN inscripción activa en el año escolar de la sección destino.
+  if (availableFor) {
+    query.whereNotExists(
+      trx('enrollments as ex')
+        .join('sections as sx', 'sx.id', 'ex.section_id')
+        .whereRaw('ex.student_id = s.id')
+        .where('ex.status', 'active')
+        .whereRaw(
+          'sx.school_period_id = (SELECT school_period_id FROM sections WHERE id = ?)',
+          [availableFor]
+        )
+    );
+  }
   // Docente: solo alumnos con inscripción vigente en una sección de su carga.
   teacherScope.restrictStudents(query, scope, 's.id');
   return query;

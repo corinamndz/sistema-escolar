@@ -239,6 +239,40 @@ async function updateSection(trx, tenantId, id, data) {
  * no rebasen el cupo (misma técnica que la validación del 100% en planes de
  * evaluación).
  */
+/**
+ * Inserta o reactiva una inscripción para un alumno en una sección.
+ * La tabla tiene UNIQUE(student_id, section_id): si existe un registro
+ * previo retirado se reactiva en lugar de insertar uno nuevo.
+ * Devuelve { enrollment, tuitionResult, reactivated }.
+ */
+async function upsertEnrollment(trx, tenantId, studentId, sectionId) {
+  const existing = await trx('enrollments')
+    .where({ student_id: studentId, section_id: sectionId })
+    .first();
+
+  if (existing?.status === 'active') {
+    throw ApiError.conflict('El alumno ya está inscrito en esta sección.');
+  }
+
+  let enrollment;
+  let reactivated = false;
+  if (existing) {
+    // Registro previo retirado → reactivar en lugar de insertar.
+    [enrollment] = await trx('enrollments')
+      .where({ id: existing.id })
+      .update({ status: 'active', enrolled_at: trx.fn.now() })
+      .returning('*');
+    reactivated = true;
+  } else {
+    [enrollment] = await trx('enrollments')
+      .insert({ tenant_id: tenantId, student_id: studentId, section_id: sectionId })
+      .returning('*');
+  }
+
+  const tuitionResult = await tuition.generateTuition(trx, tenantId, { enrollmentId: enrollment.id });
+  return { enrollment, tuitionResult, reactivated };
+}
+
 async function enrollStudent(trx, tenantId, { studentId, sectionId }) {
   const [section] = await trx('sections').where({ id: sectionId, tenant_id: tenantId }).forUpdate();
   if (!section) throw ApiError.notFound('Sección no encontrada.');
@@ -254,23 +288,59 @@ async function enrollStudent(trx, tenantId, { studentId, sectionId }) {
     );
   }
 
-  const existing = await trx('enrollments')
-    .where({ student_id: studentId, section_id: sectionId })
-    .first();
-  if (existing && existing.status === 'active') {
-    throw ApiError.conflict('El alumno ya está inscrito en esta sección.');
-  }
-
-  const [enrollment] = await trx('enrollments')
-    .insert({ tenant_id: tenantId, student_id: studentId, section_id: sectionId })
-    .returning('*');
-
   // Mensualidades de todo el año escolar, en la misma transacción. Si falta la
   // tarifa o el representante no se bloquea la inscripción: se informa en
   // `tuition.skipped` y se completa luego (al vincular representante o con
   // "Generar mensualidades").
-  const tuitionResult = await tuition.generateTuition(trx, tenantId, { enrollmentId: enrollment.id });
+  const { enrollment, tuitionResult } = await upsertEnrollment(trx, tenantId, studentId, sectionId);
   return { ...enrollment, tuition: tuitionResult };
+}
+
+/**
+ * Inscribe varios alumnos en una sección en una sola operación.
+ * Bloquea la sección una vez, valida el cupo total y luego procesa
+ * cada alumno. Devuelve { enrolled, skipped, results }.
+ */
+async function enrollStudentBulk(trx, tenantId, { studentIds, sectionId }) {
+  if (!Array.isArray(studentIds) || studentIds.length === 0) {
+    throw ApiError.badRequest('Selecciona al menos un alumno.', [{ path: 'studentIds', message: 'Requerido.' }]);
+  }
+
+  const [section] = await trx('sections').where({ id: sectionId, tenant_id: tenantId }).forUpdate();
+  if (!section) throw ApiError.notFound('Sección no encontrada.');
+
+  const { count: rawCount } = await trx('enrollments')
+    .where({ tenant_id: tenantId, section_id: sectionId, status: 'active' })
+    .count('id as count')
+    .first();
+  const available = section.max_students - Number(rawCount);
+  if (available <= 0) {
+    throw ApiError.unprocessable(
+      `La sección "${section.name}" ya alcanzó su cupo máximo (${section.max_students} alumnos).`
+    );
+  }
+  if (studentIds.length > available) {
+    throw ApiError.unprocessable(
+      `Solo hay ${available} cupo(s) disponible(s) en "${section.name}" pero seleccionaste ${studentIds.length} alumnos.`
+    );
+  }
+
+  const results = [];
+  for (const studentId of studentIds) {
+    try {
+      const { enrollment, tuitionResult } = await upsertEnrollment(trx, tenantId, studentId, sectionId);
+      results.push({ studentId, ok: true, enrollment, tuition: tuitionResult });
+    } catch (err) {
+      // Conflicto: ya estaba activo (concurrencia). No aborta el resto.
+      results.push({ studentId, ok: false, error: err.message });
+    }
+  }
+
+  return {
+    enrolled: results.filter((r) => r.ok).length,
+    skipped: results.filter((r) => !r.ok).length,
+    results,
+  };
 }
 
 async function withdrawEnrollment(trx, tenantId, enrollmentId) {
@@ -307,6 +377,7 @@ module.exports = {
   updateSection,
   deleteSection,
   enrollStudent,
+  enrollStudentBulk,
   withdrawEnrollment,
   listSectionRoster,
 };

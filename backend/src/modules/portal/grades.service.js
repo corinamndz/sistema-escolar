@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { exclusionOf } = require('../academics/sectionSubjects');
 const { scaleDefinition } = require('../grading/gradingScale');
 
 /**
@@ -251,6 +252,7 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
       .join('sections as sec', 'sec.grade_id', 'gs.grade_id')
       .join('subjects as sub', 'sub.id', 'gs.subject_id')
       .where('sec.id', current.id)
+      .whereNotExists(exclusionOf(trx, trx.ref('sec.id'), trx.ref('gs.subject_id')))
       .select('sub.id', 'sub.name', 'sub.code')
       .orderBy([{ column: 'gs.sort_order' }, { column: 'sub.name' }]);
     curriculum.forEach((c) => {

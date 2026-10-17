@@ -33,6 +33,12 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
   const location = useLocation();
   const { isOpen: isSectionOpen, toggle: toggleSection, open: openSection } = useExpandedSet();
   const activeSection = sections.find((section) => section.items.some((item) => isActivePath(item.path, location.pathname)))?.label;
+  // Opción activa: la coincidencia MÁS específica (en /academics/subjects se marca
+  // "Materias", no también "Grados y secciones", cuya ruta es un prefijo).
+  const activePath = sections
+    .flatMap((section) => section.items.map((item) => item.path))
+    .filter((path) => isActivePath(path, location.pathname))
+    .sort((a, b) => b.length - a.length)[0];
   useEffect(() => {
     if (activeSection) openSection(activeSection);
   }, [activeSection, openSection]);
@@ -93,7 +99,7 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
                       // La ruta es única; el módulo no (Pagos y Monedas y tasas comparten "payments").
                       key={item.path}
                       to={item.path}
-                      end={EXACT_PATHS.has(item.path)}
+                      end={EXACT_PATHS.has(item.path) || (activePath !== item.path && Boolean(activePath?.startsWith(`${item.path}/`)))}
                       className={({ isActive }) => `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`}
                       onClick={onCloseMobile}
                       data-tooltip={compact ? item.label : undefined}

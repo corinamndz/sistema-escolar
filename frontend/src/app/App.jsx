@@ -22,8 +22,10 @@ import ClubsPage from '../features/clubs/pages/ClubsPage';
 import EventsPage from '../features/events/pages/EventsPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
+import SubjectsPage from '../features/academics/subjects/SubjectsPage';
 import EvaluationPlansPage from '../features/evaluation-plans/pages/EvaluationPlansPage';
 import EvaluationPlanDetailPage from '../features/evaluation-plans/pages/EvaluationPlanDetailPage';
+import ProgrammaticContentPage from '../features/programmatic-content/pages/ProgrammaticContentPage';
 import GradebookPage from '../features/grading/pages/GradebookPage';
 import PaymentsPage from '../features/payments/pages/PaymentsPage';
 import MyPaymentsPage from '../features/payments/pages/MyPaymentsPage';
@@ -66,6 +68,7 @@ function App() {
             <Route element={<PermissionRoute module="academics" blockTeacher />}>
               <Route path="academics" element={<AcademicsPage />} />
               <Route path="academics/sections/:id" element={<SectionDetailPage />} />
+              <Route path="academics/subjects" element={<SubjectsPage />} />
             </Route>
 
             {/* Convivencia: sanciones disciplinarias. */}
@@ -96,6 +99,7 @@ function App() {
             <Route element={<PermissionRoute module="evaluation_plans" />}>
               <Route path="evaluation-plans" element={<EvaluationPlansPage />} />
               <Route path="evaluation-plans/:id" element={<EvaluationPlanDetailPage />} />
+              <Route path="programmatic-content" element={<ProgrammaticContentPage />} />
             </Route>
 
             <Route element={<PermissionRoute module="grading" />}>

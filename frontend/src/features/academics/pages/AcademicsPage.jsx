@@ -8,10 +8,8 @@ import SchoolPeriodsTab from '../components/SchoolPeriodsTab';
 import ClassroomsTab from '../components/ClassroomsTab';
 import GradesTab from '../components/GradesTab';
 import SectionsTab from '../components/SectionsTab';
-import SubjectsTab from '../components/SubjectsTab';
 import TeachingLoadTab from '../components/TeachingLoadTab';
 import SetupProgress from '../setup/SetupProgress';
-import CurriculumChecklist from '../setup/CurriculumChecklist';
 import { StepGuide, StepFooter, BlockedNotice } from '../setup/StepGuide';
 import { SETUP_STEPS, useSetupStatus } from '../setup/useSetupStatus';
 import { LEVELS } from '../levels';
@@ -29,7 +27,7 @@ const GUIDES = {
   },
   structure: {
     intro:
-      'Registra los grados que ofrece el colegio (ej. "Sala 5", "3er grado", "1er año"). Al crear cada grado eliges su nivel educativo, y el nivel define cómo se asignan los docentes:',
+      'Registra los grados que ofrece el colegio (ej. "Sala 5", "3er grado", "1er año"). Al crear cada grado eliges su nivel educativo, y el nivel define el personal docente de sus secciones:',
     links: [
       `Inicial — ${LEVELS.initial.rule}`,
       `Primaria — ${LEVELS.primary.rule}`,
@@ -37,20 +35,12 @@ const GUIDES = {
       'Las aulas físicas son opcionales: solo sirven para indicar dónde funciona cada sección.',
     ],
   },
-  subjects: {
-    intro:
-      'Necesario para Primaria y Secundaria. Primero crea el catálogo de materias (una sola vez) y después arma el plan de estudios de cada grado (ej. 1er a 6to grado: Castellano, Matemática, Ciencias Naturales…).',
-    links: [
-      'Una misma materia (ej. Matemática) se reutiliza en todos los grados que la vean.',
-      'Las materias del plan de estudios son las que tendrán plan de evaluación y notas por lapso. En Primaria las dicta el titular de la sección (o un especialista); en Secundaria, un profesor por materia (paso 4).',
-    ],
-  },
   sections: {
-    intro:
-      'Crea las secciones del año en curso (ej. "3er grado A") y asígnales docentes. Cada sección hereda las reglas del nivel de su grado:',
+    intro: 'Crea las secciones del año en curso (ej. "3er grado A") y asígnales su personal docente según el nivel de su grado:',
     links: [
-      'Inicial: docente titular y auxiliar. Primaria: un titular que dicta las materias, con especialistas opcionales. Secundaria: un profesor por materia.',
-      'Al crear una sección se abre directamente la asignación de docentes.',
+      'Inicial: docente y docente auxiliar. Primaria: docente. Secundaria: docente guía.',
+      'Al crear una sección se abre directamente la asignación de su personal docente.',
+      'Las materias de cada sección y sus docentes se asignan en el módulo de Materias.',
       'Después, inscribe a los alumnos desde el detalle de cada sección.',
     ],
   },
@@ -59,10 +49,11 @@ const GUIDES = {
 const STEP_KEYS = SETUP_STEPS.map((s) => s.key);
 
 /**
- * Estructura académica. Vista principal: el PANEL POR GRADO (materias del grado,
- * secciones, profesor guía y docentes por materia en una sola pantalla, con
- * autoguardado). La configuración por pasos queda para lo general: años
- * escolares, grados y aulas, catálogo de materias y carga por docente.
+ * Grados y secciones: la estructura base del colegio. Vista principal: el PANEL
+ * POR GRADO (sus secciones y el personal docente de cada una según el nivel,
+ * con autoguardado). La configuración por pasos queda para lo general: años
+ * escolares, grados y aulas, y secciones con la carga por docente.
+ * Las materias tienen su propio módulo (/academics/subjects).
  */
 function AcademicsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -76,7 +67,7 @@ function AcademicsPage() {
   // Cualquier alta/edición en un paso recalcula el progreso.
   const refreshProgress = useCallback(() => setVersion((v) => v + 1), []);
 
-  // Paso abierto: el de la URL (?paso=…), o el siguiente pendiente, o el 4 si todo está listo.
+  // Paso abierto: el de la URL (?paso=…), o el siguiente pendiente, o el último si todo está listo.
   const fromUrl = searchParams.get('paso');
   const active = STEP_KEYS.includes(fromUrl) ? fromUrl : status?.next?.key || 'sections';
 
@@ -105,7 +96,7 @@ function AcademicsPage() {
   if (view === 'panel') {
     return (
       <div>
-        <PageHeader title="Estructura académica" subtitle="Elige un grado y configúralo en una sola pantalla: sus materias, sus secciones y el docente de cada una. Los cambios se guardan solos." />
+        <PageHeader title="Grados y secciones" subtitle="Elige un grado: sus secciones y el personal docente de cada una según el nivel. Los cambios se guardan solos." />
         {viewTabs}
         <AcademicPanel onGoToSetup={goToSetup} />
       </div>
@@ -119,8 +110,8 @@ function AcademicsPage() {
   return (
     <div>
       <PageHeader
-        title="Estructura académica"
-        subtitle="Años escolares, grados y aulas, catálogo de materias y carga por docente. Para armar cada grado usa el Panel por grado."
+        title="Grados y secciones"
+        subtitle="Años escolares, grados y aulas, y secciones con su personal docente. Para cada grado usa el Panel por grado."
       />
       {viewTabs}
       <Alert>{error}</Alert>
@@ -142,13 +133,6 @@ function AcademicsPage() {
             <GradesTab onChanged={refreshProgress} />
             <ClassroomsTab onChanged={refreshProgress} />
           </>
-        )}
-
-        {active === 'subjects' && (
-          <div className="setup-split">
-            <SubjectsTab onChanged={refreshProgress} />
-            <CurriculumChecklist onChanged={refreshProgress} />
-          </div>
         )}
 
         {active === 'sections' && (

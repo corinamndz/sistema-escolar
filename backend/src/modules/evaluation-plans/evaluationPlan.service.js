@@ -1,4 +1,6 @@
 const { ApiError } = require('../../utils/ApiError');
+const { exclusionOf } = require('../academics/sectionSubjects');
+const { assertContentForPlan } = require('../programmatic-content/programmaticContent.service');
 
 // ---------- Lapsos/periodos ----------
 
@@ -165,7 +167,16 @@ async function getPlanWithActivities(trx, tenantId, planId) {
     .where({ tenant_id: tenantId, evaluation_plan_id: planId })
     .orderByRaw('planned_date ASC NULLS LAST, created_at ASC');
   const structure = await loadActivityStructure(trx, rows.map((a) => a.id));
-  const activities = rows.map((a) => ({ ...a, max_score: Number(a.max_score), ...structure.get(a.id) }));
+  const contentIds = [...new Set(rows.map((a) => a.programmatic_content_id).filter(Boolean))];
+  const contents = new Map(
+    (contentIds.length ? await trx('programmatic_content').whereIn('id', contentIds).select('id', 'unit', 'topic') : []).map((c) => [c.id, c])
+  );
+  const activities = rows.map((a) => ({
+    ...a,
+    max_score: Number(a.max_score),
+    ...structure.get(a.id),
+    programmatic_content: contents.get(a.programmatic_content_id) || null,
+  }));
 
   // Redondeo a centésimas: los porcentajes son NUMERIC(5,2) y 33.33 + 33.33 + 33.34 debe dar 100.
   const totalWeight = Math.round(activities.reduce((sum, a) => sum + Number(a.weight_percent), 0) * 100) / 100;
@@ -185,6 +196,8 @@ async function getPlanWithActivities(trx, tenantId, planId) {
   const candidates = await trx('sections')
     .where({ tenant_id: tenantId, grade_id: plan.grade_id, school_period_id: trx('sections').where({ id: plan.section_id }).select('school_period_id') })
     .whereNotIn('id', sections.map((s) => s.id))
+    // Solo las secciones donde se dicta la materia (migración 037).
+    .modify((q) => plan.subject_id && q.whereNotExists(exclusionOf(trx, trx.ref('sections.id'), plan.subject_id)))
     .select('id', 'name')
     .orderBy('name');
 
@@ -200,7 +213,7 @@ async function getPlanWithActivities(trx, tenantId, planId) {
         .where({ 's.tenant_id': tenantId, 's.school_period_id': plan.school_period_id })
         .whereNot('s.id', plan.section_id)
         .modify((q) => {
-          if (plan.subject_id) q.whereExists(trx('grade_subjects as gs').whereRaw('gs.grade_id = g.id').andWhere('gs.subject_id', plan.subject_id));
+          if (plan.subject_id) q.whereExists(trx('grade_subjects as gs').whereRaw('gs.grade_id = g.id').andWhere('gs.subject_id', plan.subject_id)).whereNotExists(exclusionOf(trx, trx.ref('s.id'), plan.subject_id));
           else q.andWhere('s.grade_id', plan.grade_id);
         })
         .select('s.id', 's.name', 'g.name as grade_name')
@@ -246,7 +259,7 @@ async function resolveSectionTeacher(trx, section, { teacherId: requestedTeacher
   let subject = subjectText?.trim();
 
   const curriculumSize = section.has_curriculum
-    ? Number((await trx('grade_subjects').where({ grade_id: section.grade_id }).count('* as n').first()).n)
+    ? Number((await trx('grade_subjects as gs').where({ 'gs.grade_id': section.grade_id }).whereNotExists(exclusionOf(trx, section.id, trx.ref('gs.subject_id'))).count('* as n').first()).n)
     : 0;
   const homeroomWithCurriculum = section.assignment_mode === 'homeroom' && curriculumSize > 0;
 
@@ -260,6 +273,7 @@ async function resolveSectionTeacher(trx, section, { teacherId: requestedTeacher
     const inCurriculum = await trx('grade_subjects as gs')
       .join('subjects as s', 's.id', 'gs.subject_id')
       .where({ 'gs.grade_id': section.grade_id, 'gs.subject_id': subjectId })
+      .whereNotExists(exclusionOf(trx, section.id, trx.ref('gs.subject_id')))
       .select('s.name')
       .first();
     if (!inCurriculum) {
@@ -479,6 +493,10 @@ async function movePlanToSection(trx, tenantId, plan, targetSectionId) {
     .where({ id: plan.id })
     .update({ section_id: targetSectionId, teacher_id: resolved.teacherId, subject: resolved.subject, subject_id: resolved.subjectId ?? plan.subject_id });
   await trx('evaluation_plan_sections').insert({ tenant_id: tenantId, plan_id: plan.id, section_id: targetSectionId });
+  // El contenido programático es por grado: en otro grado sus actividades quedan sin contenido.
+  if (target.grade_id !== origin.grade_id) {
+    await trx('evaluation_activities').where({ evaluation_plan_id: plan.id }).whereNotNull('programmatic_content_id').update({ programmatic_content_id: null });
+  }
   plan.section_id = targetSectionId;
 }
 
@@ -775,7 +793,22 @@ async function upsertActivity(
   trx,
   tenantId,
   planId,
-  { activityId, title, category, weightPercent, description, plannedDate, strategy, contentRefs, maxScore, criteria, sectionDates }
+  {
+    activityId,
+    title,
+    category,
+    weightPercent,
+    description,
+    plannedDate,
+    strategy,
+    contentRefs,
+    maxScore,
+    criteria,
+    sectionDates,
+    programmaticContentId,
+    instrument,
+    planFormat,
+  }
 ) {
   if (weightPercent <= 0 || weightPercent > 100) {
     throw ApiError.badRequest('El porcentaje debe estar entre 0 (exclusivo) y 100.');
@@ -783,6 +816,22 @@ async function upsertActivity(
 
   const plan = await getOpenPlan(trx, tenantId, planId);
   const planSections = await listPlanSections(trx, planId);
+  if (programmaticContentId) await assertContentForPlan(trx, tenantId, programmaticContentId, plan);
+
+  // Actividad en formato detallado: exige criterios y, si el plan es simple, lo
+  // pasa a detallado (pasar a detallado no tiene restricciones; las demás
+  // actividades del plan se conservan tal cual).
+  if (planFormat === 'detailed') {
+    if (!criteria?.length) {
+      throw ApiError.badRequest('El formato detallado requiere al menos un criterio con sus indicadores.', [
+        { path: 'criteria', message: 'Agrega un criterio.' },
+      ]);
+    }
+    if (plan.format !== 'detailed') {
+      await trx('evaluation_plans').where({ id: planId }).update({ format: 'detailed' });
+      plan.format = 'detailed';
+    }
+  }
 
   // La fecha estimada debe caer dentro del lapso (si el lapso tiene fechas).
   if (plannedDate && ((plan.term_start && plannedDate < plan.term_start) || (plan.term_end && plannedDate > plan.term_end))) {
@@ -835,6 +884,8 @@ async function upsertActivity(
     planned_date: plannedDate ?? null,
     ...(strategy !== undefined ? { strategy: strategy || null } : {}),
     ...(contentRefs !== undefined ? { content_refs: JSON.stringify(contentRefs) } : {}),
+    ...(programmaticContentId !== undefined ? { programmatic_content_id: programmaticContentId } : {}),
+    ...(instrument !== undefined ? { instrument } : {}),
     max_score: effectiveMax,
   };
 

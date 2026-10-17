@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { notExcludedSql } = require('./sectionSubjects');
 const tuition = require('../payments/tuition.service');
 
 // ---------- Periodos escolares (años) ----------
@@ -125,8 +126,10 @@ async function listSections(trx, tenantId, { schoolPeriodId, gradeId, levelCode 
       trx.raw(
         "(SELECT count(*)::int FROM enrollments e WHERE e.section_id = sec.id AND e.status = 'active') AS enrolled_count"
       ),
-      trx.raw('(SELECT count(*)::int FROM grade_subjects gs WHERE gs.grade_id = sec.grade_id) AS subject_total'),
-      trx.raw('(SELECT count(*)::int FROM teacher_subject_sections tss WHERE tss.section_id = sec.id) AS subject_assigned')
+      trx.raw(`(SELECT count(*)::int FROM grade_subjects gs WHERE gs.grade_id = sec.grade_id AND ${notExcludedSql('sec.id', 'gs.subject_id')}) AS subject_total`),
+      trx.raw('(SELECT count(*)::int FROM teacher_subject_sections tss WHERE tss.section_id = sec.id) AS subject_assigned'),
+      // Secundaria: nombre del docente guía para las tablas.
+      trx.raw("(SELECT st.first_name || ' ' || st.last_name FROM staff st WHERE st.id = sec.guide_teacher_id) AS guide_teacher_name")
     )
     .where('sec.tenant_id', tenantId)
     .orderBy(['el.sort_order', 'g.sort_order', 'g.name', 'sec.name']);

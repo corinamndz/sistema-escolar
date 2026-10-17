@@ -10,23 +10,36 @@ export const LEVELS = {
     short: 'Inicial',
     name: 'Educación Inicial',
     icon: 'sparkles',
-    rule: 'Cada sección tiene un docente titular y un docente auxiliar, que dictan las áreas del grado (opcional: puedes marcar las áreas en Materias).',
+    rule: 'Cada sección tiene un docente y un docente auxiliar.',
   },
   primary: {
     short: 'Primaria',
     name: 'Educación Primaria',
     icon: 'school',
-    rule: 'Cada sección tiene un docente titular que dicta las materias del plan de estudios; puedes asignar especialistas por materia.',
+    rule: 'Cada sección tiene un docente.',
   },
   secondary: {
     short: 'Secundaria',
     name: 'Educación Secundaria',
     icon: 'clipboard',
-    rule: 'Cada materia del grado tiene su propio profesor en cada sección.',
+    rule: 'Cada sección tiene un docente guía.',
   },
 };
 
 export const LEVEL_CODES = Object.keys(LEVELS);
+
+/**
+ * Personal docente de cada sección según el nivel (Grados y secciones).
+ * Los docentes de cada materia se asignan en el módulo de Materias.
+ */
+export const STAFF_ROLES = {
+  initial: [
+    { key: 'lead', label: 'Docente' },
+    { key: 'assistant', label: 'Docente auxiliar' },
+  ],
+  primary: [{ key: 'lead', label: 'Docente' }],
+  secondary: [{ key: 'guide', label: 'Docente guía' }],
+};
 
 export function LevelBadge({ code, short = true }) {
   const level = LEVELS[code];
@@ -51,8 +64,11 @@ export function LevelRule({ code }) {
   );
 }
 
-/** Filtro por nivel en forma de "pills" (Todos / Inicial / Primaria / Secundaria). */
-export function LevelFilter({ value, onChange, counts }) {
+/**
+ * Filtro por nivel en forma de "pills" (Todos / Inicial / Primaria / Secundaria).
+ * `total`: cifra de "Todos" cuando un elemento puede estar en varios niveles (por defecto, la suma).
+ */
+export function LevelFilter({ value, onChange, counts, total }) {
   const options = [{ code: '', short: 'Todos' }, ...LEVEL_CODES.map((code) => ({ code, short: LEVELS[code].short }))];
   return (
     <div className="level-filter" role="group" aria-label="Filtrar por nivel">
@@ -65,7 +81,7 @@ export function LevelFilter({ value, onChange, counts }) {
           aria-pressed={value === o.code}
         >
           {o.short}
-          {counts && <span className="level-filter__count">{o.code ? counts[o.code] || 0 : Object.values(counts).reduce((a, b) => a + b, 0)}</span>}
+          {counts && <span className="level-filter__count">{o.code ? counts[o.code] || 0 : (total ?? Object.values(counts).reduce((a, b) => a + b, 0))}</span>}
         </button>
       ))}
     </div>

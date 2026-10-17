@@ -1,5 +1,6 @@
 const { ApiError } = require('../../utils/ApiError');
 const { getGradeById, getSectionById } = require('./academic.service');
+const { exclusionOf, notExcludedSql } = require('./sectionSubjects');
 
 /**
  * Niveles educativos, materias, plan de estudios por grado y asignación docente.
@@ -349,7 +350,7 @@ async function getSectionAssignments(trx, tenantId, sectionId) {
   };
 }
 
-/** Materias del plan de estudios del grado de la sección, con su profesor asignado (si lo hay). */
+/** Materias de la sección (plan de su grado menos las excluidas de ella), con su profesor asignado (si lo hay). */
 async function listSectionSubjects(trx, section) {
   const sectionId = section.id;
   const subjects = await trx('grade_subjects as gs')
@@ -359,6 +360,8 @@ async function listSectionSubjects(trx, section) {
     })
     .leftJoin('staff as st', 'st.id', 't.staff_id')
     .where('gs.grade_id', section.grade_id)
+    // Sin las materias excluidas de esta sección (migración 037).
+    .whereNotExists(exclusionOf(trx, sectionId, trx.ref('gs.subject_id')))
     .select('s.id', 's.name', 's.code', 'gs.weekly_hours', 'st.id as teacher_id', 'st.first_name', 'st.last_name')
     .orderBy(['gs.sort_order', 's.name']);
 
@@ -470,13 +473,17 @@ async function applySubjectTeachers(trx, tenantId, section, list) {
   const curriculum = await trx('grade_subjects as gs')
     .join('subjects as s', 's.id', 'gs.subject_id')
     .where('gs.grade_id', section.grade_id)
-    .select('s.id', 's.name');
+    .select('s.id', 's.name', trx.raw(`${notExcludedSql('?', 'gs.subject_id')} AS available`, [sectionId]));
   const inCurriculum = new Set(curriculum.map((c) => c.id));
   const outside = subjectIds.filter((id) => !inCurriculum.has(id));
   if (outside.length) {
     throw ApiError.unprocessable(
       `Hay materias que no forman parte del plan de estudios de ${section.grade_name}. Agrégalas primero al grado.`
     );
+  }
+  const excluded = curriculum.filter((c) => !c.available && subjectIds.includes(c.id));
+  if (excluded.length) {
+    throw ApiError.unprocessable(`${excluded[0].name} no se dicta en ${section.grade_name} ${section.name}: márcala para esa sección en Materias.`);
   }
 
   const existing = await trx('teacher_subject_sections').where({ section_id: sectionId }).whereIn('subject_id', subjectIds);
@@ -534,6 +541,7 @@ async function listAssignmentMatrix(trx, tenantId, { schoolPeriodId, gradeId = n
     })
     .leftJoin('staff as lead', 'lead.id', 'ts.staff_id')
     .where({ 'sec.tenant_id': tenantId, 'sec.school_period_id': schoolPeriodId })
+    .whereNotExists(exclusionOf(trx, trx.ref('sec.id'), trx.ref('s.id')))
     .modify((q) => {
       if (gradeId) q.andWhere('g.id', gradeId);
       if (sectionId) q.andWhere('sec.id', sectionId);
@@ -643,46 +651,71 @@ async function listTeachingLoad(trx, tenantId, { schoolPeriodId } = {}) {
 }
 
 /**
- * Panel unificado de un grado en un año escolar: todo lo necesario para
- * configurarlo en una sola pantalla.
- *   grade       datos del grado y reglas de su nivel
- *   curriculum  materias del grado (plan de estudios) con horas semanales
- *   catalog     catálogo global de materias activas (para marcar/desmarcar)
- *   teachers    docentes activos (para los selectores)
- *   sections    secciones del grado en ese año, cada una con su asignación
- *               (titular/auxiliar o profesor guía, y profesor por materia)
+ * Panel de un grado en un año escolar para el módulo de Grados y secciones:
+ * SOLO la estructura (secciones y su personal docente según el nivel). Las
+ * materias y sus profesores se gestionan en el módulo de Materias
+ * (subjectAssignment.service).
+ *   grade     datos del grado, reglas de su nivel y cuántas materias tiene
+ *   teachers  docentes activos (para los selectores)
+ *   sections  secciones del año, cada una con
+ *               Inicial     homeroom { lead (docente), assistant (docente auxiliar) }
+ *               Primaria    homeroom { lead (docente) }
+ *               Secundaria  guide (docente guía)
+ *             y subject_count: materias que ve la sección (informativo)
  */
 async function getGradePanel(trx, tenantId, gradeId, { schoolPeriodId }) {
-  const { grade, subjects: curriculum } = await getGradeSubjects(trx, tenantId, gradeId);
-  const level = await trx('education_levels').where({ code: grade.level_code }).first();
-  const catalog = await listSubjects(trx, tenantId, { activeOnly: true });
+  const grade = await getGradeById(trx, tenantId, gradeId);
+  const { n: subjectCount } = await trx('grade_subjects').where({ grade_id: gradeId }).count('* as n').first();
   const teachers = await trx('staff')
     .where({ tenant_id: tenantId, staff_type: 'teaching', status: 'active' })
     .select('id', 'first_name', 'last_name')
     .orderBy(['first_name', 'last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
-  const sectionRows = schoolPeriodId
-    ? await trx('sections')
-        .where({ tenant_id: tenantId, grade_id: gradeId, school_period_id: schoolPeriodId })
-        .select('id', 'name', 'max_students', trx.raw("(SELECT count(*)::int FROM enrollments e WHERE e.section_id = sections.id AND e.status = 'active') AS enrolled"))
-        .orderBy('name')
+  const rows = schoolPeriodId
+    ? await trx('sections as sec')
+        .leftJoin('staff as guide', 'guide.id', 'sec.guide_teacher_id')
+        .where({ 'sec.tenant_id': tenantId, 'sec.grade_id': gradeId, 'sec.school_period_id': schoolPeriodId })
+        .select(
+          'sec.id',
+          'sec.name',
+          'sec.max_students',
+          'guide.id as guide_id',
+          trx.raw("guide.first_name || ' ' || guide.last_name AS guide_name"),
+          trx.raw("(SELECT count(*)::int FROM enrollments e WHERE e.section_id = sec.id AND e.status = 'active') AS enrolled"),
+          trx.raw(`(SELECT count(*)::int FROM grade_subjects gs WHERE gs.grade_id = sec.grade_id AND ${notExcludedSql('sec.id', 'gs.subject_id')}) AS subject_count`)
+        )
+        .orderBy('sec.name')
     : [];
-  const sections = [];
-  for (const s of sectionRows) {
-    const a = await getSectionAssignments(trx, tenantId, s.id);
-    sections.push({ id: s.id, name: s.name, max_students: s.max_students, enrolled: s.enrolled, mode: a.mode, homeroom: a.homeroom || null, guide: a.guide || null, subjects: a.subjects });
-  }
+  const homeroom = rows.length
+    ? await trx('teacher_sections as ts')
+        .join('staff as st', 'st.id', 'ts.staff_id')
+        .whereIn('ts.section_id', rows.map((r) => r.id))
+        .select('ts.section_id', 'ts.role', 'st.id', 'st.first_name', 'st.last_name')
+    : [];
+  const pick = (sectionId, role) => {
+    const r = homeroom.find((h) => h.section_id === sectionId && h.role === role);
+    return r ? { id: r.id, name: fullName(r) } : null;
+  };
+  const isHomeroom = grade.assignment_mode === 'homeroom';
   return {
-    grade: { ...grade, assignment_mode: level.assignment_mode, allows_assistant: level.allows_assistant, has_curriculum: level.has_curriculum, level_name: level.name },
-    curriculum,
-    // grade_count: en cuántos grados está (para saber si se puede borrar del catálogo).
-    catalog: catalog.map((s) => ({ id: s.id, name: s.name, code: s.code, grade_count: s.grade_count })),
+    grade: { ...grade, subject_count: Number(subjectCount) },
     teachers: teachers.map((t) => ({ id: t.id, name: fullName(t) })),
-    sections,
+    sections: rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      max_students: r.max_students,
+      enrolled: r.enrolled,
+      subject_count: r.subject_count,
+      mode: grade.assignment_mode,
+      homeroom: isHomeroom ? { lead: pick(r.id, 'lead'), assistant: pick(r.id, 'assistant') } : null,
+      guide: !isHomeroom && r.guide_id ? { id: r.guide_id, name: r.guide_name } : null,
+    })),
   };
 }
 
 module.exports = {
   setSubjectGrades,
+  getSubjectById,
+  applySubjectTeachers,
   getSubjectWithGrades,
   listAssignmentMatrix,
   getGradePanel,

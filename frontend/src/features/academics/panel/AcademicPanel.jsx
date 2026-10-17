@@ -16,10 +16,10 @@ import { isSectionStaffed } from '../setup/useSetupStatus';
 import GradeWorkspace from './GradeWorkspace';
 
 /**
- * Panel por grado: la estructura académica en una sola pantalla.
- *   Izquierda: los grados por nivel, con su estado (materias, secciones y
- *   cuántas tienen todos sus docentes) y alta rápida de grado.
- *   Derecha: el grado elegido, con sus materias y la matriz de docentes.
+ * Panel por grado de Grados y secciones.
+ *   Izquierda: los grados por nivel, con su estado (secciones y cuántas tienen
+ *   su personal docente completo) y alta rápida de grado.
+ *   Derecha: el grado elegido, con sus secciones y su personal docente.
  */
 function AcademicPanel({ onGoToSetup }) {
   const { can } = useAuth();
@@ -67,13 +67,11 @@ function AcademicPanel({ onGoToSetup }) {
     })).filter((g) => g.grades.length);
   }, [grades, query]);
 
-  /** Estado del grado en el año: secciones, cuántas con todos sus docentes y si le faltan materias. */
+  /** Estado del grado en el año: secciones y cuántas tienen su personal docente completo. */
   const statusOf = (g) => {
     const list = (sections || []).filter((s) => s.grade_id === g.id);
     const staffed = list.filter(isSectionStaffed).length;
-    const needsSubjects = g.level_code !== 'initial' && !g.subject_count;
-    const done = list.length > 0 && staffed === list.length && !needsSubjects;
-    return { sections: list.length, staffed, needsSubjects, done };
+    return { sections: list.length, staffed, done: list.length > 0 && staffed === list.length };
   };
 
   const createGrade = async (e) => {
@@ -134,8 +132,7 @@ function AcademicPanel({ onGoToSetup }) {
                     <span className={`gp-grade__dot ${st.done ? 'is-done' : st.sections ? 'is-partial' : ''}`} aria-hidden="true" />
                     <span className="gp-grade__name">{g.name}</span>
                     <span className="gp-grade__meta">
-                      {g.level_code !== 'initial' && `${g.subject_count} mat. · `}
-                      {st.sections ? `${st.staffed}/${st.sections} secc. completas` : 'sin secciones'}
+                      {st.sections ? `${st.staffed}/${st.sections} secc. con personal` : 'sin secciones'}
                     </span>
                   </button>
                 );

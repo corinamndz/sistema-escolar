@@ -15,70 +15,72 @@ import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
-import { LevelBadge } from '../levels';
+import { LevelBadge, STAFF_ROLES } from '../levels';
 import TeacherAssignmentModal from '../components/TeacherAssignmentModal';
 
-/** Docentes de la sección, con la forma que corresponde a su nivel. */
+/**
+ * Personal docente de la sección (según su nivel) y las materias que ve con su
+ * docente, en solo lectura: las materias se gestionan en el módulo de Materias.
+ */
 function SectionTeachersCard({ sectionId, onAssign }) {
   const { data, loading, error } = useFetch(() => academicsApi.getSectionTeachers(sectionId), [sectionId]);
 
   let body;
   if (loading) body = <Spinner label={null} />;
   else if (error) body = <Alert>{error}</Alert>;
-  else if (data.mode === 'homeroom') {
-    const rows = [['Docente titular', data.homeroom.lead]];
-    if (data.section.allows_assistant) rows.push(['Docente auxiliar', data.homeroom.assistant]);
+  else {
+    const roles = STAFF_ROLES[data.section.level_code] || [];
+    const current = { lead: data.homeroom?.lead, assistant: data.homeroom?.assistant, guide: data.guide };
     body = (
       <>
         <dl className="detail-list">
-          {rows.map(([label, teacher]) => (
-            <div key={label} className="detail-list__item">
-              <dt>{label}</dt>
-              <dd>{teacher ? teacher.name : <span className="teacher-stack__missing">Sin asignar</span>}</dd>
+          {roles.map((r) => (
+            <div key={r.key} className="detail-list__item">
+              <dt>{r.label}</dt>
+              <dd>{current[r.key] ? current[r.key].name : <span className="teacher-stack__missing">Sin asignar</span>}</dd>
             </div>
           ))}
         </dl>
-        {data.subjects?.length > 0 && (
-          <ul className="assignment-list" style={{ marginTop: 12 }}>
-            {data.subjects.map((s) => (
-              <li key={s.id}>
-                <strong>{s.name}</strong>
-                {s.effectiveTeacher ? (
-                  <span>
-                    {s.effectiveTeacher.name}
-                    <span className="text-muted">{s.inherited ? ' · titular' : ' · especialista'}</span>
-                  </span>
-                ) : (
-                  <span className="teacher-stack__missing">Sin docente</span>
-                )}
-              </li>
-            ))}
-          </ul>
+        {data.section.has_curriculum && (
+          <div className="section-subjects">
+            <div className="section-subjects__head">
+              <strong>Materias</strong>
+              <Link to={`/academics/subjects?grado=${data.section.grade_id}`} className="text-sm">
+                Gestionar en Materias
+              </Link>
+            </div>
+            {data.subjects.length === 0 ? (
+              <p className="text-muted text-sm">Esta sección aún no tiene materias.</p>
+            ) : (
+              <ul className="assignment-list">
+                {data.subjects.map((s) => (
+                  <li key={s.id}>
+                    <strong>{s.name}</strong>
+                    {s.effectiveTeacher ? (
+                      <span>
+                        {s.effectiveTeacher.name}
+                        {s.inherited && <span className="text-muted"> · docente de aula</span>}
+                      </span>
+                    ) : (
+                      <span className="teacher-stack__missing">Sin docente</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </>
-    );
-  } else if (data.subjects.length === 0) {
-    body = <p className="text-muted">El grado no tiene materias en su plan de estudios.</p>;
-  } else {
-    body = (
-      <ul className="assignment-list">
-        {data.subjects.map((s) => (
-          <li key={s.id}>
-            <strong>{s.name}</strong>
-            {s.teacher ? <span>{s.teacher.name}</span> : <span className="teacher-stack__missing">Sin profesor</span>}
-          </li>
-        ))}
-      </ul>
     );
   }
 
   return (
     <Card
-      title="Docentes asignados"
+      title="Personal docente"
       actions={
         <RequirePermission module="academics" action="update">
           <Button size="sm" variant="secondary" icon="users" onClick={onAssign}>
-            Asignar docentes
+            Asignar personal
           </Button>
         </RequirePermission>
       }

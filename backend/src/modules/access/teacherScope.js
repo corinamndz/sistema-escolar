@@ -1,5 +1,6 @@
 const { ApiError } = require('../../utils/ApiError');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
+const { exclusionOf } = require('../academics/sectionSubjects');
 
 /**
  * Alcance del DOCENTE: qué secciones y materias le corresponden según la carga
@@ -159,6 +160,30 @@ async function assertCompetencyAccess(req, competencyId) {
   if (c) await assertProjectAccess(req, c.pedagogical_project_id);
 }
 
+/**
+ * Pares grado + materia que el docente dicta en el período activo (Set de
+ * "gradeId|subjectId"), para el contenido programático. Sin alcance → null
+ * (sin restricción).
+ */
+async function teachingPairs(req) {
+  const scope = await getTeacherScope(req);
+  if (!scope) return null;
+  if (!scope.sectionIds.length) return new Set();
+  const rows = await req
+    .db('sections as sec')
+    .join('grade_subjects as gs', 'gs.grade_id', 'sec.grade_id')
+    .whereIn('sec.id', scope.sectionIds)
+    .whereNotExists(exclusionOf(req.db, req.db.ref('sec.id'), req.db.ref('gs.subject_id')))
+    .select('sec.id as section_id', 'sec.grade_id', 'gs.subject_id');
+  return new Set(rows.filter((r) => coversSubject(scope, r.section_id, r.subject_id)).map((r) => `${r.grade_id}|${r.subject_id}`));
+}
+
+/** 404 si el docente no dicta esa materia en ese grado (contenido programático). */
+async function assertGradeSubjectAccess(req, gradeId, subjectId) {
+  const pairs = await teachingPairs(req);
+  if (pairs && !pairs.has(`${gradeId}|${subjectId}`)) throw notFound('Contenido programático');
+}
+
 /** Middleware: valida el recurso del parámetro de ruta contra la carga del docente. */
 const guardParam = (assertFn, param) => async (req, res, next) => {
   try {
@@ -197,6 +222,8 @@ module.exports = {
   assertActivityAccess,
   assertProjectAccess,
   assertCompetencyAccess,
+  teachingPairs,
+  assertGradeSubjectAccess,
   guardParam,
   denyTeachers,
 };

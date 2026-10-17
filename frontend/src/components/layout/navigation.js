@@ -32,6 +32,10 @@ const NAV_SECTIONS = [
     label: 'Académico',
     items: [
       { moduleCode: 'academics', label: 'Grados y secciones', icon: 'school', path: '/academics', blockTeacher: true },
+      // Materias: en qué grados y secciones se dicta cada una y qué docente la imparte.
+      { moduleCode: 'academics', label: 'Materias', icon: 'book', path: '/academics/subjects', blockTeacher: true },
+      // Contenido programático: unidades y temas de cada materia con sus evaluaciones (docentes: sus materias).
+      { moduleCode: 'evaluation_plans', label: 'Contenido programático', icon: 'layers', path: '/programmatic-content' },
       { moduleCode: 'evaluation_plans', label: 'Planes de evaluación', icon: 'clipboard', path: '/evaluation-plans' },
       { moduleCode: 'schedules', label: 'Horarios', icon: 'calendar', path: '/schedules', blockTeacher: true },
       // Docentes: su horario semanal (solo lectura).

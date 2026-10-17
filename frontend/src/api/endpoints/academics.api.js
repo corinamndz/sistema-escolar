@@ -34,16 +34,22 @@ const academicsApi = {
   listGrades: (params) => get('/academics/grades', params),
   createGrade: (data) => post('/academics/grades', data),
   updateGrade: (id, data) => put(`/academics/grades/${id}`, data),
-  getGradeSubjects: (id) => get(`/academics/grades/${id}/subjects`),
-  /** Panel unificado del grado: { grade, curriculum, catalog, teachers, sections } del año indicado. */
+  /** Panel del grado en Grados y secciones: { grade (con subject_count), teachers, sections (con su personal docente) }. */
   getGradePanel: (id, schoolPeriodId) => get(`/academics/grades/${id}/panel`, { schoolPeriodId }),
-  /** `subjects = [{ subjectId, weeklyHours? }]` en el orden del plan de estudios. */
-  setGradeSubjects: (id, subjects) => put(`/academics/grades/${id}/subjects`, { subjects }),
 
+  // ---- Materias ----
+  /** Con `{ schoolPeriodId }` cada materia trae `offering` (grados, secciones disponibles y cobertura docente). */
   listSubjects: (params) => get('/academics/subjects', params),
+  /** `{ name, assignments?: { grades: [...] } }` (ver setSubjectAssignments). */
   createSubject: (data) => post('/academics/subjects', data),
   updateSubject: (id, data) => put(`/academics/subjects/${id}`, data),
   deleteSubject: (id) => del(`/academics/subjects/${id}`),
+  /** { subject, school_period, grades: [{ …, offered, weekly_hours, sections: [{ id, name, available, teacher, homeroom_teacher, has_plans }] }], teachers } */
+  getSubjectAssignments: (id, schoolPeriodId) => get(`/academics/subjects/${id}/assignments`, { schoolPeriodId }),
+  /** `{ schoolPeriodId?, grades: [{ gradeId, weeklyHours?, sections?: [{ sectionId, available, teacherId? }] }] }` */
+  setSubjectAssignments: (id, data) => put(`/academics/subjects/${id}/assignments`, data),
+  /** Misma forma que getSubjectAssignments, vacía: para el formulario de una materia nueva. */
+  getSubjectAssignmentOptions: (schoolPeriodId) => get('/academics/subjects/assignment-options', { schoolPeriodId }),
 
   listSections: (params) => get('/academics/sections', params),
   getSection: (id) => get(`/academics/sections/${id}`),
@@ -54,10 +60,11 @@ const academicsApi = {
   getRoster: (id) => get(`/academics/sections/${id}/roster`),
 
   /**
-   * Asignación docente de una sección. La forma depende del nivel:
-   *   homeroom → { leadTeacherId, assistantTeacherId }
-   *   subjects → { subjects: [{ subjectId, teacherId }] }
-   *              y/o { guideTeacherId } (profesor guía, opcional)
+   * Personal docente de la sección según su nivel:
+   *   Inicial    → { leadTeacherId, assistantTeacherId }  (docente y docente auxiliar)
+   *   Primaria   → { leadTeacherId }                      (docente)
+   *   Secundaria → { guideTeacherId }                     (docente guía)
+   * El docente de cada materia se asigna en Materias (setSubjectAssignments).
    */
   getSectionTeachers: (id) => get(`/academics/sections/${id}/teachers`),
   setSectionTeachers: (id, data) => put(`/academics/sections/${id}/teachers`, data),

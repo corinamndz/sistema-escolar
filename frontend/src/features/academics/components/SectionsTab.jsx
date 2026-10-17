@@ -18,40 +18,25 @@ import TeacherAssignmentModal from './TeacherAssignmentModal';
 import ImportActions from '../../../components/import/ImportActions';
 import HelpTip from '../../../components/ui/HelpTip';
 
-/** Resumen de la asignación docente de una sección, según su nivel. */
+/** Personal docente de una sección según su nivel (docente / auxiliar / docente guía). */
 export function TeachersSummary({ section }) {
   if (section.assignment_mode === 'subjects') {
-    const { total, assigned } = section.subjectCoverage || { total: 0, assigned: 0 };
-    if (total === 0) return <span className="text-muted text-sm">Grado sin materias</span>;
     return (
-      <div className="coverage-mini" title={`${assigned} de ${total} materias con profesor`}>
-        <div className="progress-bar">
-          <div className="progress-bar__fill" style={{ width: `${(assigned / total) * 100}%` }} />
-        </div>
-        <span className={assigned === total ? 'text-success' : 'text-muted'}>
-          {assigned}/{total} materias
-        </span>
+      <div className="teacher-stack">
+        {section.guide_teacher_name ? <span>{section.guide_teacher_name}</span> : <span className="teacher-stack__missing">Sin docente guía</span>}
+        <span className="cell-person__sub">Docente guía</span>
       </div>
     );
   }
   const { lead, assistant } = section.teachers || {};
   return (
     <div className="teacher-stack">
-      {lead ? <span>{lead.name}</span> : <span className="teacher-stack__missing">Sin titular</span>}
+      {lead ? <span>{lead.name}</span> : <span className="teacher-stack__missing">Sin docente</span>}
       {section.allows_assistant &&
         (assistant ? (
           <span className="cell-person__sub">Aux.: {assistant.name}</span>
         ) : (
-          <span className="cell-person__sub teacher-stack__missing">Sin auxiliar</span>
-        ))}
-      {section.curriculum &&
-        (section.curriculum.total === 0 ? (
-          <span className="cell-person__sub">Grado sin materias</span>
-        ) : (
-          <span className="cell-person__sub">
-            {section.curriculum.total} materias
-            {section.curriculum.specialists > 0 && ` · ${section.curriculum.specialists} con especialista`}
-          </span>
+          <span className="cell-person__sub teacher-stack__missing">Sin docente auxiliar</span>
         ))}
     </div>
   );
@@ -97,10 +82,8 @@ function SectionsTab({ onChanged }) {
       key: 'teachers',
       header: (
         <>
-          Docentes{' '}
-          <HelpTip placement="bottom">
-            Inicial: titular + auxiliar. Primaria: un titular. Secundaria: un profesor por cada materia del plan de estudios.
-          </HelpTip>
+          Personal docente{' '}
+          <HelpTip placement="bottom">Inicial: docente y docente auxiliar. Primaria: docente. Secundaria: docente guía. Los docentes por materia se asignan en Materias.</HelpTip>
         </>
       ), render: (s) => <TeachersSummary section={s} /> },
     {
@@ -119,14 +102,14 @@ function SectionsTab({ onChanged }) {
     <>
       <DataTable
         title="Secciones"
-        description="Cada sección pertenece a un grado y hereda las reglas docentes de su nivel."
+        description="Cada sección pertenece a un grado y su personal docente depende del nivel."
         columns={columns}
         rows={rows}
         loading={loading}
         error={error}
         searchPlaceholder="Buscar por grado, sección o docente…"
         getSearchText={(s) =>
-          [s.grade_name, s.name, s.school_period_name, s.classroom_name, s.teachers?.lead?.name, s.teachers?.assistant?.name, LEVELS[s.level_code]?.short].join(' ')
+          [s.grade_name, s.name, s.school_period_name, s.classroom_name, s.teachers?.lead?.name, s.teachers?.assistant?.name, s.guide_teacher_name, LEVELS[s.level_code]?.short].join(' ')
         }
         filters={<LevelFilter value={level} onChange={setLevel} counts={counts} />}
         emptyMessage="Aún no hay secciones creadas."
@@ -145,7 +128,7 @@ function SectionsTab({ onChanged }) {
         }
         rowActions={
           can('academics', 'update')
-            ? [{ key: 'assign', icon: 'users', label: 'Asignar docentes', onClick: (s) => setAssigning(s.id) }]
+            ? [{ key: 'assign', icon: 'users', label: 'Personal docente', onClick: (s) => setAssigning(s.id) }]
             : []
         }
         onView={(s) => navigate(`/academics/sections/${s.id}`)}
@@ -275,7 +258,7 @@ function SectionFormModal({ initial, onClose, onSaved }) {
               Cancelar
             </Button>
             <Button type="submit" loading={loading}>
-              {isEdit ? 'Guardar cambios' : 'Crear y asignar docentes'}
+              {isEdit ? 'Guardar cambios' : 'Crear y asignar personal'}
             </Button>
           </div>
         </form>

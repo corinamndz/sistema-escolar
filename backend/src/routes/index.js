@@ -15,6 +15,8 @@ router.use('/portal', require('../modules/portal/portal.routes'));
 router.use('/', require('../modules/students/student.routes')); // expone /students y /guardians
 router.use('/academics', require('../modules/academics/academic.routes'));
 router.use('/evaluation-plans', require('../modules/evaluation-plans/evaluationPlan.routes'));
+// Contenido programático por materia y grado, con sus actividades de evaluación.
+router.use('/programmatic-content', require('../modules/programmatic-content/programmaticContent.routes'));
 router.use('/grading', require('../modules/grading/grading.routes'));
 router.use('/payments', require('../modules/payments/payment.routes'));
 router.use('/exchange-rate', require('../modules/payments/exchangeRate.routes'));

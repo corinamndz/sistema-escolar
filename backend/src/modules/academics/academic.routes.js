@@ -44,14 +44,19 @@ router.get('/grades', read, controller.listGrades);
 router.post('/grades', create, controller.createGrade);
 router.put('/grades/:id', update, controller.updateGrade);
 router.get('/grades/:id/subjects', read, assignments.getGradeSubjects);
-// Panel unificado del grado (materias, docentes y secciones del año en una consulta).
+// Panel del grado para Grados y secciones: secciones del año y su personal docente por nivel.
 router.get('/grades/:id/panel', read, assignments.getGradePanel);
+// Compatibilidad (importadores y versiones anteriores): la interfaz edita el plan desde Materias.
 router.put('/grades/:id/subjects', update, assignments.setGradeSubjects);
 
 router.get('/subjects', read, assignments.listSubjects);
 router.post('/subjects', create, assignments.createSubject);
 router.put('/subjects/:id', update, assignments.updateSubject);
 router.delete('/subjects/:id', remove, assignments.deleteSubject);
+// Módulo de Materias: grados y secciones donde se dicta y docente de cada sección.
+router.get('/subjects/assignment-options', read, assignments.getSubjectAssignments);
+router.get('/subjects/:id/assignments', read, assignments.getSubjectAssignments);
+router.put('/subjects/:id/assignments', update, assignments.setSubjectAssignments);
 
 router.get('/sections', read, controller.listSections);
 router.post('/sections', create, controller.createSection);

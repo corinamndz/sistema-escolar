@@ -12,6 +12,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { TermSelect, termLabel } from '../terms';
 import { GRADING_SCALES } from '../../grading/gradingScale';
+import { INSTRUMENT_LABELS } from '../instruments';
 
 export const FORMATS = {
   simple: {
@@ -90,6 +91,11 @@ export function PlannerTable({ activities, sections, categoryLabels, renderActio
             return (
               <tr key={a.id}>
                 <td>
+                  {a.programmatic_content && (
+                    <div className="pc-tag" title="Tema del contenido programático">
+                      {a.programmatic_content.unit} · {a.programmatic_content.topic}
+                    </div>
+                  )}
                   {a.content_refs?.length ? (
                     <ul className="planner-refs">
                       {a.content_refs.map((t, i) => (
@@ -106,11 +112,12 @@ export function PlannerTable({ activities, sections, categoryLabels, renderActio
                       ))}
                     </ul>
                   ) : (
-                    <span className="text-muted">—</span>
+                    !a.programmatic_content && <span className="text-muted">—</span>
                   )}
                 </td>
                 <td>
                   <div className="cell-person__name">{a.title}</div>
+                  {a.instrument && <div className="planner-instrument">Instrumento: {INSTRUMENT_LABELS[a.instrument] || a.instrument}</div>}
                   {a.strategy && <div>{a.strategy}</div>}
                   <Badge variant="primary">{categoryLabels[a.category] || a.category}</Badge>
                 </td>

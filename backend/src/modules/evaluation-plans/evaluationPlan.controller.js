@@ -177,6 +177,11 @@ const activitySchema = z.object({
   ),
 
   // ---- Formato detallado (todo opcional: si no se envía, se conserva lo guardado) ----
+  // 'detailed': si el plan está en formato simple, pasa a detallado en la misma
+  // transacción (desde "Incluir evaluación"); exige al menos un criterio.
+  planFormat: z.enum(['simple', 'detailed']).optional(),
+  // Instrumento de evaluación (rúbrica, escala de estimación…); null lo quita.
+  instrument: z.enum(['rubric', 'estimation_scale', 'checklist', 'written_test', 'observation_record', 'other']).nullable().optional(),
   strategy: z.preprocess((v) => (v === '' ? null : v), z.string().trim().max(200).nullable().optional()),
   // Referencias teórico-prácticas: temas con sus subtemas.
   contentRefs: z
@@ -208,6 +213,8 @@ const activitySchema = z.object({
     )
     .max(20)
     .optional(),
+  // Contenido programático que evalúa (de la misma materia y grado del plan); null lo desvincula.
+  programmaticContentId: z.string().uuid('El contenido no es válido.').nullable().optional(),
   // Fecha de aplicación en cada sección del plan.
   sectionDates: z
     .array(z.object({ sectionId: z.string().uuid(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida.') }))

@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { exclusionOf } = require('./sectionSubjects');
 
 /**
  * Expediente académico de una inscripción (alumno en una sección de un año).
@@ -162,15 +163,15 @@ async function computeRecords(trx, tenantId, enrollments) {
     : [];
   const scoreOf = new Map(scores.map((s) => [`${s.evaluation_activity_id}|${s.student_id}`, s]));
 
-  // Materias CURSADAS: el plan de estudios del grado de cada sección (aunque una
-  // materia aún no tenga plan de evaluación) más las materias con plan.
-  const gradeOfSection = new Map(
-    (await trx('sections').whereIn('id', sectionIds).select('id', 'grade_id')).map((s) => [s.id, s.grade_id])
-  );
+  // Materias CURSADAS: las de cada sección (plan de estudios de su grado menos
+  // las excluidas de la sección, migración 037), aunque una materia aún no tenga
+  // plan de evaluación, más las materias con plan.
   const curriculum = await trx('grade_subjects as gs')
+    .join('sections as sec', 'sec.grade_id', 'gs.grade_id')
     .join('subjects as sub', 'sub.id', 'gs.subject_id')
-    .whereIn('gs.grade_id', [...new Set(gradeOfSection.values())])
-    .select('gs.grade_id', 'sub.id', 'sub.name')
+    .whereIn('sec.id', sectionIds)
+    .whereNotExists(exclusionOf(trx, trx.ref('sec.id'), trx.ref('gs.subject_id')))
+    .select('sec.id as section_id', 'sub.id', 'sub.name')
     .orderBy(['gs.sort_order', 'sub.name']);
 
   /** Definitiva de un plan (una materia en un lapso) para un alumno. */
@@ -203,7 +204,7 @@ async function computeRecords(trx, tenantId, enrollments) {
 
     // Materia → lapso → planes (normalmente uno).
     const subjects = new Map();
-    for (const c of curriculum.filter((x) => x.grade_id === gradeOfSection.get(enr.section_id))) {
+    for (const c of curriculum.filter((x) => x.section_id === enr.section_id)) {
       subjects.set(c.id, { subject_key: c.id, subject_id: c.id, subject_name: c.name, byTerm: new Map() });
     }
     // Un plan con el área en texto libre (Inicial/Primaria) se une a la materia del plan de estudios de igual nombre.

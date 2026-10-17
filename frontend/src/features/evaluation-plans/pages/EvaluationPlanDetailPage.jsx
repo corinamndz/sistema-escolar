@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
+import programmaticContentApi from '../../../api/endpoints/programmaticContent.api';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
 import RequirePermission from '../../../components/RequirePermission';
@@ -21,6 +22,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
 import { TermBadge, termLabel } from '../terms';
+import { INSTRUMENT_LABELS } from '../instruments';
 import {
   ContentRefsEditor,
   CriteriaEditor,
@@ -117,6 +119,7 @@ function EvaluationPlanDetailPage() {
       render: (a) => (
         <div>
           <div className="cell-person__name">{a.title}</div>
+          {a.programmatic_content && <ContentTag content={a.programmatic_content} />}
           {a.description && <div className="cell-person__sub activity-description">{a.description}</div>}
         </div>
       ),
@@ -174,6 +177,11 @@ function EvaluationPlanDetailPage() {
         }
         actions={
           <>
+            {plan.subject_id && (
+              <Link to={`/programmatic-content?materia=${plan.subject_id}&grado=${plan.grade_id}&ano=${plan.school_period_id}`} className="btn btn--secondary">
+                Contenido programático
+              </Link>
+            )}
             <Link to={`/grading/plans/${id}`} className="btn btn--secondary">
               Ver calificaciones
             </Link>
@@ -320,8 +328,24 @@ function EvaluationPlanDetailPage() {
   );
 }
 
+/** "Unidad I · Estructura celular": tema del contenido programático que evalúa la actividad. */
+export function ContentTag({ content }) {
+  return (
+    <span className="pc-tag" title="Tema del contenido programático">
+      <Icon name="layers" size={12} /> {content.unit} · {content.topic}
+    </span>
+  );
+}
+
 function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEnd, onClose, onSaved }) {
   const isEdit = Boolean(initial.id);
+  // Temas del contenido programático de la materia en el grado del plan (si es una materia del catálogo).
+  const { data: content } = useFetch(
+    () => (plan.subject_id ? programmaticContentApi.get({ gradeId: plan.grade_id, subjectId: plan.subject_id }) : Promise.resolve(null)),
+    [plan.subject_id, plan.grade_id]
+  );
+  const [contentId, setContentId] = useState(initial.programmatic_content_id || '');
+  const [instrument, setInstrument] = useState(initial.instrument || '');
   const detailed = plan.format === 'detailed';
   // Formato detallado: estrategia, referencias, criterios/indicadores con puntaje y fechas por sección.
   const [dForm, setDForm] = useState(() => detailedFormFrom(initial, plan.sections));
@@ -367,7 +391,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
         setLocalError(result.error);
         return;
       }
-      extra = result.body;
+      extra = { ...result.body, instrument: instrument || null };
     }
     setLocalError(null);
     try {
@@ -377,6 +401,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
         weightPercent: Number(form.weightPercent),
         description: form.description.trim(),
         plannedDate: form.plannedDate,
+        ...(plan.subject_id ? { programmaticContentId: contentId || null } : {}),
         ...extra,
       });
       toast.success(isEdit ? 'Actividad actualizada' : 'Actividad creada', form.title);
@@ -402,6 +427,27 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
           <Field label={detailed ? 'Actividad o instrumento' : 'Título'} error={fieldErrors.title} full>
             <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} required />
           </Field>
+          {plan.subject_id && (
+            <Field
+              label="Tema del contenido programático"
+              error={fieldErrors.programmaticContentId}
+              full
+              hint={content && content.units.length === 0 ? 'Esta materia aún no tiene contenido programático en este grado.' : 'Opcional: el tema que evalúa la actividad.'}
+            >
+              <Select value={contentId} onChange={(e) => setContentId(e.target.value)}>
+                <option value="">Sin tema</option>
+                {(content?.units || []).map((u) => (
+                  <optgroup key={u.unit} label={u.unit}>
+                    {u.items.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.topic}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label="Tipo" error={fieldErrors.category}>
             <Select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
               <option value="formative">Formativa</option>
@@ -458,6 +504,16 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
           </Field>
           {detailed && (
             <>
+              <Field label="Instrumento de evaluación" error={fieldErrors.instrument} hint="Opcional.">
+                <Select value={instrument} onChange={(e) => setInstrument(e.target.value)}>
+                  <option value="">Sin especificar</option>
+                  {Object.entries(INSTRUMENT_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <Field label="Estrategia evaluativa" error={fieldErrors.strategy} hint="Ej.: Actividad evaluativa individual, trabajo en parejas…">
                 <Input value={dForm.strategy} onChange={(e) => setDForm((f) => ({ ...f, strategy: e.target.value }))} maxLength={200} />
               </Field>

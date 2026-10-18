@@ -20,6 +20,7 @@ import MySchedulePage from '../features/schedules/pages/MySchedulePage';
 import DisciplinePage from '../features/discipline/pages/DisciplinePage';
 import ClubsPage from '../features/clubs/pages/ClubsPage';
 import EventsPage from '../features/events/pages/EventsPage';
+import AppointmentsPage from '../features/appointments/pages/AppointmentsPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
 import SubjectsPage from '../features/academics/subjects/SubjectsPage';
@@ -78,6 +79,9 @@ function App() {
             </Route>
             <Route element={<PermissionRoute module="events" />}>
               <Route path="events" element={<EventsPage />} />
+            </Route>
+            <Route element={<PermissionRoute module="appointments" />}>
+              <Route path="appointments" element={<AppointmentsPage />} />
             </Route>
             <Route element={<PermissionRoute module="discipline" blockTeacher />}>
               <Route path="discipline" element={<DisciplinePage />} />

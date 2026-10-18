@@ -25,6 +25,8 @@ const NAV_SECTIONS = [
       { moduleCode: 'clubs', label: 'Clubes', icon: 'star', path: '/clubs' },
       // Cartelera de eventos: la administración la gestiona; las familias la consultan en el portal.
       { moduleCode: 'events', label: 'Eventos y cartelera', icon: 'calendar', path: '/events' },
+      // Citas con padres: la administración agenda; el docente consulta las de sus alumnos.
+      { moduleCode: 'appointments', label: 'Citas con padres', teacherLabel: 'Citas de mis alumnos', icon: 'clock', path: '/appointments' },
       { moduleCode: 'portal_events', label: 'Cartelera', icon: 'calendar', path: '/portal/events', guardianOnly: true },
     ],
   },

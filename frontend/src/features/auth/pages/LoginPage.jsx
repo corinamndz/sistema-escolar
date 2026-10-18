@@ -15,9 +15,9 @@ import {
   BRANDING_UPDATED_KEY,
   isValidSlug,
   normalizeSlug,
-  rememberTenantSlug,
   resolveTenantSlug,
 } from '../../../lib/tenantSlug';
+import { PATH_TENANT } from '../../../lib/tenantPath';
 
 /**
  * Módulos del panel del login: tres esenciales (compactos) y dos destacados de
@@ -142,71 +142,39 @@ function SchoolIdentity({ branding }) {
   );
 }
 
-/**
- * Hay una sesión abierta de OTRO colegio y el enlace pide uno distinto
- * (ej. el panel superadmin abre /login?colegio=nuevo): se pregunta en vez de
- * mandar al inicio del colegio anterior.
- */
-function SwitchSchoolNotice({ user, targetName, onSwitch, onStay }) {
-  const currentName = user.tenantName || user.tenantSlug;
-  return (
-    <div className="login-switch">
-      <Alert variant="warning">
-        Tienes una sesión abierta en <strong>{currentName}</strong> como <strong>{user.fullName || user.username}</strong>.
-        Este enlace es para <strong>{targetName}</strong>.
-      </Alert>
-      <Button type="button" size="lg" className="btn--block" onClick={onSwitch}>
-        Cerrar sesión e ingresar a {targetName} <Icon name="arrowRight" size={17} />
-      </Button>
-      <Button type="button" variant="secondary" className="btn--block" onClick={onStay}>
-        Seguir en {currentName}
-      </Button>
-    </div>
-  );
-}
-
 function LoginPage() {
-  const { login, logout, user, isAuthenticated } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { run, loading, error } = useMutation(login);
 
-  // Colegio detectado por enlace, subdominio o último uso (ver lib/tenantSlug.js).
-  const [initial] = useState(() => resolveTenantSlug());
+  // Colegio de la ruta (/demo/login); si la URL no trae uno, subdominio o último
+  // uso (lib/tenantSlug.js). Las sesiones son por colegio (api/tokenStore.js):
+  // estar conectado en otro colegio no afecta a este login.
+  const [initial] = useState(() => (PATH_TENANT ? { slug: PATH_TENANT, source: 'path' } : resolveTenantSlug()));
   const [form, setForm] = useState({ tenantSlug: initial.slug, username: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
-  // Por enlace o subdominio el colegio ya está decidido: se oculta el campo (con opción de cambiarlo).
-  const [editingSchool, setEditingSchool] = useState(!['url', 'subdomain'].includes(initial.source));
+  // Por ruta, enlace o subdominio el colegio ya está decidido: se oculta el campo (con opción de cambiarlo).
+  const [editingSchool, setEditingSchool] = useState(!['path', 'url', 'subdomain'].includes(initial.source));
   const { status, branding } = useTenantBranding(form.tenantSlug);
 
-  // Si el colegio fijado por enlace no existe, se muestra el campo para corregirlo.
+  // Si el colegio de la URL no existe, se muestra el campo para corregirlo.
   useEffect(() => {
     if (!editingSchool && status === 'not_found') setEditingSchool(true);
   }, [editingSchool, status]);
 
-  // Colegio pedido explícitamente por el enlace o el subdominio (no el "recordado").
-  const linkedSlug = ['url', 'subdomain'].includes(initial.source) ? initial.slug : null;
-  const sessionSlug = normalizeSlug(user?.tenantSlug);
-  const switchingSchool = Boolean(isAuthenticated && linkedSlug && sessionSlug && linkedSlug !== sessionSlug);
-
-  if (isAuthenticated && !switchingSchool) {
+  if (isAuthenticated) {
     return <Navigate to={location.state?.from?.pathname || '/'} replace />;
   }
-
-  // Recarga completa al cambiar de colegio: no queda en memoria nada del anterior
-  // (permisos, tema, datos en caché) y el login arranca con el colegio del enlace.
-  const switchToLinkedSchool = () => {
-    logout();
-    window.location.replace(`/login?colegio=${encodeURIComponent(linkedSlug)}`);
-  };
 
   const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await run({ ...form, tenantSlug: normalizeSlug(form.tenantSlug) });
-      rememberTenantSlug(form.tenantSlug);
+      const result = await run({ ...form, tenantSlug: normalizeSlug(form.tenantSlug) });
+      // Otro colegio: AuthContext ya guardó su sesión y está abriendo /<su-slug>/.
+      if (result?.redirecting) return;
       navigate(location.state?.from?.pathname || '/', { replace: true });
     } catch {
       // el error ya quedó en `error` vía useMutation
@@ -286,15 +254,6 @@ function LoginPage() {
             )}
           </header>
 
-          {switchingSchool ? (
-            <SwitchSchoolNotice
-              user={user}
-              targetName={schoolName || linkedSlug}
-              onSwitch={switchToLinkedSchool}
-              onStay={() => navigate('/', { replace: true })}
-            />
-          ) : (
-            <>
           <Alert>{error}</Alert>
 
           <form onSubmit={handleSubmit}>
@@ -374,8 +333,6 @@ function LoginPage() {
               Ingresar <Icon name="arrowRight" size={17} />
             </Button>
           </form>
-            </>
-          )}
 
           {import.meta.env.DEV && (
             <div className="login-demo">

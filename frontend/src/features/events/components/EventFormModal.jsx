@@ -10,7 +10,7 @@ import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Switch from '../../../components/ui/Switch';
 import { useToast } from '../../../components/ui/Toast';
-import { EVENT_CATEGORIES, longDate, todayStr } from '../eventCatalog';
+import { EDITABLE_CATEGORIES, longDate, todayStr } from '../eventCatalog';
 
 const AUDIENCES = [
   { key: 'school', label: 'Todo el colegio' },
@@ -92,7 +92,7 @@ function EventFormModal({ initial = {}, onClose, onSaved }) {
           </Field>
           <Field label="Tipo de evento" error={fieldErrors.category}>
             <Select value={form.category} onChange={set('category')}>
-              {Object.entries(EVENT_CATEGORIES).map(([key, cat]) => (
+              {Object.entries(EDITABLE_CATEGORIES).map(([key, cat]) => (
                 <option key={key} value={key}>
                   {cat.label}
                 </option>

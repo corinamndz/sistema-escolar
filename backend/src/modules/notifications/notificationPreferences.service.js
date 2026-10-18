@@ -36,6 +36,13 @@ const CATALOG = [
     defaults: { bell: true, email: false },
   },
   {
+    key: 'parent_meeting',
+    label: 'Citas con padres',
+    description: 'Al agendar una cita, o cambiarle la fecha, la hora o el estado. Son los canales que vienen marcados en cada cita (se pueden cambiar al crearla).',
+    recipients: 'El representante citado',
+    defaults: { bell: true, email: true },
+  },
+  {
     key: 'club_enrollment',
     label: 'Inscripción en clubes',
     description: 'Cuando se inscribe a un alumno en un club o actividad extracurricular.',

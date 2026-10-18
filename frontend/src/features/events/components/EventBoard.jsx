@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import Icon from '../../../components/ui/Icon';
+import DataTable from '../../../components/ui/DataTable';
 import { EVENT_CATEGORIES, MONTHS, categoryOf, dateParts, excerpt, parseDay, timeLabel, todayStr } from '../eventCatalog';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -20,7 +21,7 @@ const VIEW_KEY = 'events.view';
 const readView = () => {
   try {
     const v = JSON.parse(window.localStorage.getItem(VIEW_KEY) || 'null');
-    return v && ['cards', 'schedule'].includes(v.view) && ['week', 'month'].includes(v.scale) ? v : null;
+    return v && ['cards', 'schedule', 'table'].includes(v.view) && ['week', 'month'].includes(v.scale) ? v : null;
   } catch {
     return null;
   }
@@ -34,19 +35,23 @@ const saveView = (v) => {
 };
 
 /**
- * Cartelera de eventos con DOS vistas intercambiables:
+ * Cartelera de eventos con TRES vistas intercambiables:
  *   - Tarjetas: cuadrícula con la categoría (color), fecha, hora, título y un
  *     extracto de la descripción. Los próximos primero; los pasados, aparte.
  *   - Horario: agenda en el tiempo, por SEMANA (columnas lunes a domingo con
  *     los eventos en orden de hora) o por MES (calendario).
+ *   - Tabla: listado con búsqueda, orden por columna y paginación (como
+ *     Alumnos o Personal), con los próximos primero.
  * Filtro por tipo de evento. La comparten la administración y el portal del
  * representante, así que ambos ven exactamente lo mismo.
  *
  *   events    lista de la API (event_date, start_time, end_time, is_past…)
  *   onSelect  (evento) => void — abre el detalle
+ *   onEdit, onDelete  (evento) => void — acciones de la tabla (solo administración;
+ *             no aplican a las citas con padres, que se gestionan en su módulo)
  *   empty     contenido cuando no hay eventos
  */
-function EventBoard({ events = [], onSelect, empty }) {
+function EventBoard({ events = [], onSelect, onEdit, onDelete, empty }) {
   const [mode, setMode] = useState(() => readView() || { view: 'cards', scale: 'week' });
   const [category, setCategory] = useState('');
   const [showPast, setShowPast] = useState(false);
@@ -76,6 +81,7 @@ function EventBoard({ events = [], onSelect, empty }) {
           {[
             ['cards', 'Tarjetas', 'layers'],
             ['schedule', 'Horario', 'calendar'],
+            ['table', 'Tabla', 'menu'],
           ].map(([key, label, icon]) => (
             <button
               key={key}
@@ -111,6 +117,8 @@ function EventBoard({ events = [], onSelect, empty }) {
 
       {mode.view === 'cards' ? (
         <CardsView events={filtered} onSelect={onSelect} showPast={showPast} setShowPast={setShowPast} filtered={Boolean(category)} />
+      ) : mode.view === 'table' ? (
+        <TableView events={filtered} onSelect={onSelect} onEdit={onEdit} onDelete={onDelete} filtered={Boolean(category)} />
       ) : (
         <ScheduleView events={filtered} scale={mode.scale} setScale={(scale) => change({ scale })} anchor={anchor} setAnchor={setAnchor} onSelect={onSelect} />
       )}
@@ -204,6 +212,103 @@ function EventCard({ ev, onSelect }) {
         </span>
       </span>
     </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Vista de tabla
+// ---------------------------------------------------------------------------
+
+const shortDate = (s) => {
+  const p = dateParts(s);
+  return `${p.weekday} ${p.day} ${p.month} ${parseDay(s).getUTCFullYear()}`;
+};
+const isEditable = (ev) => ev.kind !== 'appointment';
+
+function TableView({ events, onSelect, onEdit, onDelete, filtered }) {
+  const today = todayStr();
+  const columns = [
+    {
+      key: 'category',
+      header: 'Tipo',
+      render: (ev) => {
+        const cat = categoryOf(ev.category);
+        return (
+          <span className={`evt-tag evt--${ev.category}`}>
+            <Icon name={cat.icon} size={12} /> {cat.label}
+          </span>
+        );
+      },
+      sortValue: (ev) => categoryOf(ev.category).label,
+    },
+    {
+      key: 'title',
+      header: 'Título',
+      render: (ev) => (
+        <div className="evt-table__title">
+          <button type="button" className="link-button cell-person__name" onClick={() => onSelect(ev)}>
+            {ev.title}
+          </button>
+          <span className="evt-table__chips">
+            {!ev.is_published && <span className="chip">Borrador</span>}
+            {ev.kind === 'appointment' && ev.status_label && <span className="chip">{ev.status_label}</span>}
+          </span>
+          {ev.description && <div className="cell-person__sub evt-table__excerpt">{excerpt(ev.description, 90)}</div>}
+        </div>
+      ),
+      sortValue: (ev) => ev.title,
+    },
+    {
+      key: 'when',
+      header: 'Fecha y hora',
+      render: (ev) => (
+        <div>
+          <div className="evt-table__date">
+            {shortDate(ev.event_date)}
+            {ev.event_date === today && <span className="chip evt-card__today">Hoy</span>}
+            {ev.is_past && <span className="chip">Finalizado</span>}
+          </div>
+          <div className="cell-person__sub">
+            <Icon name="clock" size={12} /> {timeLabel(ev)}
+          </div>
+        </div>
+      ),
+      sortValue: (ev) => `${ev.event_date} ${ev.start_time}`,
+    },
+    {
+      key: 'location',
+      header: 'Lugar',
+      render: (ev) => ev.location || <span className="text-muted">—</span>,
+      sortValue: (ev) => ev.location || null,
+    },
+    {
+      key: 'audience',
+      header: 'Participantes',
+      render: (ev) => (
+        <div>
+          <div>{ev.audience_label}</div>
+          {ev.for_students?.length > 0 && <div className="cell-person__sub">Aplica a: {ev.for_students.join(', ')}</div>}
+        </div>
+      ),
+      sortValue: (ev) => ev.audience_label,
+    },
+  ];
+
+  return (
+    <DataTable
+      bare
+      columns={columns}
+      rows={events}
+      searchPlaceholder="Buscar por título, lugar o participantes…"
+      getSearchText={(ev) => [ev.title, ev.description, ev.location, ev.audience_label, categoryOf(ev.category).label, ev.for_students?.join(' ')].join(' ')}
+      emptyMessage={filtered ? 'No hay eventos de este tipo.' : 'No hay eventos.'}
+      canCreate={false}
+      onView={onSelect}
+      onEdit={onEdit}
+      canEdit={isEditable}
+      onDeleteClick={onDelete}
+      canDelete={isEditable}
+    />
   );
 }
 

@@ -9,7 +9,7 @@ import { SOURCE_LABELS, timeAgo } from '../../features/payments/components/BcvRa
 import { NOTIFICATIONS_REFRESH } from '../../lib/notificationEvents';
 
 const POLL_MS = 60 * 1000; // la tasa cambia pocas veces al día: un minuto de demora es suficiente
-const ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star' };
+const ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star', parent_meeting: 'users' };
 
 /**
  * Campana de notificaciones del Topbar. Consulta las del usuario al cargar,

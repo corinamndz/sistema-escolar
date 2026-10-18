@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { ApiError } = require('../../utils/ApiError');
-const { withTenantTransaction } = require('../../config/database');
+const { db, withTenantTransaction } = require('../../config/database');
+const { tenantAppUrl } = require('../../utils/frontendUrl');
 const { encrypt, decrypt } = require('../../services/crypto/secretBox');
 const google = require('../../services/google/googleOAuth');
 const mailer = require('../../services/email/mailer');
@@ -19,7 +20,6 @@ const mailer = require('../../services/email/mailer');
 
 const STATE_TTL_MIN = 10;
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
-const frontendUrl = () => (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function assertConfigured() {
@@ -48,8 +48,9 @@ async function startGoogleConnect(trx, tenantId, userId, { loginHint } = {}) {
   return { url: google.buildAuthUrl({ state, codeChallenge: challenge, loginHint }) };
 }
 
-/** Vuelta a Configuración → Correo con el resultado (?google=connected | error&reason=…). */
-const backToSettings = (params) => `${frontendUrl()}/tenant/settings?${new URLSearchParams({ tab: 'correo', ...params })}`;
+/** Vuelta a Configuración → Correo del colegio con el resultado (?google=connected | error&reason=…). */
+const backToSettings = (params, slug) =>
+  tenantAppUrl(slug, `/tenant/settings?${new URLSearchParams({ tab: 'correo', ...params })}`);
 
 /**
  * Paso 2 (sin sesión: es el navegador volviendo de Google). Devuelve la URL a
@@ -58,25 +59,28 @@ const backToSettings = (params) => `${frontendUrl()}/tenant/settings?${new URLSe
 async function handleGoogleCallback({ code, state, error }) {
   const tenantId = String(state || '').split('.')[0];
   if (!state || !UUID.test(tenantId)) return backToSettings({ google: 'error', reason: 'invalid_state' });
+  // `tenants` no tiene RLS: se puede leer el slug antes de abrir la transacción del colegio.
+  const slug = (await db('tenants').where({ id: tenantId }).first('slug').catch(() => null))?.slug || null;
+  const back = (params) => backToSettings(params, slug);
   try {
     return await withTenantTransaction(tenantId, async (trx) => {
       // De un solo uso: se borra al leerlo (también si después algo falla).
       const [pending] = await trx('oauth_states').where({ tenant_id: tenantId, state_hash: sha256(state) }).delete().returning('*');
-      if (!pending) return backToSettings({ google: 'error', reason: 'invalid_state' });
-      if (new Date(pending.expires_at) < new Date()) return backToSettings({ google: 'error', reason: 'expired' });
-      if (error) return backToSettings({ google: 'error', reason: error === 'access_denied' ? 'cancelled' : 'google_error' });
-      if (!code) return backToSettings({ google: 'error', reason: 'google_error' });
+      if (!pending) return back({ google: 'error', reason: 'invalid_state' });
+      if (new Date(pending.expires_at) < new Date()) return back({ google: 'error', reason: 'expired' });
+      if (error) return back({ google: 'error', reason: error === 'access_denied' ? 'cancelled' : 'google_error' });
+      if (!code) return back({ google: 'error', reason: 'google_error' });
 
       const tokens = await google.exchangeCode({ code, codeVerifier: decrypt(pending.code_verifier_enc) });
       const scopes = String(tokens.scope || '').split(/\s+/);
       if (!scopes.includes(google.GMAIL_SEND)) {
         // Desmarcó "Enviar correo electrónico en tu nombre" en la pantalla de Google.
         await google.revokeToken(tokens.refresh_token || tokens.access_token);
-        return backToSettings({ google: 'error', reason: 'missing_scope' });
+        return back({ google: 'error', reason: 'missing_scope' });
       }
-      if (!tokens.refresh_token) return backToSettings({ google: 'error', reason: 'no_refresh_token' });
+      if (!tokens.refresh_token) return back({ google: 'error', reason: 'no_refresh_token' });
       const email = google.emailFromIdToken(tokens.id_token);
-      if (!email) return backToSettings({ google: 'error', reason: 'no_email' });
+      if (!email) return back({ google: 'error', reason: 'no_email' });
 
       const current = await trx('tenant_mail_settings').where({ tenant_id: tenantId }).first();
       if (current?.provider === 'google' && current.oauth_refresh_token_enc) {
@@ -114,11 +118,11 @@ async function handleGoogleCallback({ code, state, error }) {
         })
         .onConflict('tenant_id')
         .merge();
-      return backToSettings({ google: 'connected' });
+      return back({ google: 'connected' });
     });
   } catch (err) {
     console.error('[google] Falló la conexión de la cuenta:', err.message);
-    return backToSettings({ google: 'error', reason: err.code === 'GOOGLE_UNREACHABLE' ? 'unreachable' : 'exchange_failed' });
+    return back({ google: 'error', reason: err.code === 'GOOGLE_UNREACHABLE' ? 'unreachable' : 'exchange_failed' });
   }
 }
 

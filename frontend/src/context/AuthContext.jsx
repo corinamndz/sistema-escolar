@@ -1,7 +1,20 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import authApi from '../api/endpoints/auth.api';
 import { setOnSessionExpired } from '../api/axiosClient';
-import { getAccessToken, setTokens, clearTokens, getStoredUser, setStoredUser } from '../api/tokenStore';
+import {
+  getAccessToken,
+  setTokens,
+  clearTokens,
+  getStoredUser,
+  setStoredUser,
+  persistSessionFor,
+  SESSION_NAMESPACE,
+} from '../api/tokenStore';
+import { normalizeSlug, rememberTenantSlug } from '../lib/tenantSlug';
+import { tenantUrl } from '../lib/tenantPath';
+
+/** ¿La sesión pertenece al colegio de esta página? ('_' = login genérico: ninguno) */
+const belongsHere = (slug) => normalizeSlug(slug) === SESSION_NAMESPACE;
 
 const AuthContext = createContext(null);
 
@@ -15,6 +28,9 @@ function AuthProvider({ children }) {
   const loadMe = useCallback(async () => {
     try {
       const me = await authApi.me();
+      // Defensa: una sesión guardada bajo este colegio debe ser de este colegio.
+      if (!belongsHere(me.tenantSlug)) throw new Error('La sesión guardada es de otro colegio.');
+      rememberTenantSlug(me.tenantSlug); // "/" a secas abre el último colegio usado
       setUser(me);
       setStoredUser(me);
       setPermissions(me.permissions || {});
@@ -45,6 +61,17 @@ function AuthProvider({ children }) {
 
   const login = useCallback(async ({ tenantSlug, username, password }) => {
     const result = await authApi.login({ tenantSlug, username, password });
+    rememberTenantSlug(result.user.tenantSlug);
+
+    // Se inició sesión en un colegio distinto al de esta página (login genérico,
+    // o "Cambiar" colegio): la sesión se guarda bajo SU colegio y se abre su URL.
+    // Esta página no se toca: la sesión que tuviera aquí sigue intacta.
+    if (!belongsHere(result.user.tenantSlug)) {
+      persistSessionFor(result.user.tenantSlug, result);
+      window.location.assign(tenantUrl(result.user.tenantSlug, '/'));
+      return { ...result, redirecting: true };
+    }
+
     setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken });
     setUser(result.user);
     setStoredUser(result.user);

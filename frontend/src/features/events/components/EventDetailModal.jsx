@@ -8,8 +8,9 @@ import { categoryOf, longDate, todayStr } from '../eventCatalog';
  * quién va dirigido y la descripción completa. Lo usan la administración
  * (con `onEdit` / `onDelete`) y el portal del representante (solo lectura).
  */
-function EventDetailModal({ event: ev, onClose, onEdit, onDelete }) {
+function EventDetailModal({ event: ev, onClose, onEdit, onDelete, onManageAppointment }) {
   const cat = categoryOf(ev.category);
+  const isAppointment = ev.kind === 'appointment';
 
   return (
     <Modal title={ev.title} onClose={onClose}>
@@ -20,6 +21,7 @@ function EventDetailModal({ event: ev, onClose, onEdit, onDelete }) {
           </span>
           <div className="evt-detail__badges">
             <span className="evt-tag">{cat.label}</span>
+            {isAppointment && ev.status_label && <span className="chip">{ev.status_label}</span>}
             {!ev.is_published && <span className="chip">Borrador · no visible en el portal</span>}
             {ev.is_past && <span className="chip">Finalizado</span>}
           </div>
@@ -53,7 +55,7 @@ function EventDetailModal({ event: ev, onClose, onEdit, onDelete }) {
           <div className="evt-fact">
             <Icon name="users" size={16} />
             <div>
-              <span className="evt-fact__label">Dirigido a</span>
+              <span className="evt-fact__label">{isAppointment ? 'Con' : 'Dirigido a'}</span>
               {ev.audience_label}
               {ev.audience === 'section' && ev.school_period_name ? ` · ${ev.school_period_name}` : ''}
               {ev.for_students?.length > 0 && <span className="evt-detail__kids">Aplica a: {ev.for_students.join(', ')}</span>}
@@ -63,6 +65,8 @@ function EventDetailModal({ event: ev, onClose, onEdit, onDelete }) {
 
         {ev.description ? (
           <div className="evt-detail__description">{ev.description}</div>
+        ) : isAppointment ? (
+          ev.topic && <div className="evt-detail__description">Tema: {ev.topic}</div>
         ) : (
           <p className="text-muted text-sm">Sin descripción.</p>
         )}
@@ -70,7 +74,7 @@ function EventDetailModal({ event: ev, onClose, onEdit, onDelete }) {
       </div>
 
       <div className="form-actions">
-        {onDelete && (
+        {onDelete && !isAppointment && (
           <Button type="button" variant="danger" icon="trash" onClick={onDelete} className="evt-detail__delete">
             Eliminar
           </Button>
@@ -78,9 +82,14 @@ function EventDetailModal({ event: ev, onClose, onEdit, onDelete }) {
         <Button type="button" variant="secondary" onClick={onClose}>
           Cerrar
         </Button>
-        {onEdit && (
+        {onEdit && !isAppointment && (
           <Button type="button" icon="pencil" onClick={onEdit}>
             Editar
+          </Button>
+        )}
+        {isAppointment && onManageAppointment && (
+          <Button type="button" icon="arrowRight" onClick={onManageAppointment}>
+            Ir a Citas con padres
           </Button>
         )}
       </div>

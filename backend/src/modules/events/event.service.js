@@ -259,6 +259,7 @@ async function portalEvents(trx, tenantId, userId, { from } = {}) {
 module.exports = {
   CATEGORIES,
   AUDIENCES,
+  chronological,
   listEvents,
   getEvent,
   createEvent,

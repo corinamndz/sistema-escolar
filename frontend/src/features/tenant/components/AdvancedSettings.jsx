@@ -4,6 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import Card from '../../../components/ui/Card';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
+import { tenantUrl } from '../../../lib/tenantPath';
 
 /** Ajustes del sistema que viven en su propio módulo: acceso directo según permisos. */
 const SHORTCUTS = [
@@ -46,7 +47,7 @@ function AdvancedSettings({ settings }) {
   const { can } = useAuth();
   const toast = useToast();
   const [copied, setCopied] = useState(null);
-  const loginUrl = settings.slug ? `${window.location.origin}/login?colegio=${encodeURIComponent(settings.slug)}` : null;
+  const loginUrl = settings.slug ? `${window.location.origin}${tenantUrl(settings.slug, '/login')}` : null;
 
   const copy = async (text, what) => {
     try {

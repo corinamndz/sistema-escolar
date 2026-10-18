@@ -1,7 +1,13 @@
 const mailer = require('./mailer');
 const { escapeHtml } = mailer;
 
-const loginUrl = () => `${(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')}/login`;
+const { tenantAppUrl } = require('../../utils/frontendUrl');
+
+/** Login del colegio: {FRONTEND_URL}/<slug>/login */
+async function loginUrl(trx, tenantId) {
+  const tenant = await trx('tenants').where({ id: tenantId }).first('slug');
+  return tenantAppUrl(tenant?.slug, '/login');
+}
 
 /**
  * Envía el correo de bienvenida con credenciales temporales al usuario
@@ -11,7 +17,7 @@ const loginUrl = () => `${(process.env.FRONTEND_URL || 'http://localhost:5173').
 async function sendWelcomeEmail(trx, tenantId, { to, schoolName, fullName, username, temporaryPassword }) {
   if (!to) return;
   try {
-    const url = loginUrl();
+    const url = await loginUrl(trx, tenantId);
     const html = `<!doctype html><html><body style="margin:0;padding:24px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e2e8f0">
     <p style="margin:0 0 4px;font-size:13px;color:#64748b">${escapeHtml(schoolName)}</p>

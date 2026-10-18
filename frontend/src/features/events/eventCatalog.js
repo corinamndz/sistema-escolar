@@ -6,7 +6,11 @@ export const EVENT_CATEGORIES = {
   deportivo: { label: 'Deportivo', icon: 'star' },
   institucional: { label: 'Institucional', icon: 'building' },
   otro: { label: 'Otro', icon: 'calendar' },
+  // Citas con padres: vienen del módulo de citas (no se crean desde la cartelera).
+  cita: { label: 'Cita con padres', icon: 'clock' },
 };
+/** Tipos que se eligen al crear un evento de la cartelera. */
+export const EDITABLE_CATEGORIES = Object.fromEntries(Object.entries(EVENT_CATEGORIES).filter(([key]) => key !== 'cita'));
 export const categoryOf = (code) => EVENT_CATEGORIES[code] || EVENT_CATEGORIES.otro;
 
 export const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];

@@ -17,11 +17,11 @@ const { escapeHtml } = require('../../services/email/mailer');
  * nunca revierte el evento que lo disparó.
  */
 
-const frontendUrl = () => (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+const { tenantAppUrl } = require('../../utils/frontendUrl');
 
-/** Correo simple con el nombre del colegio, el aviso y un botón al portal. */
-function renderEmail({ schoolName, title, body, link, linkLabel }) {
-  const url = link ? `${frontendUrl()}${link}` : null;
+/** Correo simple con el nombre del colegio, el aviso y un botón al portal (/<slug>/<link>). */
+function renderEmail({ schoolName, schoolSlug, title, body, link, linkLabel }) {
+  const url = link ? tenantAppUrl(schoolSlug, link) : null;
   const html = `<!doctype html><html><body style="margin:0;padding:24px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e2e8f0">
     <p style="margin:0 0 4px;font-size:13px;color:#64748b">${escapeHtml(schoolName)}</p>
@@ -70,6 +70,7 @@ async function guardiansOfSections(trx, tenantId, sectionIds) {
  *   links         { guardians, staff } rutas del detalle · linkLabel texto del botón
  *   dedupeKey     el mismo aviso no se repite (por canal y destinatario)
  *   skipEmail     no encolar correo (p. ej. el comprobante de pago va aparte, con su PDF)
+ *   channels      { bell, email } elegidos para ESTE aviso (p. ej. en una cita): reemplazan a la matriz
  * Devuelve { bell: notificación|null, emails: n }.
  */
 async function notify(trx, tenantId, opts) {
@@ -81,12 +82,13 @@ async function notify(trx, tenantId, opts) {
   }
 }
 
-async function emit(trx, tenantId, { event, guardianIds = [], allGuardians = false, alsoStaff = false, staffOnly = false, title, body, data = {}, links = {}, linkLabel, dedupeKey = null, skipEmail = false }) {
+async function emit(trx, tenantId, { event, guardianIds = [], allGuardians = false, alsoStaff = false, staffOnly = false, title, body, data = {}, links = {}, linkLabel, dedupeKey = null, skipEmail = false, channels = null }) {
   const ids = [...new Set(guardianIds)];
   if (!allGuardians && !ids.length && !alsoStaff && !staffOnly) return { bell: null, emails: 0 };
   const result = { bell: null, emails: 0 };
+  const enabled = async (channel) => (channels ? Boolean(channels[channel]) : prefs.isEnabled(trx, tenantId, event, channel));
 
-  if (await prefs.isEnabled(trx, tenantId, event, 'bell')) {
+  if (await enabled('bell')) {
     result.bell = await notifications.createNotification(trx, tenantId, {
       type: event,
       title,
@@ -98,15 +100,22 @@ async function emit(trx, tenantId, { event, guardianIds = [], allGuardians = fal
     });
   }
 
-  if (!skipEmail && !staffOnly && (await prefs.isEnabled(trx, tenantId, event, 'email')) && (await prefs.emailStatus(trx, tenantId)).ready) {
+  if (!skipEmail && !staffOnly && (await enabled('email')) && (await prefs.emailStatus(trx, tenantId)).ready) {
     const guardians = await trx('guardians')
       .where({ tenant_id: tenantId })
       .whereNotNull('email')
       .andWhere('email', '<>', '')
       .modify((q) => !allGuardians && q.whereIn('id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']))
       .select('id', 'email');
-    const tenant = await trx('tenants').where({ id: tenantId }).first('name');
-    const { html, text } = renderEmail({ schoolName: tenant?.name || 'El colegio', title, body, link: links.guardians, linkLabel });
+    const tenant = await trx('tenants').where({ id: tenantId }).first('name', 'slug');
+    const { html, text } = renderEmail({
+      schoolName: tenant?.name || 'El colegio',
+      schoolSlug: tenant?.slug,
+      title,
+      body,
+      link: links.guardians,
+      linkLabel,
+    });
     const seen = new Set();
     const messages = [];
     for (const g of guardians) {

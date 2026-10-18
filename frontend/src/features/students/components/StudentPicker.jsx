@@ -26,8 +26,10 @@ const courseOf = (s) => (s.grade_name ? `${s.grade_name} ${s.section_name || ''}
  *   students  [{ id, first_name, last_name, national_id?, grade_name?, section_name? }]
  *   value     id del alumno elegido ('' si ninguno)
  *   onChange  (id) => void
+ *   labels    textos para otro tipo de registro (p. ej. representantes): { list, clear, empty }
  */
-function StudentPicker({ students = [], value, onChange, id, required, disabled, invalid, placeholder = 'Escribe nombre, apellido o cédula…', autoFocus }) {
+function StudentPicker({ students = [], value, onChange, id, required, disabled, invalid, placeholder = 'Escribe nombre, apellido o cédula…', autoFocus, labels = {} }) {
+  const copy = { list: 'Alumnos', clear: 'Quitar alumno elegido', empty: 'Ningún alumno coincide con', ...labels };
   const uid = useId();
   const inputId = id || `student-picker-${uid}`;
   const listId = `${inputId}-list`;
@@ -138,7 +140,7 @@ function StudentPicker({ students = [], value, onChange, id, required, disabled,
           onKeyDown={onKeyDown}
         />
         {selected && !disabled && (
-          <button type="button" className="student-picker__clear" onMouseDown={(e) => e.preventDefault()} onClick={clear} aria-label="Quitar alumno elegido">
+          <button type="button" className="student-picker__clear" onMouseDown={(e) => e.preventDefault()} onClick={clear} aria-label={copy.clear}>
             <Icon name="x" size={14} />
           </button>
         )}
@@ -147,10 +149,10 @@ function StudentPicker({ students = [], value, onChange, id, required, disabled,
       </div>
 
       {open && (
-        <ul ref={listRef} id={listId} role="listbox" className="student-picker__list" aria-label="Alumnos">
+        <ul ref={listRef} id={listId} role="listbox" className="student-picker__list" aria-label={copy.list}>
           {shown.length === 0 ? (
             <li className="student-picker__empty" role="presentation">
-              Ningún alumno coincide con “{query}”.
+              {copy.empty} “{query}”.
             </li>
           ) : (
             shown.map((s, i) => (

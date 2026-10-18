@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import Icon from './ui/Icon';
+import { appUrl } from '../lib/tenantPath';
 
 /**
  * Red de seguridad de la interfaz: si una pantalla falla al dibujarse, muestra
@@ -44,7 +45,7 @@ class ErrorBoundary extends Component {
           <button type="button" className="btn btn--secondary btn--sm" onClick={() => window.location.reload()}>
             Recargar
           </button>
-          <a href="/" className="btn btn--ghost btn--sm">
+          <a href={appUrl('/')} className="btn btn--ghost btn--sm">
             Ir al inicio
           </a>
         </div>

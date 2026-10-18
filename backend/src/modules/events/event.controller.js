@@ -1,5 +1,7 @@
 const { z } = require('zod');
 const service = require('./event.service');
+const appointments = require('../appointments/appointment.service');
+const teacherScope = require('../access/teacherScope');
 const { asyncHandler } = require('../../utils/asyncHandler');
 
 const uuid = z.string().uuid();
@@ -36,9 +38,18 @@ const rangeQuery = (req) =>
     .object({ from: day.optional(), to: day.optional(), category: z.enum(service.CATEGORIES).optional() })
     .parse({ from: req.query.from || undefined, to: req.query.to || undefined, category: req.query.category || undefined });
 
-/** GET /events?from=&to=&category= — administración (incluye borradores). */
+/**
+ * GET /events?from=&to=&category= — administración (incluye borradores). Con
+ * permiso de lectura de citas, suma las citas con padres del período (el
+ * docente con carga restringida, solo las de sus alumnos), en orden cronológico.
+ */
 const list = asyncHandler(async (req, res) => {
-  res.status(200).json(await service.listEvents(req.db, req.tenantId, rangeQuery(req)));
+  const range = rangeQuery(req);
+  const events = await service.listEvents(req.db, req.tenantId, range);
+  if (range.category || !req.permissions?.appointments?.can_read) return res.status(200).json(events);
+  const scope = await teacherScope.getTeacherScope(req);
+  const meetings = await appointments.calendarEvents(req.db, req.tenantId, { from: range.from, to: range.to, scope });
+  return res.status(200).json([...events, ...meetings].sort(service.chronological));
 });
 
 /** GET /events/audiences — grados y secciones (años activos) para el destino. */
@@ -69,7 +80,11 @@ const remove = asyncHandler(async (req, res) => {
 /** GET /portal/events?from= — cartelera del representante (filtrada por sus hijos). */
 const portalList = asyncHandler(async (req, res) => {
   const { from } = rangeQuery(req);
-  res.status(200).json(await service.portalEvents(req.db, req.tenantId, req.user.id, { from }));
+  const events = await service.portalEvents(req.db, req.tenantId, req.user.id, { from });
+  // Sus citas con el colegio (solo las suyas), desde la misma fecha que la cartelera.
+  const since = from || new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+  const meetings = await appointments.portalCalendarEvents(req.db, req.tenantId, req.user.id, { from: since });
+  res.status(200).json([...events, ...meetings].sort(service.chronological));
 });
 
 module.exports = { list, audiences, get, create, update, remove, portalList };

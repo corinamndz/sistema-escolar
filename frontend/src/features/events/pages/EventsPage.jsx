@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import eventsApi from '../../../api/endpoints/events.api';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
@@ -22,6 +23,7 @@ import EventFormModal from '../components/EventFormModal';
  */
 function EventsPage() {
   const { can } = useAuth();
+  const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
   const { data: events, loading, error, refetch } = useFetch(() => eventsApi.list(), []);
@@ -84,6 +86,8 @@ function EventsPage() {
         <EventBoard
           events={events || []}
           onSelect={setViewing}
+          onEdit={can('events', 'update') ? setEditing : undefined}
+          onDelete={can('events', 'delete') ? remove : undefined}
           empty={
             <div className="card empty-state">
               <div className="empty-state__icon">
@@ -110,6 +114,7 @@ function EventsPage() {
               : undefined
           }
           onDelete={can('events', 'delete') ? () => remove(viewing) : undefined}
+          onManageAppointment={can('appointments', 'read') ? () => navigate('/appointments') : undefined}
         />
       )}
       {editing && <EventFormModal initial={editing} onClose={() => setEditing(null)} onSaved={() => refetch()} />}

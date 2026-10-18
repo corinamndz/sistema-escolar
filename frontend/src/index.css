@@ -3873,10 +3873,6 @@ a.cell-person__name:hover {
 .login-school-chip .icon { color: var(--color-primary-text); }
 .login-school-chip .btn { margin-left: auto; }
 
-/* Sesión abierta en otro colegio al llegar por enlace (?colegio=…) */
-.login-switch { display: grid; gap: 12px; }
-.login-switch .alert { margin-bottom: 4px; }
-
 .login-hero::after {
   content: '';
   position: absolute;
@@ -6751,6 +6747,15 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
 .evt--deportivo { --evt-hue: 145; }
 .evt--institucional { --evt-hue: 28; }
 .evt--otro { --evt-hue: 200; }
+.evt--cita { --evt-hue: 172; }
+
+/* Cartelera: vista de tabla */
+.evt-board .data-table { margin-top: 4px; }
+.evt-table__title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; max-width: 380px; }
+.evt-table__title .link-button { text-align: left; }
+.evt-table__chips { display: inline-flex; gap: 4px; }
+.evt-table__excerpt { flex-basis: 100%; }
+.evt-table__date { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; text-transform: capitalize; white-space: nowrap; }
 .evt-tag {
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px;
   font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
@@ -7244,6 +7249,28 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
 
 .pc-activities { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .pc-activity { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--color-surface-muted); }
+
+/* Citas con padres */
+.appt-times { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.appt-channels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.appt-channel { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); cursor: pointer; transition: border-color var(--transition-fast), background-color var(--transition-fast); }
+.appt-channel input { margin-top: 3px; }
+.appt-channel > .icon { flex: none; margin-top: 2px; color: var(--color-text-muted); }
+.appt-channel > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13.5px; }
+.appt-channel__hint { font-size: 12px; color: var(--color-text-muted); overflow-wrap: anywhere; }
+.appt-channel.is-on { border-color: var(--color-primary); background: var(--color-primary-softer); }
+.appt-channel.is-on > .icon { color: var(--color-primary-text); }
+.appt-channel.is-disabled { cursor: not-allowed; opacity: 0.7; }
+.appt-date { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; text-transform: capitalize; }
+.appt-topic { max-width: 360px; }
+.appt-topic__notes { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.appt-notify { display: inline-flex; align-items: center; gap: 4px; }
+.appt-notify__ch { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 999px; background: var(--color-surface-muted); color: var(--color-text-subtle); opacity: 0.55; }
+.appt-notify__ch.is-on { background: var(--color-primary-soft); color: var(--color-primary-text); opacity: 1; }
+.appt-notify__sent { color: var(--color-success); }
+@media (max-width: 640px) {
+  .appt-channels { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* Inicio: KPIs y gráficos gerenciales */
 .dashboard-kpis, .dashboard-charts { margin-bottom: 24px; }

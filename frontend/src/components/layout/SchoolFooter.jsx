@@ -23,6 +23,7 @@ function SchoolFooter() {
     <footer className="school-footer">
       <span className="school-footer__copy">
         © {new Date().getFullYear()} {settings.name}
+        {settings.rif && <span className="school-footer__rif"> · RIF {settings.rif}</span>}
       </span>
 
       {phone || email ? (

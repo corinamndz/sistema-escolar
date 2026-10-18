@@ -73,8 +73,13 @@ function pickForm(settings) {
     secondaryColor: settings.secondaryColor || '#1E293B',
     contactPhone: settings.contactPhone || '',
     contactEmail: settings.contactEmail || '',
+    rif: settings.rif || '',
   };
 }
+
+/** Mismo criterio que el backend: letra J/G/V/E/P/C, 8 dígitos y el verificador (con o sin guiones). */
+const RIF = /^[JGVEPC]-?\d{8}-?\d$/;
+const normalizeRif = (v) => v.toUpperCase().replace(/[\s.]/g, '');
 
 /** URL temporal (blob:) para mostrar un File antes de subirlo. */
 function useObjectUrl(file) {
@@ -130,9 +135,12 @@ function TenantSettingsPage() {
   }, [form.secondaryColor, form.primaryColor, colorsValid, setPreview]);
   useEffect(() => () => setPreview(null), [setPreview]);
 
+  const rifValue = normalizeRif(form.rif);
+  const rifError = rifValue && !RIF.test(rifValue) ? 'Usa la letra (J, G, V, E, P o C), 8 dígitos y el dígito verificador. Ej. J-12345678-9.' : null;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!colorsValid) return;
+    if (!colorsValid || rifError) return;
 
     const data = new FormData();
     data.append('name', form.name.trim());
@@ -142,6 +150,8 @@ function TenantSettingsPage() {
     // tabla se calculan en automático y ya no se envían.
     data.append('contactPhone', form.contactPhone.trim());
     data.append('contactEmail', form.contactEmail.trim());
+    // Vacío = quitar el RIF (el backend lo normaliza a J-12345678-9).
+    data.append('rif', rifValue);
     if (logoFile) data.append('logo', logoFile);
     else if (removeLogo) data.append('removeLogo', 'true');
 
@@ -161,7 +171,7 @@ function TenantSettingsPage() {
   const previewLogo = logoPreview || (!removeLogo ? settings.logoUrl : null);
   const saved = pickForm(settings);
   // Cambios sin guardar por pestaña (se marcan con un punto en su pestaña).
-  const dirtyGeneral = Boolean(logoFile) || removeLogo || ['name', 'contactPhone', 'contactEmail'].some((k) => form[k] !== saved[k]);
+  const dirtyGeneral = Boolean(logoFile) || removeLogo || ['name', 'contactPhone', 'contactEmail', 'rif'].some((k) => form[k] !== saved[k]);
   const dirtyAppearance = form.primaryColor !== saved.primaryColor || form.secondaryColor !== saved.secondaryColor;
   const dirty = dirtyGeneral || dirtyAppearance;
   const dirtyOf = { general: dirtyGeneral, apariencia: dirtyAppearance };
@@ -239,8 +249,28 @@ function TenantSettingsPage() {
 
               {tab === 'general' ? (
                 <div className="form-grid">
-                  <Field label="Nombre del colegio" error={fieldErrors.name} full required>
+                  <Field label="Nombre del colegio" error={fieldErrors.name} required>
                     <Input icon="building" name="name" value={form.name} onChange={handleChange} disabled={!canEdit} required />
+                  </Field>
+
+                  <Field label="RIF" error={rifError || fieldErrors.rif} hint="Registro de Información Fiscal. Se muestra en los comprobantes de pago.">
+                    <Input
+                      icon="file"
+                      name="rif"
+                      value={form.rif}
+                      onChange={handleChange}
+                      onBlur={() => {
+                        // Al salir del campo se muestra con el formato oficial (J-12345678-9).
+                        if (RIF.test(rifValue)) {
+                          const d = rifValue.replace(/-/g, '').slice(1);
+                          setForm((f) => ({ ...f, rif: `${rifValue[0]}-${d.slice(0, 8)}-${d.slice(8)}` }));
+                        }
+                      }}
+                      placeholder="J-12345678-9"
+                      maxLength={14}
+                      error={rifError}
+                      disabled={!canEdit}
+                    />
                   </Field>
 
                   <Field label="Logo" full>

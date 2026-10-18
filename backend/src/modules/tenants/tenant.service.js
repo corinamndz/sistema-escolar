@@ -23,6 +23,7 @@ async function getSettings(trx, tenantId) {
     tableHeaderStyle: settings?.table_header_style || 'subtle',
     contactPhone: settings?.contact_phone || null,
     contactEmail: settings?.contact_email || null,
+    rif: settings?.rif || null,
   };
 }
 
@@ -32,7 +33,7 @@ async function getSettings(trx, tenantId) {
  * lugar de romper TODO el guardado con un 500: nombre, colores, logo y
  * contacto viven en columnas que existen desde la 001.
  */
-const OPTIONAL_COLUMNS = ['menu_gradient', 'accent2_color', 'table_header_style'];
+const OPTIONAL_COLUMNS = ['menu_gradient', 'accent2_color', 'table_header_style', 'rif'];
 let settingsColumnsCache = null;
 
 async function settingsColumns(trx) {
@@ -57,7 +58,7 @@ async function settingsColumns(trx) {
 async function updateSettings(
   trx,
   tenantId,
-  { name, logoPath, removeLogo, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail }
+  { name, logoPath, removeLogo, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail, rif }
 ) {
   if (name) {
     await trx('tenants').where({ id: tenantId }).update({ name, updated_at: trx.fn.now() });
@@ -79,6 +80,7 @@ async function updateSettings(
     table_header_style: tableHeaderStyle,
     contact_phone: contactPhone,
     contact_email: contactEmail,
+    rif,
     updated_at: trx.fn.now(),
   };
   // Solo pisa las columnas que vinieron en el request (permite updates parciales).
@@ -92,7 +94,7 @@ async function updateSettings(
     if (missing.length) {
       missing.forEach((c) => delete payload[c]);
       // eslint-disable-next-line no-console
-      console.warn(`[tenant_settings] Faltan las columnas ${missing.join(', ')} (migración 021 pendiente: ejecuta "npm run migrate"). Se guardó el resto.`);
+      console.warn(`[tenant_settings] Faltan las columnas ${missing.join(', ')} (migraciones 021/044 pendientes: ejecuta "npm run migrate"). Se guardó el resto.`);
     }
   }
 
@@ -113,9 +115,9 @@ async function updateSettings(
  * (id, estado). Es lo que necesitan el diseño y el pie de página del inicio.
  */
 async function getProfile(trx, tenantId) {
-  const { name, logoUrl, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail } =
+  const { name, logoUrl, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail, rif } =
     await getSettings(trx, tenantId);
-  return { name, logoUrl, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail };
+  return { name, logoUrl, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail, rif };
 }
 
 

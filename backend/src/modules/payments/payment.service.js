@@ -44,6 +44,7 @@ async function buildReceiptData(trx, tenantId, paymentId) {
       primaryColor: settings?.primary_color,
       contactEmail: settings?.contact_email,
       contactPhone: settings?.contact_phone,
+      rif: settings?.rif || null,
     },
     receipt: { id: p.id, issuedAt: p.paid_at || new Date() },
     student: {

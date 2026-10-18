@@ -23,6 +23,24 @@ const updateSettingsSchema = z.object({
   tableHeaderStyle: optional(z.enum(['subtle', 'solid', 'neutral'])),
   contactPhone: optional(z.string().max(30)),
   contactEmail: optional(z.string().email('Correo inválido.')),
+  // RIF: se acepta "J-12345678-9", "j123456789", con espacios o puntos; se guarda normalizado.
+  // A diferencia del resto, vacío ("") lo BORRA (null): un RIF mal cargado se puede quitar.
+  rif: z.preprocess(
+    (v) => {
+      if (v === undefined) return undefined;
+      const s = String(v).toUpperCase().replace(/[\s.]/g, '');
+      return s === '' ? null : s;
+    },
+    z
+      .string()
+      .regex(/^[JGVEPC]-?\d{8}-?\d$/, 'RIF inválido: usa la letra (J, G, V, E, P o C), 8 dígitos y el dígito verificador. Ej. J-12345678-9.')
+      .transform((v) => {
+        const digits = v.replace(/-/g, '').slice(1);
+        return `${v[0]}-${digits.slice(0, 8)}-${digits.slice(8)}`;
+      })
+      .nullable()
+      .optional()
+  ),
   // "true" para quitar el logo actual sin subir uno nuevo.
   removeLogo: optional(z.enum(['true', 'false']).transform((v) => v === 'true')),
 });
@@ -30,7 +48,7 @@ const updateSettingsSchema = z.object({
 /**
  * PUT /tenant/settings (multipart/form-data)
  * Campos de texto: name, primaryColor, secondaryColor, menuGradient, accentSecondaryColor,
- * tableHeaderStyle, contactPhone, contactEmail, removeLogo.
+ * tableHeaderStyle, contactPhone, contactEmail, rif, removeLogo.
  * Archivo opcional: `logo` (PNG/JPG, máx. 2 MB), procesado por `logoUpload`.
  */
 const updateSettings = asyncHandler(async (req, res) => {

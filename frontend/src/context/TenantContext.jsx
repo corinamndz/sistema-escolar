@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
   tableHeaderStyle: 'subtle',
   contactPhone: null,
   contactEmail: null,
+  rif: null,
 };
 
 /**

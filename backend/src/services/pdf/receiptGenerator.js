@@ -129,7 +129,7 @@ function stamp(doc, cx, cy) {
 
 /**
  * @param {object} data
- * @param {{name, logoPath?, primaryColor?, contactEmail?, contactPhone?}} data.tenant
+ * @param {{name, logoPath?, primaryColor?, contactEmail?, contactPhone?, rif?}} data.tenant
  * @param {{id, issuedAt}} data.receipt
  * @param {{name, nationalId?, section?, schoolPeriod?}} data.student
  * @param {{name, nationalId?}} data.guardian
@@ -177,8 +177,14 @@ function generateReceiptPdf({ tenant, receipt, student, guardian, payment }) {
     const headerRight = 148;
     doc.font('Helvetica-Bold').fontSize(13.5).fillColor(INK).text(tenant.name, textX, y + 6, { width: INNER - (textX - M) - headerRight, lineBreak: false, ellipsis: true });
     const contactWidth = INNER - (textX - M) - headerRight;
+    // RIF del colegio, bajo el nombre (identificación fiscal del emisor del comprobante).
+    let lineY = y + 24;
+    if (tenant.rif) {
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(INK).text(`RIF ${tenant.rif}`, textX, lineY, { width: contactWidth, lineBreak: false });
+      lineY += 11;
+    }
     [tenant.contactEmail, tenant.contactPhone].filter(Boolean).forEach((line, i) => {
-      doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text(line, textX, y + 25 + i * 10, { width: contactWidth, lineBreak: false, ellipsis: true });
+      doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text(line, textX, lineY + i * 10, { width: contactWidth, lineBreak: false, ellipsis: true });
     });
 
     const rx = PAGE.width - M - headerRight;

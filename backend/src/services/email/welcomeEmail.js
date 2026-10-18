@@ -1,5 +1,6 @@
 const mailer = require('./mailer');
 const { escapeHtml } = mailer;
+const mailLog = require('../../modules/notifications/mailLog.service');
 
 const { tenantAppUrl } = require('../../utils/frontendUrl');
 
@@ -47,7 +48,13 @@ async function sendWelcomeEmail(trx, tenantId, { to, schoolName, fullName, usern
       `— ${schoolName}`,
     ].join('\n');
 
-    await mailer.sendMail({ trx, tenantId, to, subject: `Acceso activado — ${schoolName}`, html, text });
+    const subject = `Acceso activado — ${schoolName}`;
+    try {
+      await mailer.sendMail({ trx, tenantId, to, subject, html, text });
+      await mailLog.record(trx, tenantId, { kind: 'credentials', to, toName: fullName, subject });
+    } catch (err) {
+      await mailLog.record(trx, tenantId, { kind: 'credentials', to, toName: fullName, subject, error: err.message });
+    }
   } catch {
     // Error silenciado: el correo de bienvenida es un plus, no un requisito.
   }

@@ -7,6 +7,7 @@ const { ensureTuition } = require('./tuition.service');
 const exchange = require('./exchangeRate.service');
 const notices = require('../notifications/notices');
 const notificationPrefs = require('../notifications/notificationPreferences.service');
+const mailLog = require('../notifications/mailLog.service');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
 const { resolveProof } = require('../../services/storage/paymentProofStorage');
 const { resolveLogoFileOrDefault } = require('../../services/storage/logoStorage');
@@ -88,6 +89,54 @@ async function generateAndStoreReceipt(trx, tenantId, paymentId) {
   fs.writeFileSync(path.join(RECEIPTS_DIR, receiptFilename), buffer);
   // Ya no es un archivo público: se descarga por GET /api/payments/:id/receipt (con sesión).
   return { buffer, receiptUrl: `/api/payments/${paymentId}/receipt`, receiptFilename, data };
+}
+
+/**
+ * Envía el comprobante en PDF al correo del representante del pago y lo
+ * registra en el log de notificaciones. Sin `pdfBuffer`, lo regenera (reenvío
+ * desde el log). Devuelve { sent, error }: un fallo no interrumpe a quien lo llama.
+ */
+async function sendReceiptEmail(trx, tenantId, paymentId, { pdfBuffer = null, receiptFilename = null, resendOf = null, userId = null } = {}) {
+  const payment = await trx('payments').where({ id: paymentId, tenant_id: tenantId }).first();
+  const student = await trx('students').where({ id: payment.student_id }).first();
+  const guardian = await trx('guardians').where({ id: payment.guardian_id }).first();
+  const tenant = await trx('tenants').where({ id: tenantId }).first('name');
+  if (!guardian?.email) return { sent: false, error: 'El representante no tiene correo registrado.' };
+
+  let buffer = pdfBuffer;
+  let filename = receiptFilename;
+  if (!buffer) ({ buffer, receiptFilename: filename } = await generateAndStoreReceipt(trx, tenantId, paymentId));
+
+  const subject = `Comprobante de pago - ${payment.period_label}`;
+  const log = { kind: 'payment_receipt', to: guardian.email, toName: `${guardian.first_name} ${guardian.last_name}`, subject, refId: paymentId, resendOf, userId };
+  try {
+    // Con el correo configurado por el colegio (Configuración → Correo) o, si no tiene, el del servidor.
+    await sendMail({
+      trx,
+      tenantId,
+      to: guardian.email,
+      subject,
+      html: `
+        <p>Estimado(a) ${escapeHtml(guardian.first_name)},</p>
+        <p>Hemos recibido el pago de <strong>${escapeHtml(payment.period_label)}</strong> por
+        ${escapeHtml(payment.currency)} ${Number(payment.amount).toFixed(2)} para el alumno
+        ${escapeHtml(student.first_name)} ${escapeHtml(student.last_name)}. Adjuntamos el comprobante.</p>
+        <p>${escapeHtml(tenant.name)}</p>
+      `,
+      attachments: [{ filename, content: buffer, contentType: 'application/pdf' }],
+    });
+    await mailLog.record(trx, tenantId, log);
+    await trx('payments').where({ id: paymentId }).update({ email_sent_at: trx.fn.now() });
+    return { sent: true, error: null };
+  } catch (err) {
+    // Envíos desactivados o sin configurar: no es un fallo, el comprobante queda disponible en el portal.
+    if (err.code !== 'MAIL_DISABLED') {
+      // eslint-disable-next-line no-console
+      console.error('No se pudo enviar el correo de comprobante:', err.message);
+    }
+    await mailLog.record(trx, tenantId, { ...log, error: err.message });
+    return { sent: false, error: err.message };
+  }
 }
 
 /** Vuelve a generar el comprobante de un pago ya confirmado (p. ej. con el diseño o logo nuevos). */
@@ -420,9 +469,7 @@ async function markAsPaid(trx, tenantId, paymentId, details = {}, proof = null) 
     throw ApiError.conflict('Este cobro está anulado; no se puede registrar como pagado.');
   }
 
-  const student = await trx('students').where({ id: payment.student_id }).first();
   const guardian = await trx('guardians').where({ id: payment.guardian_id }).first();
-  const tenant = await trx('tenants').where({ id: tenantId }).first();
 
   // Datos del pago: los del administrador prevalecen sobre los reportados.
   const paidOn = details.paidOn || payment.report_paid_on || null;
@@ -469,31 +516,7 @@ async function markAsPaid(trx, tenantId, paymentId, details = {}, proof = null) 
   const emailOn = await notificationPrefs.isEnabled(trx, tenantId, 'payment_confirmed', 'email');
   if (!emailOn) emailError = 'el envío por correo de pagos confirmados está desactivado en Configuración → Notificaciones';
   if (guardian.email && emailOn) {
-    try {
-      // Con el correo configurado por el colegio (Configuración → Correo) o, si no tiene, el del servidor.
-      await sendMail({
-        trx,
-        tenantId,
-        to: guardian.email,
-        subject: `Comprobante de pago - ${payment.period_label}`,
-        html: `
-          <p>Estimado(a) ${escapeHtml(guardian.first_name)},</p>
-          <p>Hemos recibido el pago de <strong>${escapeHtml(payment.period_label)}</strong> por
-          ${escapeHtml(payment.currency)} ${Number(payment.amount).toFixed(2)} para el alumno
-          ${escapeHtml(student.first_name)} ${escapeHtml(student.last_name)}. Adjuntamos el comprobante.</p>
-          <p>${escapeHtml(tenant.name)}</p>
-        `,
-        attachments: [{ filename: receiptFilename, content: pdfBuffer, contentType: 'application/pdf' }],
-      });
-      emailSent = true;
-    } catch (err) {
-      // Envíos desactivados o sin configurar: no es un fallo, el comprobante queda disponible en el portal.
-      if (err.code !== 'MAIL_DISABLED') {
-        // eslint-disable-next-line no-console
-        console.error('No se pudo enviar el correo de comprobante:', err.message);
-      }
-      emailError = err.message;
-    }
+    ({ sent: emailSent, error: emailError } = await sendReceiptEmail(trx, tenantId, paymentId, { pdfBuffer, receiptFilename }));
   }
 
   const [finalPayment] = await trx('payments')
@@ -551,6 +574,7 @@ async function getReceipt(trx, tenantId, userId, paymentId) {
 
 module.exports = {
   regenerateReceipt,
+  sendReceiptEmail,
   getProof,
   getReceipt,
   DISPLAY_STATUS_SQL,

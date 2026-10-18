@@ -59,6 +59,8 @@ const NAV_SECTIONS = [
     items: [
       { moduleCode: 'roles', label: 'Roles y permisos', icon: 'shield', path: '/roles' },
       { moduleCode: 'tenant_settings', label: 'Configuración', icon: 'settings', path: '/tenant/settings' },
+      // Historial de correos, avisos de la campana, credenciales y comprobantes, con reenvío.
+      { moduleCode: 'tenant_settings', label: 'Log de notificaciones', icon: 'inbox', path: '/notifications/log', blockTeacher: true },
     ],
   },
 ];

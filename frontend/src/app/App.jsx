@@ -21,6 +21,7 @@ import DisciplinePage from '../features/discipline/pages/DisciplinePage';
 import ClubsPage from '../features/clubs/pages/ClubsPage';
 import EventsPage from '../features/events/pages/EventsPage';
 import AppointmentsPage from '../features/appointments/pages/AppointmentsPage';
+import NotificationLogPage from '../features/notifications/pages/NotificationLogPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
 import SubjectsPage from '../features/academics/subjects/SubjectsPage';
@@ -79,6 +80,9 @@ function App() {
             </Route>
             <Route element={<PermissionRoute module="events" />}>
               <Route path="events" element={<EventsPage />} />
+            </Route>
+            <Route element={<PermissionRoute module="tenant_settings" blockTeacher />}>
+              <Route path="notifications/log" element={<NotificationLogPage />} />
             </Route>
             <Route element={<PermissionRoute module="appointments" />}>
               <Route path="appointments" element={<AppointmentsPage />} />

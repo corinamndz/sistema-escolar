@@ -22,6 +22,7 @@ import ClubsPage from '../features/clubs/pages/ClubsPage';
 import EventsPage from '../features/events/pages/EventsPage';
 import AppointmentsPage from '../features/appointments/pages/AppointmentsPage';
 import NotificationLogPage from '../features/notifications/pages/NotificationLogPage';
+import GradeSummaryPage from '../features/grading/pages/GradeSummaryPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
 import SubjectsPage from '../features/academics/subjects/SubjectsPage';
@@ -112,6 +113,9 @@ function App() {
 
             <Route element={<PermissionRoute module="grading" />}>
               <Route path="grading/plans/:id" element={<GradebookPage />} />
+            </Route>
+            <Route element={<PermissionRoute module="grading" blockTeacher />}>
+              <Route path="grading/summary" element={<GradeSummaryPage />} />
             </Route>
 
             <Route element={<PermissionRoute module="payments" blockTeacher />}>

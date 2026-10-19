@@ -39,6 +39,8 @@ const NAV_SECTIONS = [
       // Contenido programático: unidades y temas de cada materia con sus evaluaciones (docentes: sus materias).
       { moduleCode: 'evaluation_plans', label: 'Contenido programático', icon: 'layers', path: '/programmatic-content' },
       { moduleCode: 'evaluation_plans', label: 'Planes de evaluación', icon: 'clipboard', path: '/evaluation-plans' },
+      // Resumen de calificaciones del colegio: acumulado por lapso de cada alumno (administración).
+      { moduleCode: 'grading', label: 'Resumen de calificaciones', icon: 'trendingUp', path: '/grading/summary', blockTeacher: true },
       { moduleCode: 'schedules', label: 'Horarios', icon: 'calendar', path: '/schedules', blockTeacher: true },
       // Docentes: su horario semanal (solo lectura).
       { moduleCode: 'my_schedule', label: 'Mi horario', icon: 'clock', path: '/schedules/mine', teacherOnly: true },

@@ -8,6 +8,8 @@ const gradingApi = {
 
   assessCompetency: (competencyId, data) =>
     axiosClient.put(`/grading/competencies/${competencyId}/assessments`, data).then((r) => r.data),
+  /** Resumen del colegio: cada alumno con su acumulado por lapso y su boleta por materia. */
+  getSummary: (schoolPeriodId) => axiosClient.get('/grading/summary', { params: { schoolPeriodId: schoolPeriodId || undefined } }).then((r) => r.data),
   getCompetencyReport: (projectId) =>
     axiosClient.get(`/grading/projects/${projectId}/competency-report`).then((r) => r.data),
 };

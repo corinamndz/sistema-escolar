@@ -1,6 +1,24 @@
 const { ApiError } = require('../../utils/ApiError');
 const { deactivateStaffUser } = require('./staffAccess.service');
 
+/** Etiquetas de staff.level_availability (migración 046). */
+const LEVEL_AVAILABILITY_LABELS = { initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria', all: 'Todos los niveles' };
+
+/**
+ * ¿Existe staff.level_availability (migración 046)? Mientras no, el personal
+ * se guarda sin ella y todos los docentes cuentan como disponibles en todo.
+ */
+let levelColumnReady = false;
+async function hasLevelColumn(trx) {
+  if (levelColumnReady) return true;
+  const { rows } = await trx.raw("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'staff' AND column_name = 'level_availability') AS ok");
+  levelColumnReady = rows[0].ok;
+  return levelColumnReady;
+}
+
+/** ¿Puede el docente trabajar en ese nivel? (sin la columna, o 'all': sí). */
+const availableFor = (staff, levelCode) => !staff?.level_availability || staff.level_availability === 'all' || staff.level_availability === levelCode;
+
 /** Personal con el estado de su usuario de acceso (null = sin usuario). */
 async function list(trx, tenantId, { staffType } = {}) {
   const query = trx('staff as s')
@@ -35,6 +53,8 @@ async function create(trx, tenantId, data) {
       phone: data.phone,
       email: data.email,
       hired_at: data.hiredAt,
+      // Solo el personal docente se asigna a secciones; el resto queda en "todos" (no se usa).
+      ...((await hasLevelColumn(trx)) ? { level_availability: data.staffType === 'teaching' ? data.levelAvailability || 'all' : 'all' } : {}),
     })
     .returning('*');
   return staff;
@@ -51,6 +71,7 @@ async function update(trx, tenantId, id, data) {
     email: data.email,
     hired_at: data.hiredAt,
     status: data.status,
+    level_availability: (await hasLevelColumn(trx)) ? data.levelAvailability : undefined,
   };
   Object.keys(payload).forEach((key) => payload[key] === undefined && delete payload[key]);
 
@@ -84,4 +105,4 @@ async function remove(trx, tenantId, id) {
   await deactivateStaffUser(trx, tenantId, staff);
 }
 
-module.exports = { list, getById, create, update, remove };
+module.exports = { list, getById, create, update, remove, hasLevelColumn, availableFor, LEVEL_AVAILABILITY_LABELS };

@@ -89,3 +89,6 @@ export function LevelFilter({ value, onChange, counts, total }) {
 }
 
 export const teacherName = (t) => `${t.first_name} ${t.last_name}`;
+
+/** ¿El docente puede trabajar en ese nivel? (staff.level_availability: initial | primary | secondary | all). */
+export const isAvailableFor = (t, levelCode) => !levelCode || !t.level_availability || t.level_availability === 'all' || t.level_availability === levelCode;

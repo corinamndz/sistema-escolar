@@ -12,6 +12,8 @@ const staffSchema = z.object({
   phone: z.string().optional(),
   email: z.string().email().optional(),
   hiredAt: z.string().optional(), // 'YYYY-MM-DD'
+  // Nivel en que puede trabajar el docente (solo aplica al personal docente).
+  levelAvailability: z.enum(['initial', 'primary', 'secondary', 'all']).optional(),
 });
 
 const list = asyncHandler(async (req, res) => {

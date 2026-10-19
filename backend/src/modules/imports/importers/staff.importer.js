@@ -2,6 +2,9 @@ const f = require('../fields');
 const staffService = require('../../staff/staff.service');
 
 const STAFF_TYPES = { Docente: 'teaching', Administrativo: 'administrative', Obrero: 'support', Apoyo: 'support' };
+/** Disponibilidad del docente por nivel (migración 046). */
+const AVAILABILITY = { Inicial: 'initial', Primaria: 'primary', Secundaria: 'secondary', Todos: 'all' };
+const AVAILABILITY_ALIASES = { 'Todos los niveles': 'all', 'Educación Inicial': 'initial', 'Educación Primaria': 'primary', 'Educación Secundaria': 'secondary', Preescolar: 'initial', Bachillerato: 'secondary' };
 
 /** Personal del colegio (sin acceso al sistema: el usuario se crea luego desde su ficha). */
 module.exports = {
@@ -35,13 +38,24 @@ module.exports = {
         { key: 'phone', header: 'Teléfono', text: true, note: 'Opcional. Ej.: 0414-1234567.' },
         { key: 'email', header: 'Correo', width: 26, note: 'Opcional. Debe ser un correo válido y no repetirse con otro miembro del personal.' },
         { key: 'hiredAt', header: 'Fecha de ingreso', date: true, width: 18, note: 'Opcional. Formato DD/MM/AAAA.' },
+        {
+          key: 'levelAvailability',
+          header: 'Disponibilidad',
+          width: 16,
+          options: Object.keys(AVAILABILITY),
+          note: 'Solo para Docentes: en qué nivel puede trabajar (Inicial, Primaria, Secundaria o Todos). Vacío = Todos. Solo se le podrán asignar secciones de ese nivel.',
+        },
       ],
       template: {
         title: 'Plantilla de carga masiva de personal',
-        instructions: ['El acceso al sistema (usuario y contraseña) se crea después, desde la ficha de cada persona.'],
+        instructions: [
+          'El acceso al sistema (usuario y contraseña) se crea después, desde la ficha de cada persona.',
+          'Disponibilidad: el nivel en que puede trabajar cada docente. En "Secciones y personal docente" solo aparecerá en las secciones de ese nivel.',
+        ],
         examples: [
-          { staffType: 'Docente', firstName: 'Ana', lastName: 'Martínez', nationalId: 'V-14567890', phone: '0414-1234567', email: 'ana.martinez@colegio.edu.ve', hiredAt: '15/09/2020' },
-          { staffType: 'Administrativo', firstName: 'Carlos', lastName: 'Gómez', nationalId: 'V-18234567', phone: '', email: '', hiredAt: '' },
+          { staffType: 'Docente', firstName: 'Ana', lastName: 'Martínez', nationalId: 'V-14567890', phone: '0414-1234567', email: 'ana.martinez@colegio.edu.ve', hiredAt: '15/09/2020', levelAvailability: 'Primaria' },
+          { staffType: 'Docente', firstName: 'Luis', lastName: 'Pérez', nationalId: 'V-16345678', phone: '', email: '', hiredAt: '', levelAvailability: 'Todos' },
+          { staffType: 'Administrativo', firstName: 'Carlos', lastName: 'Gómez', nationalId: 'V-18234567', phone: '', email: '', hiredAt: '', levelAvailability: '' },
         ],
       },
     };
@@ -56,7 +70,14 @@ module.exports = {
       phone: [f.text, v.phone, { max: 30, label: 'El teléfono' }],
       email: [f.email, v.email, { label: 'El correo' }],
       hiredAt: [f.date, v.hiredAt, { label: 'La fecha de ingreso', notFuture: true, today: ctx.today }],
+      levelAvailability: [f.option, v.levelAvailability, { options: AVAILABILITY, aliases: AVAILABILITY_ALIASES, label: 'La disponibilidad' }],
     });
+    // La disponibilidad es de los docentes: en otro tipo de personal se ignora (con aviso en la vista previa).
+    const notes = [];
+    if (data.levelAvailability && data.staffType && data.staffType !== 'teaching') {
+      notes.push('La disponibilidad solo aplica a docentes: se ignora.');
+      data.levelAvailability = null;
+    }
 
     state.ids ||= new Map();
     state.emails ||= new Map();
@@ -72,7 +93,7 @@ module.exports = {
       else state.emails.set(data.email, state.row);
     }
 
-    return { data, errors, label: [data.firstName, data.lastName].filter(Boolean).join(' ') || null };
+    return { data, errors, notes, label: [data.firstName, data.lastName].filter(Boolean).join(' ') || null };
   },
 
   async insert(trx, tenantId, data) {
@@ -84,6 +105,7 @@ module.exports = {
       phone: data.phone || undefined,
       email: data.email || undefined,
       hiredAt: data.hiredAt || undefined,
+      levelAvailability: data.levelAvailability || 'all',
     });
     return { id: staff.id };
   },

@@ -11,7 +11,7 @@ import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
-import { LevelBadge, LevelRule, STAFF_ROLES, teacherName } from '../levels';
+import { LevelBadge, LevelRule, STAFF_ROLES, isAvailableFor, teacherName } from '../levels';
 
 const HINTS = {
   lead: { initial: 'Responsable principal de la sección.', primary: 'Docente de grado: atiende la sección y dicta las materias que no tengan otro docente.' },
@@ -19,21 +19,31 @@ const HINTS = {
   guide: 'Responsable del grupo (tutoría). Los docentes de cada materia se asignan en Materias.',
 };
 
-/** Docentes seleccionables: activos, más los ya asignados aquí (aunque luego se inactivaran). */
-function useTeacherOptions(load, assignedIds) {
-  return useMemo(
-    () =>
-      (load || [])
-        .filter((t) => t.status === 'active' || assignedIds.includes(t.id))
-        .map((t) => ({
+/**
+ * Docentes seleccionables: activos, más los ya asignados aquí (aunque luego se inactivaran).
+ * `taken` (Inicial y Primaria): quienes ya atienden otra sección del año → bloqueados, con dónde.
+ */
+function useTeacherOptions(load, assignedIds, taken = [], levelCode = null) {
+  return useMemo(() => {
+    const takenBy = new Map(taken.map((t) => [t.staff_id, t]));
+    return (load || [])
+      .filter((t) => t.status === 'active' || assignedIds.includes(t.id))
+      // Disponibilidad por nivel: solo quienes pueden trabajar en el nivel de la sección (o ya están aquí).
+      .filter((t) => assignedIds.includes(t.id) || isAvailableFor(t, levelCode))
+      .map((t) => {
+        const elsewhere = assignedIds.includes(t.id) ? null : takenBy.get(t.id);
+        return {
           id: t.id,
           label: teacherName(t),
           detail: t.assignments.length === 0 ? 'sin asignaciones' : `${t.assignments.length} asignación${t.assignments.length === 1 ? '' : 'es'}`,
           inactive: t.status !== 'active',
-        })),
+          blockedBy: elsewhere ? elsewhere.label : null,
+        };
+      })
+      // Los disponibles primero; los ya asignados a otra sección, al final.
+      .sort((a, b) => Boolean(a.blockedBy) - Boolean(b.blockedBy));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [load, assignedIds.join()]
-  );
+  }, [load, assignedIds.join(), taken, levelCode]);
 }
 
 /**
@@ -66,7 +76,9 @@ function StaffForm({ data, load, onClose, onSaved }) {
     guide: data.guide?.id || null,
   };
   const [value, setValue] = useState(initial);
-  const options = useTeacherOptions(load, Object.values(initial).filter(Boolean));
+  const options = useTeacherOptions(load, Object.values(initial).filter(Boolean), data.taken, section.level_code);
+  const blockedCount = options.filter((o) => o.blockedBy).length;
+  const otherLevel = (load || []).filter((t) => t.status === 'active' && !isAvailableFor(t, section.level_code)).length;
   const toast = useToast();
   const { run, loading, error, fieldErrors } = useMutation((body) => academicsApi.setSectionTeachers(section.id, body));
 
@@ -115,19 +127,35 @@ function StaffForm({ data, load, onClose, onSaved }) {
             error={(r.key === 'assistant' && assistantError) || fieldErrors[`${r.key}TeacherId`]}
             hint={typeof HINTS[r.key] === 'string' ? HINTS[r.key] : HINTS[r.key][section.level_code]}
           >
-            <Select sorted value={value[r.key] || ''} onChange={set(r.key)} error={r.key === 'assistant' && Boolean(assistantError)}>
+            <Select value={value[r.key] || ''} onChange={set(r.key)} error={r.key === 'assistant' && Boolean(assistantError)}>
               <option value="">Sin asignar</option>
               {options
                 .filter((o) => r.key !== 'assistant' || o.id !== value.lead)
                 .map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label} — {o.inactive ? 'inactivo' : o.detail}
+                  <option key={o.id} value={o.id} disabled={Boolean(o.blockedBy)}>
+                    {o.blockedBy ? `${o.label} (Ya asignado a ${o.blockedBy})` : `${o.label} — ${o.inactive ? 'inactivo' : o.detail}`}
                   </option>
                 ))}
             </Select>
           </Field>
         ))}
       </div>
+      {otherLevel > 0 && (
+        <p className="text-sm text-muted assign-subjects-note">
+          <Icon name="users" size={14} /> Se muestran solo los docentes disponibles para {section.level_name}: {otherLevel} de otro nivel no aparece
+          {otherLevel === 1 ? '' : 'n'} (su disponibilidad se cambia en{' '}
+          <Link to="/staff" onClick={onClose}>
+            Personal
+          </Link>
+          ).
+        </p>
+      )}
+      {blockedCount > 0 && (
+        <p className="text-sm text-muted assign-subjects-note">
+          <Icon name="lock" size={14} /> {blockedCount} docente{blockedCount === 1 ? ' aparece bloqueado' : 's aparecen bloqueados'}: en {section.level_name} cada
+          docente atiende una sola sección por año escolar.
+        </p>
+      )}
       {options.length === 0 && <Alert variant="warning">No hay personal docente activo. Regístralo en el módulo Personal con tipo "Docente".</Alert>}
       {section.has_curriculum && (
         <p className="text-sm text-muted assign-subjects-note">

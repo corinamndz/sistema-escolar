@@ -32,6 +32,10 @@ const STAFF_TYPE_LABELS = {
 };
 const STAFF_TYPE_ORDER = ['teaching', 'administrative', 'support'];
 
+/** Disponibilidad del docente por nivel: solo se le asignan secciones de ese nivel. */
+const AVAILABILITY_LABELS = { all: 'Todos los niveles', initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria' };
+const availabilityOf = (r) => (r.staff_type === 'teaching' ? AVAILABILITY_LABELS[r.level_availability || 'all'] : null);
+
 const STATUS_FILTERS = [
   ['', 'Todos'],
   ['active', 'Activos'],
@@ -231,7 +235,12 @@ function StaffPage() {
   const categoryColumn = {
     key: 'staff_type',
     header: 'Categoría',
-    render: (r) => <Badge variant="primary">{STAFF_TYPE_LABELS[r.staff_type] ?? r.staff_type}</Badge>,
+    render: (r) => (
+      <div>
+        <Badge variant="primary">{STAFF_TYPE_LABELS[r.staff_type] ?? r.staff_type}</Badge>
+        {availabilityOf(r) && <div className="cell-person__sub">Disponible: {availabilityOf(r)}</div>}
+      </div>
+    ),
     sortValue: (r) => STAFF_TYPE_ORDER.indexOf(r.staff_type),
   };
   const contactColumn = {
@@ -291,6 +300,7 @@ function StaffPage() {
     { header: 'Apellido',            value: (r) => r.last_name,                      width: 18 },
     { header: 'Cédula/Documento',    value: (r) => r.national_id ?? '',              width: 16 },
     { header: 'Categoría',           value: (r) => STAFF_TYPE_LABELS[r.staff_type] ?? r.staff_type, width: 16 },
+    { header: 'Disponibilidad',      value: (r) => availabilityOf(r) ?? '',           width: 18 },
     { header: 'Teléfono',            value: (r) => r.phone ?? '',                    width: 14 },
     { header: 'Correo',              value: (r) => r.email ?? '',                    width: 26 },
     { header: 'Estado',              value: (r) => r.status === 'active' ? 'Activo' : 'Inactivo', width: 12 },
@@ -486,6 +496,7 @@ function StaffPage() {
           badge={<StatusBadge status={viewing.status} />}
           fields={[
             { label: 'Cédula / documento', value: viewing.national_id },
+            ...(viewing.staff_type === 'teaching' ? [{ label: 'Disponibilidad por nivel', value: availabilityOf(viewing) }] : []),
             { label: 'Fecha de contratación', value: formatDate(viewing.hired_at) },
             { label: 'Teléfono', value: viewing.phone },
             { label: 'Correo', value: viewing.email },
@@ -571,7 +582,9 @@ function StaffFormModal({ initial, onClose, onSaved }) {
     email: initial.email || '',
     hiredAt: initial.hired_at ? initial.hired_at.slice(0, 10) : '',
     status: initial.status || 'active',
+    levelAvailability: initial.level_availability || 'all',
   });
+  const isTeacher = form.staffType === 'teaching';
   const { run, loading, error, fieldErrors } = useMutation(
     isEdit ? (data) => staffApi.update(initial.id, data) : staffApi.create
   );
@@ -582,7 +595,9 @@ function StaffFormModal({ initial, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await run(form);
+      // La disponibilidad por nivel solo se envía para el personal docente.
+      const { levelAvailability, ...rest } = form;
+      await run(isTeacher ? { ...rest, levelAvailability } : rest);
       toast.success(isEdit ? 'Cambios guardados' : 'Personal registrado', `${form.firstName} ${form.lastName}`);
       onSaved();
       onClose();
@@ -609,6 +624,17 @@ function StaffFormModal({ initial, onClose, onSaved }) {
               <option value="support">Obrero</option>
             </Select>
           </Field>
+          {isTeacher && (
+            <Field label="Disponibilidad por nivel" error={fieldErrors.levelAvailability} hint="En «Secciones y personal docente» solo aparecerá en las secciones de este nivel.">
+              <Select name="levelAvailability" value={form.levelAvailability} onChange={handleChange}>
+                {Object.entries(AVAILABILITY_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label="Cédula / documento" error={fieldErrors.nationalId}>
             <Input name="nationalId" value={form.nationalId} onChange={handleChange} />
           </Field>

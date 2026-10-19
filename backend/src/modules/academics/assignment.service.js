@@ -1,6 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const { getGradeById, getSectionById } = require('./academic.service');
 const { exclusionOf, notExcludedSql } = require('./sectionSubjects');
+const staffService = require('../staff/staff.service');
 
 /**
  * Niveles educativos, materias, plan de estudios por grado y asignación docente.
@@ -15,8 +16,9 @@ const { exclusionOf, notExcludedSql } = require('./sectionSubjects');
  *                                  Primaria el titular dicta todas las materias y
  *                                  se puede asignar un especialista por materia.
  *
- * Un docente puede figurar en cualquier cantidad de asignaciones: varias
- * secciones, varias materias, varios grados.
+ * Un docente puede figurar en varias materias, secciones y grados, salvo una
+ * regla: en Inicial y Primaria (docentes de aula) cada docente, titular o
+ * auxiliar, atiende UNA sola sección por año escolar (ver homeroomTaken).
  */
 
 const fullName = (s) => `${s.first_name} ${s.last_name}`;
@@ -52,6 +54,62 @@ async function assertTeachers(trx, tenantId, ids) {
     }
   }
   return byId;
+}
+
+// ---------- Exclusividad de los docentes de aula (Inicial y Primaria) ----------
+
+const ROLE_LABELS = { lead: 'docente titular', assistant: 'docente auxiliar' };
+
+/**
+ * Docentes de aula ya asignados en un año escolar: Map staffId → la sección
+ * que atienden { section_id, section_name, grade_name, level_name, role, label }.
+ * `label` = "3er Grado · Sección B - Primaria" (para los selectores y los errores).
+ */
+async function homeroomTaken(trx, tenantId, schoolPeriodId) {
+  const rows = await trx('teacher_sections as ts')
+    .join('sections as sec', 'sec.id', 'ts.section_id')
+    .join('grades as g', 'g.id', 'sec.grade_id')
+    .join('education_levels as el', 'el.code', 'g.level_code')
+    .where({ 'ts.tenant_id': tenantId, 'sec.school_period_id': schoolPeriodId })
+    .select('ts.staff_id', 'ts.role', 'sec.id as section_id', 'sec.name as section_name', 'g.name as grade_name', 'el.name as level_name')
+    .orderBy('ts.assigned_at');
+  const map = new Map();
+  rows.forEach((r) => {
+    if (map.has(r.staff_id)) return; // datos anteriores a la regla: se informa la primera
+    const level = r.level_name.replace(/^Educación\s+/i, '');
+    map.set(r.staff_id, { ...r, label: `${r.grade_name} · Sección ${r.section_name} - ${level}` });
+  });
+  return map;
+}
+
+/** 422 si algún docente no está disponible para el nivel de la sección (staff.level_availability). */
+function assertLevelAvailable(section, staffById, ids) {
+  for (const id of ids) {
+    const staff = staffById.get(id);
+    if (staff && !staffService.availableFor(staff, section.level_code)) {
+      const only = staffService.LEVEL_AVAILABILITY_LABELS[staff.level_availability];
+      throw ApiError.unprocessable(
+        `${fullName(staff)} está disponible solo para ${only}; esta sección es de ${section.level_name.replace(/^Educación\s+/i, '')}. Cambia su disponibilidad en Personal si corresponde.`,
+        [{ path: 'teacherId', message: `Disponible solo para ${only}.` }]
+      );
+    }
+  }
+}
+
+/** 409 si alguno de los docentes ya atiende OTRA sección de Inicial o Primaria en el mismo año escolar. */
+async function assertHomeroomFree(trx, tenantId, section, staffById, ids) {
+  if (!ids.length) return;
+  const taken = await homeroomTaken(trx, tenantId, section.school_period_id);
+  for (const id of ids) {
+    const other = taken.get(id);
+    if (other && other.section_id !== section.id) {
+      const staff = staffById.get(id) || (await trx('staff').where({ id }).first('first_name', 'last_name'));
+      throw ApiError.conflict(
+        `${fullName(staff)} ya es ${ROLE_LABELS[other.role]} de ${other.label}. En Inicial y Primaria cada docente atiende una sola sección por año escolar.`,
+        [{ path: 'teacherId', message: `Ya asignado a ${other.label}.` }]
+      );
+    }
+  }
 }
 
 // ---------- Materias (catálogo) ----------
@@ -330,10 +388,15 @@ async function getSectionAssignments(trx, tenantId, sectionId) {
       return r ? { id: r.id, name: fullName(r) } : null;
     };
     const lead = pick('lead');
+    // Docentes que ya atienden OTRA sección de Inicial o Primaria en este año (no seleccionables aquí).
+    const taken = [...(await homeroomTaken(trx, tenantId, section.school_period_id)).values()]
+      .filter((t) => t.section_id !== sectionId)
+      .map((t) => ({ staff_id: t.staff_id, section_id: t.section_id, role: t.role, label: t.label }));
     return {
       section,
       mode: 'homeroom',
       homeroom: { lead, assistant: pick('assistant') },
+      taken,
       subjects: subjects.map((s) => ({ ...s, effectiveTeacher: s.teacher || lead, inherited: !s.teacher })),
     };
   }
@@ -436,7 +499,11 @@ async function setSectionAssignments(trx, tenantId, sectionId, body) {
     // Solo se validan docentes nuevos en la sección: si uno ya asignado pasó a
     // inactivo, eso no debe impedir guardar otros cambios.
     const current = await trx('teacher_sections').where({ section_id: sectionId }).pluck('staff_id');
-    await assertTeachers(trx, tenantId, [lead, assistant].filter((id) => id && !current.includes(id)));
+    const incoming = [lead, assistant].filter((id) => id && !current.includes(id));
+    const staffById = await assertTeachers(trx, tenantId, incoming);
+    assertLevelAvailable(section, staffById, incoming);
+    // Exclusividad: quien ya atiende otra sección de Inicial o Primaria en el año no puede sumar esta.
+    await assertHomeroomFree(trx, tenantId, section, staffById, incoming);
 
     // Primero se libera el rol auxiliar: permite intercambiar titular ↔ auxiliar
     // sin chocar con UNIQUE (section_id, staff_id).
@@ -454,7 +521,7 @@ async function setSectionAssignments(trx, tenantId, sectionId, body) {
   }
   if ('guideTeacherId' in body) {
     const guideId = body.guideTeacherId || null;
-    if (guideId && guideId !== section.guide_teacher_id) await assertTeachers(trx, tenantId, [guideId]);
+    if (guideId && guideId !== section.guide_teacher_id) assertLevelAvailable(section, await assertTeachers(trx, tenantId, [guideId]), [guideId]);
     await trx('sections').where({ id: sectionId }).update({ guide_teacher_id: guideId });
   }
   if (Array.isArray(body.subjects)) await applySubjectTeachers(trx, tenantId, section, body.subjects);
@@ -583,9 +650,10 @@ async function listAssignmentMatrix(trx, tenantId, { schoolPeriodId, gradeId = n
  * asignaciones, para ver quién está disponible). Filtrable por año escolar.
  */
 async function listTeachingLoad(trx, tenantId, { schoolPeriodId } = {}) {
+  const levelCol = (await staffService.hasLevelColumn(trx)) ? ['level_availability'] : [];
   const teachers = await trx('staff')
     .where({ tenant_id: tenantId, staff_type: 'teaching' })
-    .select('id', 'first_name', 'last_name', 'email', 'status')
+    .select('id', 'first_name', 'last_name', 'email', 'status', ...levelCol)
     .orderBy(['first_name', 'last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
 
   const base = (q) => {
@@ -666,9 +734,10 @@ async function listTeachingLoad(trx, tenantId, { schoolPeriodId } = {}) {
 async function getGradePanel(trx, tenantId, gradeId, { schoolPeriodId }) {
   const grade = await getGradeById(trx, tenantId, gradeId);
   const { n: subjectCount } = await trx('grade_subjects').where({ grade_id: gradeId }).count('* as n').first();
+  const levelCol = (await staffService.hasLevelColumn(trx)) ? ['level_availability'] : [];
   const teachers = await trx('staff')
     .where({ tenant_id: tenantId, staff_type: 'teaching', status: 'active' })
-    .select('id', 'first_name', 'last_name')
+    .select('id', 'first_name', 'last_name', ...levelCol)
     .orderBy(['first_name', 'last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
   const rows = schoolPeriodId
     ? await trx('sections as sec')
@@ -696,9 +765,19 @@ async function getGradePanel(trx, tenantId, gradeId, { schoolPeriodId }) {
     return r ? { id: r.id, name: fullName(r) } : null;
   };
   const isHomeroom = grade.assignment_mode === 'homeroom';
+  // Inicial y Primaria: dónde atiende ya cada docente en el año (para bloquearlo en las otras secciones).
+  const taken = isHomeroom && schoolPeriodId ? await homeroomTaken(trx, tenantId, schoolPeriodId) : new Map();
   return {
     grade: { ...grade, subject_count: Number(subjectCount) },
-    teachers: teachers.map((t) => ({ id: t.id, name: fullName(t) })),
+    teachers: teachers.map((t) => {
+      const h = taken.get(t.id);
+      return {
+        id: t.id,
+        name: fullName(t),
+        level_availability: t.level_availability || 'all',
+        homeroom: h ? { section_id: h.section_id, role: h.role, label: h.label } : null,
+      };
+    }),
     sections: rows.map((r) => ({
       id: r.id,
       name: r.name,

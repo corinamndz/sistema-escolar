@@ -8,7 +8,7 @@ import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
-import { LevelBadge, LEVELS, STAFF_ROLES } from '../levels';
+import { LevelBadge, LEVELS, STAFF_ROLES, isAvailableFor } from '../levels';
 import { sortByLabel } from '../../../utils/sortOptions';
 
 const NEXT_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -21,17 +21,26 @@ function SaveMark({ state }) {
   return <Icon name="alertCircle" size={14} className="gp-mark gp-mark--error" />;
 }
 
-/** Selector de docente con opción vacía configurable. */
-function TeacherSelect({ value, teachers, emptyLabel, onChange, disabled, ariaLabel }) {
+/**
+ * Selector de docente con opción vacía configurable.
+ *   levelCode  solo ofrece a los docentes disponibles para ese nivel (el ya elegido se conserva).
+ *   sectionId  Inicial y Primaria: quien ya atiende OTRA sección del año aparece bloqueado y dice dónde.
+ */
+function TeacherSelect({ value, teachers, emptyLabel, onChange, disabled, ariaLabel, sectionId = null, levelCode = null }) {
+  const blocked = (t) => (sectionId && t.homeroom && t.homeroom.section_id !== sectionId && t.id !== value ? t.homeroom.label : null);
+  // Orden alfabético por el nombre que se muestra; los bloqueados al final y la opción vacía arriba.
+  const list = sortByLabel(teachers.filter((t) => t.id === value || isAvailableFor(t, levelCode))).sort((a, b) => Boolean(blocked(a)) - Boolean(blocked(b)));
   return (
     <select className="input gp-select" value={value || ''} onChange={(e) => onChange(e.target.value || null)} disabled={disabled} aria-label={ariaLabel}>
       <option value="">{emptyLabel}</option>
-      {/* Orden alfabético por el nombre que se muestra; la opción vacía queda arriba. */}
-      {sortByLabel(teachers).map((t) => (
-        <option key={t.id} value={t.id}>
-          {t.name}
-        </option>
-      ))}
+      {list.map((t) => {
+        const where = blocked(t);
+        return (
+          <option key={t.id} value={t.id} disabled={Boolean(where)}>
+            {where ? `${t.name} (Ya asignado a ${where})` : t.name}
+          </option>
+        );
+      })}
     </select>
   );
 }
@@ -244,6 +253,8 @@ function GradeWorkspace({ gradeId, period, canEdit, canDelete, onChanged }) {
                               disabled={readOnly || (r.key === 'assistant' && !s.homeroom?.lead)}
                               onChange={(id) => setHeader(s, r.key, id)}
                               ariaLabel={`${r.label} de la sección ${s.name}`}
+                              sectionId={r.key === 'guide' ? null : s.id}
+                              levelCode={grade.level_code}
                             />
                             <SaveMark state={marks[`${s.id}|${r.key}`]} />
                           </div>

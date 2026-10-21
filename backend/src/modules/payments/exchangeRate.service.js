@@ -10,9 +10,12 @@ const bcvClient = require('../../services/bcv/bcvClient');
  *   marca una como predeterminada. El USD siempre está disponible y no
  *   necesita tasa.
  * - "Fecha valor": la tasa VIGENTE en un día D es la de mayor `rate_date` que
- *   no sea posterior a D (el BCV publica hoy la que rige desde el próximo día
- *   hábil; un fin de semana sigue rigiendo la del viernes). El mismo criterio
- *   vale para cualquier moneda.
+ *   no sea posterior a D (un fin de semana sigue rigiendo la del viernes). El
+ *   mismo criterio vale para cualquier moneda.
+ * - La tasa del BCV que trae la sincronización se registra con la fecha de la
+ *   CONSULTA (rige desde ese momento, regla del colegio: ver bcvSync.applyRate),
+ *   no con la fecha valor que publica el BCV. Las tasas manuales usan la fecha
+ *   valor que se indique (se pueden programar hasta 7 días adelante).
  * - Los montos convertidos se calculan en SQL con NUMERIC
  *   (round(monto × tasa, decimales de la moneda)), nunca con floats de JS.
  */

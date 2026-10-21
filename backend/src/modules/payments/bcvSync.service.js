@@ -36,10 +36,10 @@ const fallbackUrl = () => (process.env.BCV_FALLBACK_URL === undefined ? DEFAULT_
 
 /**
  * Horas fijas del día (hora de Venezuela) en que se consulta la tasa:
- * BCV_SYNC_TIMES="09:00,13:00,17:00" por defecto. 09:00 y 13:00 recogen la
- * tasa vigente; 17:00 recoge la que el BCV publica por la tarde para el
- * siguiente día hábil (así la familia la conoce antes). Entradas inválidas se
- * ignoran; si no queda ninguna, se usan las predeterminadas.
+ * BCV_SYNC_TIMES="09:00,13:00,17:00" por defecto. Cada consulta que obtiene un
+ * valor nuevo lo aplica en ese momento (ver applyRate): la de las 17:00 recoge
+ * la que el BCV publica por la tarde y rige desde entonces. Entradas inválidas
+ * se ignoran; si no queda ninguna, se usan las predeterminadas.
  */
 const DEFAULT_TIMES = ['09:00', '13:00', '17:00'];
 const TIMEZONE = 'America/Caracas';
@@ -175,17 +175,30 @@ async function recordFailure(tenantId, message, trigger) {
 /**
  * Guarda una tasa ya obtenida en el colegio (si usa el bolívar) y registra el
  * éxito. Lanza Error si el colegio no usa VES o el valor no es plausible.
+ *
+ * Regla del colegio: la tasa obtenida RIGE DESDE EL MOMENTO DE LA CONSULTA, no
+ * desde la "fecha valor" que publica el BCV (normalmente el día hábil
+ * siguiente). Se registra con la fecha de hoy (hora de Venezuela), así todas
+ * las conversiones (cuotas pendientes, cobros, equivalentes) la usan desde la
+ * próxima consulta; `updated_at` guarda la hora exacta. Los pagos ya
+ * confirmados no cambian: cada uno guarda la tasa con que se confirmó.
+ * La fecha valor del BCV queda como referencia en el aviso (`bcv_value_date`).
+ * Las tasas registradas a mano conservan la fecha valor que se les indique.
  */
 async function applyRate(trx, tenantId, fetched, { userId = null, trigger = 'auto' } = {}) {
   await exchange.assertRefCurrency(trx, tenantId, 'VES');
-  await assertPlausible(trx, tenantId, fetched.rate, fetched.rateDate);
+  const { rows } = await trx.raw("SELECT current_date::text AS today, to_char(now(), 'HH24:MI') AS at");
+  const { today, at } = rows[0];
+  await assertPlausible(trx, tenantId, fetched.rate, today);
   const vesRates = () => trx('exchange_rates').where({ tenant_id: tenantId, base_currency: exchange.BASE, quote_currency: 'VES' });
-  const before = await vesRates().andWhere('rate_date', fetched.rateDate).first('rate');
-  const previous = await vesRates().andWhere('rate_date', '<', fetched.rateDate).orderBy('rate_date', 'desc').first('rate');
-  const status = await exchange.upsertRate(trx, tenantId, { currency: 'VES', rateDate: fetched.rateDate, rate: fetched.rate, source: fetched.source }, userId);
-  // Solo una tasa NUEVA (o corregida) genera aviso: consultar varias veces al día la misma no notifica de nuevo.
-  if (!before || Number(before.rate) !== fetched.rate) {
-    await notifyNewRate(trx, tenantId, fetched, { previousRate: previous ? Number(previous.rate) : null, today: status.today });
+  const inForce = await vesRates().andWhere('rate_date', '<=', today).orderBy('rate_date', 'desc').first('rate');
+  // Tasas del BCV que la regla anterior dejó programadas para días futuros: esta las reemplaza
+  // (si no, al llegar su fecha volverían a regir sobre la consultada hoy). Las manuales no se tocan.
+  await vesRates().whereIn('source', ['bcv', 'bcv_api']).andWhere('rate_date', '>', today).delete();
+  const status = await exchange.upsertRate(trx, tenantId, { currency: 'VES', rateDate: today, rate: fetched.rate, source: fetched.source }, userId);
+  // Solo una tasa distinta de la vigente genera aviso: consultar varias veces al día la misma no notifica de nuevo.
+  if (!inForce || Number(inForce.rate) !== fetched.rate) {
+    await notifyNewRate(trx, tenantId, { ...fetched, rateDate: today, bcvValueDate: fetched.rateDate, at }, { previousRate: inForce ? Number(inForce.rate) : null, today });
   }
   await recordAttempt(trx, tenantId, {
     last_status: 'ok',
@@ -193,21 +206,35 @@ async function applyRate(trx, tenantId, fetched, { userId = null, trigger = 'aut
     last_success_at: trx.fn.now(),
     last_source: fetched.source,
     last_rate: fetched.rate,
-    last_rate_date: fetched.rateDate,
+    last_rate_date: today,
     last_trigger: trigger,
   });
-  return status;
+  return { ...status, effective: { rate_date: today, at, bcv_value_date: fetched.rateDate } };
 }
 
 /** 880.1159 → "880,1159" (formato venezolano, 2 a 4 decimales). */
 const formatVes = (rate) => new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(rate);
 /** '2026-10-16' → '16/10/2026' */
 const dmy = (d) => d.split('-').reverse().join('/');
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+/** '2026-10-20' → 'martes 20/10/2026' */
+const dayDmy = (d) => `${WEEKDAYS[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${dmy(d)}`;
+
+/**
+ * Desde cuándo rige. La tasa del BCV rige desde la consulta: "vigente desde hoy
+ * 20/10/2026 a las 15:42". Una fecha futura (tasa manual programada) se anuncia
+ * con el día: "vigente desde el martes 20/10/2026; hasta entonces rige …".
+ */
+function effectiveText(rateDate, today, currentRate, at = null) {
+  if (rateDate <= today) return rateDate === today ? `vigente desde hoy ${dmy(rateDate)}${at ? ` a las ${at}` : ''}` : `vigente desde el ${dmy(rateDate)}`;
+  return `vigente desde el ${dayDmy(rateDate)}${currentRate ? `; hasta entonces rige ${formatVes(currentRate)} Bs/USD` : ''}`;
+}
 
 /**
  * Aviso en la campana para la administración (quien gestiona pagos) y para
- * los representantes: "Nueva tasa BCV actualizada: 880,1159 Bs/USD (Fecha: 16/10/2026)".
- * Al abrirlo, la administración va a Pagos y la familia a Mis pagos.
+ * los representantes: "Nueva tasa BCV: 881,8769 Bs/USD, vigente desde hoy
+ * 20/10/2026 a las 15:42 (antes: 881,0664 Bs/USD)". Al abrirlo, la
+ * administración va a Pagos y la familia a Mis pagos.
  */
 async function notifyNewRate(trx, tenantId, fetched, { previousRate, today, simulated = false, audience = ['staff', 'guardians'] }) {
   // Campana y/o correo según Configuración → Notificaciones (la simulación: solo campana).
@@ -218,7 +245,9 @@ async function notifyNewRate(trx, tenantId, fetched, { previousRate, today, simu
     staffOnly: !audience.includes('guardians'),
     skipEmail: simulated,
     title: simulated ? 'Nueva tasa BCV (prueba)' : 'Nueva tasa BCV',
-    body: `${simulated ? '[Prueba] ' : ''}Nueva tasa BCV actualizada: ${formatVes(fetched.rate)} Bs/USD (Fecha: ${dmy(fetched.rateDate)})`,
+    body: `${simulated ? '[Prueba] ' : ''}Nueva tasa BCV: ${formatVes(fetched.rate)} Bs/USD, ${effectiveText(fetched.rateDate, today, previousRate, fetched.at)}${
+      fetched.rateDate <= today && previousRate ? ` (antes: ${formatVes(previousRate)} Bs/USD)` : ''
+    }.`,
     // Las simulaciones no se deduplican: cada prueba genera su aviso.
     dedupeKey: simulated ? null : `bcv_rate:VES:${fetched.rateDate}:${fetched.rate}`,
     data: {
@@ -226,6 +255,9 @@ async function notifyNewRate(trx, tenantId, fetched, { previousRate, today, simu
       currency: 'VES',
       rate: fetched.rate,
       rate_date: fetched.rateDate,
+      effective_at: fetched.at || null,
+      // Fecha valor que publicó el BCV (referencia: el colegio aplica la tasa desde la consulta).
+      bcv_value_date: fetched.bcvValueDate || null,
       previous_rate: previousRate,
       source: fetched.source,
       effective_now: fetched.rateDate <= today,
@@ -325,8 +357,13 @@ async function syncNow(trx, tenantId, userId) {
   }
   try {
     // SAVEPOINT: si el valor no es plausible, el request sigue usable.
-    const status = await trx.transaction((sp) => applyRate(sp, tenantId, fetched, { userId, trigger: 'manual' }));
-    return { fetched: { rate: fetched.rate, rate_date: fetched.rateDate, source: fetched.source }, ...status, sync: await getSyncStatus(trx, tenantId) };
+    const { effective, ...status } = await trx.transaction((sp) => applyRate(sp, tenantId, fetched, { userId, trigger: 'manual' }));
+    return {
+      // rate_date = desde cuándo rige en el colegio (hoy); bcv_value_date = la fecha valor que publicó el BCV.
+      fetched: { rate: fetched.rate, rate_date: effective.rate_date, effective_at: effective.at, bcv_value_date: effective.bcv_value_date, source: fetched.source },
+      ...status,
+      sync: await getSyncStatus(trx, tenantId),
+    };
   } catch (err) {
     if (err instanceof ApiError) throw err;
     await recordFailure(tenantId, err.message, 'manual');

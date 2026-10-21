@@ -9,6 +9,7 @@ import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { formatAmounts, formatDate, formatMoney } from '../paymentStatus';
 import { RateBanner } from '../components/ExchangeRatePanel';
+import { useRateAutoRefresh } from '../useRateAutoRefresh';
 import { PaymentFormModal } from '../components/PaymentForms';
 import { StudentPaymentsSection, groupByStudent, refTotal, totalsOf } from '../components/StudentPaymentsSection';
 import { ViewCurrencySelect } from '../currency';
@@ -23,13 +24,18 @@ import { useViewCurrency } from '../useViewCurrency';
  * moneda elegida en "Ver montos en…" (columnas conv_*).
  */
 function MyPaymentsPage() {
-  const { data: rates } = useFetch(() => paymentsApi.currentRate(), []);
+  const { data: rates, refetch: refetchRates } = useFetch(() => paymentsApi.currentRate(), []);
   // Moneda en que la familia quiere ver sus cuotas (se recuerda en el navegador).
   const [viewCurrency, setViewCurrency] = useViewCurrency('myPayments.viewCurrency', rates);
   const { data: rows, loading, error, refetch } = useFetch(
     () => paymentsApi.listMine(viewCurrency ? { currency: viewCurrency } : undefined),
     [viewCurrency]
   );
+  // Tasa nueva o llegada de su fecha valor: tasas y montos convertidos al día.
+  useRateAutoRefresh(rates, () => {
+    refetchRates();
+    refetch();
+  });
   // Alumnos del representante con grado/sección (y avisos de facturación).
   const { data: portal, loading: loadingPortal } = useFetch(() => portalApi.getMine(), []);
   const [reporting, setReporting] = useState(null);

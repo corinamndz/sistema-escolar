@@ -6,7 +6,8 @@ import Modal from '../ui/Modal';
 import { formatRate } from '../../features/payments/currency';
 import { formatDate } from '../../features/payments/paymentStatus';
 import { SOURCE_LABELS, timeAgo } from '../../features/payments/components/BcvRateCard';
-import { NOTIFICATIONS_REFRESH } from '../../lib/notificationEvents';
+import { NOTIFICATIONS_REFRESH, notifyRatesChanged } from '../../lib/notificationEvents';
+import { isEffective } from '../../features/payments/useRateAutoRefresh';
 
 const POLL_MS = 60 * 1000; // la tasa cambia pocas veces al día: un minuto de demora es suficiente
 const ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star', parent_meeting: 'users' };
@@ -22,10 +23,16 @@ function NotificationBell({ dropdown }) {
   const [selected, setSelected] = useState(null);
   const alive = useRef(true);
 
+  // Último aviso de tasa BCV visto: si llega uno nuevo, las pantallas con tasas se recargan solas.
+  const lastRateNotice = useRef(undefined);
   const load = useCallback(async () => {
     try {
       const next = await notificationsApi.list();
-      if (alive.current) setData(next);
+      if (!alive.current) return;
+      setData(next);
+      const latest = next.items.find((n) => n.type === 'bcv_rate' && !n.data?.simulated)?.id ?? null;
+      if (lastRateNotice.current !== undefined && latest && latest !== lastRateNotice.current) notifyRatesChanged();
+      lastRateNotice.current = latest;
     } catch {
       // en segundo plano: si falla, se reintenta en la siguiente consulta
     }
@@ -159,7 +166,9 @@ function NotificationDetail({ notification: n, onClose }) {
       </Modal>
     );
   }
-  const { rate, rate_date: rateDate, previous_rate: prev, source, effective_now: effectiveNow, simulated } = n.data || {};
+  const { rate, rate_date: rateDate, previous_rate: prev, source, simulated, effective_at: effectiveAt, bcv_value_date: bcvValueDate } = n.data || {};
+  // Se calcula al abrir (no al crear el aviso): la tasa de mañana ya está vigente si el aviso se lee después.
+  const effectiveNow = isEffective(rateDate);
   const change = prev ? ((rate - prev) / prev) * 100 : null;
   return (
     <Modal title={simulated ? 'Tasa BCV actualizada (prueba)' : 'Tasa BCV actualizada'} onClose={onClose}>
@@ -174,11 +183,18 @@ function NotificationDetail({ notification: n, onClose }) {
         </div>
         <dl className="notif-rate__facts">
           <div>
-            <dt>Fecha valor</dt>
+            <dt>{effectiveAt ? 'Vigente desde' : 'Fecha valor'}</dt>
             <dd>
-              {formatDate(rateDate)} · {effectiveNow ? 'vigente' : 'regirá desde ese día'}
+              {formatDate(rateDate)}
+              {effectiveAt ? ` a las ${effectiveAt}` : ` · ${effectiveNow ? 'vigente' : 'regirá desde ese día'}`}
             </dd>
           </div>
+          {bcvValueDate && bcvValueDate !== rateDate && (
+            <div>
+              <dt>Fecha valor publicada por el BCV</dt>
+              <dd>{formatDate(bcvValueDate)} (el colegio la aplica desde la consulta)</dd>
+            </div>
+          )}
           {change !== null && (
             <div>
               <dt>Variación</dt>

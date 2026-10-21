@@ -1,5 +1,6 @@
 const { ApiError } = require('../../utils/ApiError');
 const { scaleDefinition, scoreForLiteral } = require('./gradingScale');
+const { sortByProgram } = require('../programmatic-content/programmaticContent.service');
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
@@ -119,9 +120,8 @@ async function getPlanGradebook(trx, tenantId, planId, { sectionId } = {}) {
     throw ApiError.badRequest('Esa sección no pertenece al plan.', [{ path: 'sectionId', message: 'Sección ajena.' }]);
   }
 
-  const activityRows = await trx('evaluation_activities')
-    .where({ tenant_id: tenantId, evaluation_plan_id: planId })
-    .orderBy('created_at');
+  // Columnas en el orden del contenido programático (unidad → tema), como el plan de evaluación.
+  const activityRows = await sortByProgram(trx, await trx('evaluation_activities').where({ tenant_id: tenantId, evaluation_plan_id: planId }));
   const indicators = activityRows.length
     ? await trx('evaluation_indicators as i')
         .join('evaluation_criteria as c', 'c.id', 'i.criterion_id')

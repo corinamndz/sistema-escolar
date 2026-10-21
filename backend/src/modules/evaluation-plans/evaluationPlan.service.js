@@ -1,6 +1,6 @@
 const { ApiError } = require('../../utils/ApiError');
 const { exclusionOf } = require('../academics/sectionSubjects');
-const { assertContentForPlan } = require('../programmatic-content/programmaticContent.service');
+const { assertContentForPlan, sortByProgram } = require('../programmatic-content/programmaticContent.service');
 
 // ---------- Lapsos/periodos ----------
 
@@ -163,9 +163,8 @@ async function getPlanWithActivities(trx, tenantId, planId) {
     .first();
   if (!plan) throw ApiError.notFound('Plan de evaluación no encontrado.');
 
-  const rows = await trx('evaluation_activities')
-    .where({ tenant_id: tenantId, evaluation_plan_id: planId })
-    .orderByRaw('planned_date ASC NULLS LAST, created_at ASC');
+  // En el orden del contenido programático (unidad → tema), como en todas las vistas del plan.
+  const rows = await sortByProgram(trx, await trx('evaluation_activities').where({ tenant_id: tenantId, evaluation_plan_id: planId }));
   const structure = await loadActivityStructure(trx, rows.map((a) => a.id));
   const contentIds = [...new Set(rows.map((a) => a.programmatic_content_id).filter(Boolean))];
   const contents = new Map(

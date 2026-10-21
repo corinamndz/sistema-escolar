@@ -2,6 +2,7 @@ const { ApiError } = require('../../utils/ApiError');
 const { exclusionOf } = require('../academics/sectionSubjects');
 const { scaleDefinition } = require('../grading/gradingScale');
 const { loadActivityStructure } = require('../evaluation-plans/evaluationPlan.service');
+const { sortByProgram } = require('../programmatic-content/programmaticContent.service');
 
 /**
  * Calificaciones acumuladas de un alumno para el portal del representante.
@@ -155,23 +156,29 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
   });
   const planIds = plans.map((p) => p.id);
 
+  // En el orden del contenido programático (unidad → tema), igual que el plan del docente.
   const activities = planIds.length
-    ? await trx('evaluation_activities as a')
-        .leftJoin('activity_scores as sc', function joinScore() {
-          this.on('sc.evaluation_activity_id', 'a.id').andOn('sc.student_id', trx.raw('?', [studentId]));
-        })
-        .whereIn('a.evaluation_plan_id', planIds)
-        .select(
-          'a.id',
-          'a.evaluation_plan_id',
-          'a.title',
-          'a.category',
-          'a.weight_percent',
-          'sc.raw_score',
-          'sc.max_score',
-          'sc.graded_at'
-        )
-        .orderBy('a.created_at')
+    ? await sortByProgram(
+        trx,
+        await trx('evaluation_activities as a')
+          .leftJoin('activity_scores as sc', function joinScore() {
+            this.on('sc.evaluation_activity_id', 'a.id').andOn('sc.student_id', trx.raw('?', [studentId]));
+          })
+          .whereIn('a.evaluation_plan_id', planIds)
+          .select(
+            'a.id',
+            'a.evaluation_plan_id',
+            'a.title',
+            'a.category',
+            'a.weight_percent',
+            'a.programmatic_content_id',
+            'a.planned_date',
+            'a.created_at',
+            'sc.raw_score',
+            'sc.max_score',
+            'sc.graded_at'
+          )
+      )
     : [];
 
   // Proyecto pedagógico y competencias (evaluación cualitativa), si el plan lo tiene.
@@ -306,11 +313,15 @@ async function getStudentPlanDetail(trx, tenantId, studentId, planId) {
     .first();
   if (!plan) throw ApiError.notFound('Plan de evaluación no encontrado.');
 
-  const rows = await trx('evaluation_activities')
-    .where({ tenant_id: tenantId, evaluation_plan_id: planId })
-    .select('id', 'title', 'category', 'weight_percent', 'instrument', 'strategy', 'content_refs', 'max_score', 'programmatic_content_id',
-      trx.raw("to_char(planned_date, 'YYYY-MM-DD') AS planned_date"))
-    .orderByRaw('planned_date ASC NULLS LAST, created_at ASC');
+  const rows = (
+    await sortByProgram(
+      trx,
+      await trx('evaluation_activities')
+        .where({ tenant_id: tenantId, evaluation_plan_id: planId })
+        .select('id', 'title', 'category', 'weight_percent', 'instrument', 'strategy', 'content_refs', 'max_score', 'programmatic_content_id', 'created_at',
+          trx.raw("to_char(planned_date, 'YYYY-MM-DD') AS planned_date"))
+    )
+  ).map(({ created_at: _c, ...a }) => a);
   const structure = await loadActivityStructure(trx, rows.map((a) => a.id));
   const contentIds = [...new Set(rows.map((a) => a.programmatic_content_id).filter(Boolean))];
   const contents = new Map(

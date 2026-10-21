@@ -18,6 +18,20 @@ import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { formatDate } from '../paymentStatus';
 import { currencyLabel, currencyMeta, formatMoney, formatRate } from '../currency';
 import { BcvSyncStatus, SOURCE_LABELS } from './BcvRateCard';
+import { refreshNotifications } from '../../../lib/notificationEvents';
+
+/** Hora de Venezuela de un instante: "15:42". */
+const timeOf = (iso) => new Date(iso).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Caracas' });
+
+const WEEKDAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+/** "Rige desde mañana · mar 20 oct" | "Rige desde el lun 26 oct" (fecha valor de una tasa ya publicada). */
+function startsLabel(rateDate, today) {
+  const d = String(rateDate).slice(0, 10);
+  const date = new Date(`${d}T12:00:00Z`);
+  const short = `${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()} ${date.toLocaleDateString('es', { month: 'short', timeZone: 'UTC' }).replace('.', '')}`;
+  const tomorrow = today ? new Date(Date.parse(`${today}T12:00:00Z`) + 86400000).toISOString().slice(0, 10) : null;
+  return d === tomorrow ? `Rige desde mañana · ${short}` : `Rige desde el ${short}`;
+}
 
 /**
  * Monedas de referencia del colegio y su tasa del día (moneda local por 1 USD):
@@ -42,12 +56,15 @@ export function ExchangeRatePanel({ status, loading, onChanged }) {
     setFetching(true);
     try {
       const r = await paymentsApi.syncBcvRate();
-      const effectiveNow = r.fetched.rate_date <= r.today;
+      // La tasa consultada rige desde ya (hoy, a la hora de la consulta).
       toast.success(
         `Tasa BCV: ${formatRate(r.fetched.rate, 'VES')}`,
-        `${effectiveNow ? `Vigente desde ${formatDate(r.fetched.rate_date)}` : `Fecha valor ${formatDate(r.fetched.rate_date)}: regirá desde ese día`} · ${SOURCE_LABELS[r.fetched.source]}.`
+        `Vigente desde hoy${r.fetched.effective_at ? ` a las ${r.fetched.effective_at}` : ''} · ${SOURCE_LABELS[r.fetched.source]}${
+          r.fetched.bcv_value_date && r.fetched.bcv_value_date !== r.fetched.rate_date ? ` (fecha valor publicada: ${formatDate(r.fetched.bcv_value_date)})` : ''
+        }.`
       );
       onChanged?.();
+      refreshNotifications(); // el aviso nuevo aparece ya en la campana
     } catch (err) {
       toast.error('No se pudo consultar el BCV', getErrorMessage(err));
       onChanged?.(); // el fallo queda registrado: se ve en el estado de sincronización
@@ -105,15 +122,30 @@ export function ExchangeRatePanel({ status, loading, onChanged }) {
                     {formatRate(c.current.rate, c.code)} <small>por $1</small>
                   </div>
                   <div className="cell-person__sub">
-                    Fecha valor {formatDate(c.current.rate_date)} · {SOURCE_LABELS[c.current.source]}
+                    {/* Tasa del BCV consultada hoy: rige desde la hora de la consulta. */}
+                    {c.current.rate_date === status?.today && String(c.current.source).startsWith('bcv') ? (
+                      <>
+                        <span className="rate-card__current">Vigente desde hoy{c.current.updated_at ? ` · ${timeOf(c.current.updated_at)}` : ''}</span> · {SOURCE_LABELS[c.current.source]}
+                      </>
+                    ) : (
+                      <>
+                        <span className="rate-card__current">Vigente hoy</span> · fecha valor {formatDate(c.current.rate_date)} · {SOURCE_LABELS[c.current.source]}
+                      </>
+                    )}
                   </div>
                 </>
               ) : (
                 <div className="rate-card__value rate-panel__value--empty">Sin tasa registrada</div>
               )}
               {c.next && (
-                <div className="rate-card__note">
-                  <Icon name="info" size={14} /> Próxima: {formatRate(c.next.rate, c.code)} desde el {formatDate(c.next.rate_date)}
+                <div className="rate-card__next" title="El BCV publica en la tarde la tasa del próximo día hábil: rige desde su fecha valor.">
+                  <span className="rate-card__next-label">
+                    <Icon name="calendar" size={13} /> Ya publicada · {startsLabel(c.next.rate_date, status?.today)}
+                  </span>
+                  <strong className="rate-card__next-value">
+                    {formatRate(c.next.rate, c.code)} <small>por $1</small>
+                  </strong>
+                  <span className="rate-card__next-hint">Pasa a ser la tasa vigente automáticamente ese día.</span>
                 </div>
               )}
               {c.stale && (

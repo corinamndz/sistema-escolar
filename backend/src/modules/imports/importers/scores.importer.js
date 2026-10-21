@@ -3,6 +3,7 @@ const f = require('../fields');
 const { ApiError } = require('../../../utils/ApiError');
 const gradingService = require('../../grading/grading.service');
 const { scoreForLiteral } = require('../../grading/gradingScale');
+const { sortByProgram } = require('../../programmatic-content/programmaticContent.service');
 
 /** Descripción corta para encabezados de columna. */
 const short = (text, n = 40) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
@@ -45,7 +46,8 @@ module.exports = {
       throw ApiError.conflict('El plan de evaluación está cerrado: reábrelo para cargar calificaciones.');
     }
 
-    const activities = await trx('evaluation_activities').where({ tenant_id: tenantId, evaluation_plan_id: plan.id }).orderBy('created_at');
+    // Columnas de la plantilla en el orden del contenido programático, igual que la tabla de calificaciones.
+    const activities = await sortByProgram(trx, await trx('evaluation_activities').where({ tenant_id: tenantId, evaluation_plan_id: plan.id }));
     if (activities.length === 0) throw ApiError.unprocessable('El plan no tiene actividades: agrégalas antes de cargar notas.');
     const indicators = await trx('evaluation_indicators as i')
       .join('evaluation_criteria as c', 'c.id', 'i.criterion_id')

@@ -35,6 +35,37 @@ function compareUnits(a, b) {
   return a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' });
 }
 
+const ymdKey = (d) => (d === null || d === undefined ? '9999-12-31' : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+const timeKey = (d) => (d ? new Date(d).getTime() : 0);
+
+/**
+ * Ordena actividades de evaluación según el contenido programático (el orden
+ * oficial del programa de la asignatura), igual que la pantalla de Contenido
+ * programático:
+ *   1. las vinculadas a un tema: por unidad (I, II, III… o 1, 2, 3…) y, dentro
+ *      de la unidad, por el orden del tema (sort_order);
+ *   2. dentro del mismo tema: por fecha estimada y luego por creación;
+ *   3. al final, las que no tienen tema, por fecha estimada y creación.
+ * Recibe filas con `programmatic_content_id`, `planned_date` y `created_at`
+ * (nombres configurables) y devuelve un arreglo NUEVO ordenado.
+ */
+async function sortByProgram(trx, activities, { contentKey = 'programmatic_content_id', dateKey = 'planned_date', createdKey = 'created_at' } = {}) {
+  const ids = [...new Set(activities.map((a) => a[contentKey]).filter(Boolean))];
+  const topics = new Map(ids.length ? (await trx('programmatic_content').whereIn('id', ids).select('id', 'unit', 'sort_order')).map((t) => [t.id, t]) : []);
+  return [...activities].sort((a, b) => {
+    const ta = topics.get(a[contentKey]);
+    const tb = topics.get(b[contentKey]);
+    if (ta && !tb) return -1;
+    if (!ta && tb) return 1;
+    if (ta && tb) {
+      const unit = ta.unit === tb.unit ? 0 : compareUnits(ta.unit, tb.unit);
+      if (unit) return unit;
+      if (ta.sort_order !== tb.sort_order) return ta.sort_order - tb.sort_order;
+    }
+    return ymdKey(a[dateKey]).localeCompare(ymdKey(b[dateKey])) || timeKey(a[createdKey]) - timeKey(b[createdKey]);
+  });
+}
+
 /** Grado + materia del plan de estudios; 404 si la materia no se dicta en ese grado. */
 async function getPair(trx, tenantId, gradeId, subjectId) {
   const pair = await trx('grade_subjects as gs')
@@ -233,4 +264,4 @@ async function assertContentForPlan(trx, tenantId, contentId, plan) {
   return item;
 }
 
-module.exports = { listOptions, getContent, getItem, createItem, updateItem, deleteItem, assertContentForPlan, compareUnits, unitNumber };
+module.exports = { listOptions, getContent, getItem, createItem, updateItem, deleteItem, assertContentForPlan, compareUnits, unitNumber, sortByProgram };

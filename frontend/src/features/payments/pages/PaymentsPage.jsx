@@ -23,6 +23,7 @@ import { openReceipt } from '../components/ReceiptButton';
 import { LEVELS, LEVEL_CODES } from '../../academics/levels';
 import { ConversionBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatAmounts, formatDate, formatMoney } from '../paymentStatus';
 import { ExchangeRatePanel } from '../components/ExchangeRatePanel';
+import { useRateAutoRefresh } from '../useRateAutoRefresh';
 import { CurrencySelect, ViewCurrencySelect } from '../currency';
 import { useViewCurrency } from '../useViewCurrency';
 import { PaymentFormModal } from '../components/PaymentForms';
@@ -63,6 +64,8 @@ function PaymentsPage() {
     refetchSummary();
     refetchRates();
   };
+  // Tasa BCV nueva (aviso de la campana) o llegada de su fecha valor: tasas y equivalentes al día, sin recargar el navegador.
+  useRateAutoRefresh(rates, reload);
 
   const [viewing, setViewing] = useState(null); // cobro en "Ver detalle"
   const [paying, setPaying] = useState(null); // { payment, mode: 'register' | 'report' }

@@ -3,6 +3,7 @@ const authService = require('./auth.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
 const { getTeacherScope } = require('../access/teacherScope');
+const { loadCoordinatorScope } = require('../access/coordinatorScope');
 
 const loginSchema = z.object({
   tenantSlug: z.string().min(1, 'tenantSlug es requerido.'),
@@ -31,7 +32,15 @@ const me = asyncHandler(async (req, res) => {
   const scope = await getTeacherScope(req);
   // Ficha de personal DOCENTE vinculada (para "Mi horario").
   const staff = await req.db('staff').where({ tenant_id: req.tenantId, user_id: req.user.id, staff_type: 'teaching' }).select('id').first();
-  res.status(200).json({ ...user, permissions, isRestrictedTeacher: Boolean(scope), teachingStaffId: staff?.id || null });
+  // Coordinador restringido (Director > Coordinador > Docente): su etapa, para adaptar Personal y el menú.
+  const coord = await loadCoordinatorScope(req.db, req.tenantId, req.user.id, permissions);
+  res.status(200).json({
+    ...user,
+    permissions,
+    isRestrictedTeacher: Boolean(scope),
+    teachingStaffId: staff?.id || null,
+    coordinator: coord ? { level: coord.level } : null,
+  });
 });
 
 const changePassword = asyncHandler(async (req, res) => {

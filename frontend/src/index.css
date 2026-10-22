@@ -1260,6 +1260,93 @@ select.input {
   animation: fade-in 150ms ease;
 }
 
+/* Confirmación positiva bajo un campo (p. ej. "Las contraseñas coinciden"). */
+.field-success {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-success-text);
+  animation: fade-in 150ms ease;
+}
+
+/* ── Cambio de contraseña obligatorio (primer ingreso con contraseña temporal) ── */
+.force-password {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+}
+.force-password__card {
+  width: 100%;
+  max-width: 420px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 32px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.force-password__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.force-password__header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.force-password__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+.force-password__intro {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+.force-password__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 4px;
+}
+.force-password__form .btn--block {
+  margin-top: 8px;
+}
+.force-password__pending {
+  margin: -8px 0 0;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+.force-password__footer {
+  margin-top: 16px;
+  text-align: center;
+}
+@media (max-width: 480px) {
+  .force-password__card {
+    padding: 24px 20px;
+  }
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;

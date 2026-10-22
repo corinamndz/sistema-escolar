@@ -150,7 +150,7 @@ function SectionDetailPage() {
           </span>
         }
         actions={
-          <Link to="/academics" className="btn btn--secondary">
+          <Link to="/secciones-academicas" className="btn btn--secondary">
             Volver
           </Link>
         }

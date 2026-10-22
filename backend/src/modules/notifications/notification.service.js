@@ -31,7 +31,8 @@ async function hasTables(trx) {
 let targetsReady = false;
 async function hasTargets(trx) {
   if (targetsReady) return true;
-  const { rows } = await trx.raw("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'target_guardian_ids') AS ok");
+  // La tabla que resuelve el search_path (esquema del colegio o public).
+  const { rows } = await trx.raw("SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass('notifications') AND attname = 'target_guardian_ids' AND NOT attisdropped) AS ok");
   targetsReady = rows[0].ok;
   return targetsReady;
 }

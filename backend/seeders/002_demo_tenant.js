@@ -1,14 +1,36 @@
 const bcrypt = require('bcryptjs');
 
+// Jerarquía (roles.hierarchy_level, migración 047): Director (Administrador) > Coordinador > Docente.
 const ROLE_TEMPLATES = {
   Administrador: {
     isSystem: true,
+    hierarchyLevel: 1,
     // Acceso total a todo módulo, incluidas las acciones especiales.
     allModules: { can_create: true, can_read: true, can_update: true, can_delete: true },
     extraActionsAllTrue: true,
   },
+  Coordinador: {
+    isSystem: true,
+    hierarchyLevel: 2,
+    // Gestiona a los docentes de su etapa (Personal) y supervisa en consulta el resto.
+    byModule: {
+      dashboard: { can_read: true },
+      staff: { can_create: true, can_read: true, can_update: true, can_delete: true },
+      students: { can_read: true },
+      guardians: { can_read: true },
+      academics: { can_read: true },
+      evaluation_plans: { can_read: true },
+      grading: { can_read: true, extra_actions: { view_all_sections: true } },
+      schedules: { can_read: true },
+      discipline: { can_read: true },
+      clubs: { can_read: true },
+      events: { can_read: true },
+      appointments: { can_read: true },
+    },
+  },
   Docente: {
     isSystem: true,
+    hierarchyLevel: 3,
     byModule: {
       dashboard: { can_read: true },
       students: { can_read: true },
@@ -74,7 +96,7 @@ async function seedDemoTenant(db) {
 
   for (const [roleName, template] of Object.entries(ROLE_TEMPLATES)) {
     const [role] = await db('roles')
-      .insert({ tenant_id: tenant.id, name: roleName, is_system: template.isSystem })
+      .insert({ tenant_id: tenant.id, name: roleName, is_system: template.isSystem, hierarchy_level: template.hierarchyLevel ?? null })
       .returning('*');
     roleIdByName[roleName] = role.id;
 
@@ -82,7 +104,7 @@ async function seedDemoTenant(db) {
       const perm = template.allModules || (template.byModule && template.byModule[mod.code]);
       if (!perm) continue;
 
-      const extraActions = {};
+      const extraActions = { ...(perm.extra_actions || {}) };
       if (template.extraActionsAllTrue) {
         // El Administrador recibe también todas las acciones especiales del módulo.
         const { MODULES } = require('../src/config/modules');

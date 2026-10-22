@@ -19,22 +19,26 @@ import Badge from '../../../components/ui/Badge';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
-import StaffAccessModal, { StaffAccessBadge } from '../components/StaffAccessModal';
+import StaffAccessModal, { StaffAccessBadge, COORDINATION_LEVELS } from '../components/StaffAccessModal';
 import { CredentialsModal, formatDateTime } from '../../students/components/PortalAccessFields';
 
 const VIEW_KEY = 'staff.view.v2';
 const EXPAND_KEY = 'staff.expandedGroups';
 
+// Jerarquía Director > Coordinador > Docente: el Coordinador va primero.
 const STAFF_TYPE_LABELS = {
+  coordinator: 'Coordinador',
   teaching: 'Docente',
   administrative: 'Administrativo',
   support: 'Obrero',
 };
-const STAFF_TYPE_ORDER = ['teaching', 'administrative', 'support'];
+const STAFF_TYPE_ORDER = ['coordinator', 'teaching', 'administrative', 'support'];
 
 /** Disponibilidad del docente por nivel: solo se le asignan secciones de ese nivel. */
 const AVAILABILITY_LABELS = { all: 'Todos los niveles', initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria' };
 const availabilityOf = (r) => (r.staff_type === 'teaching' ? AVAILABILITY_LABELS[r.level_availability || 'all'] : null);
+// Etapa que coordina (rol Coordinador, migración 047).
+const coordinationOf = (r) => (r.coordination_level ? COORDINATION_LEVELS[r.coordination_level] : null);
 
 const STATUS_FILTERS = [
   ['', 'Todos'],
@@ -164,7 +168,10 @@ function StaffGroups({ rows, columns, searching, onView, onEdit, canEdit, canMan
 }
 
 function StaffPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  // Coordinador (Director > Coordinador > Docente): ve y registra solo a los docentes de su etapa.
+  const coordinator = user?.coordinator || null;
+  const coordinatorStage = coordinator?.level ? COORDINATION_LEVELS[coordinator.level] : null;
   const { data: rows, loading, error, refetch } = useFetch(() => staffApi.list(), []);
   const [staffType, setStaffType] = useState('');
   const [status, setStatus] = useState('');
@@ -185,7 +192,8 @@ function StaffPage() {
     }
   };
 
-  const canManageAccess = can('staff', 'update') && can('roles', 'update');
+  // Asignar roles es otorgar permisos: el Director (edita roles) o un coordinador con etapa (solo rol Docente).
+  const canManageAccess = can('staff', 'update') && (can('roles', 'update') || Boolean(coordinator?.level));
   const all = rows || [];
 
   // Filtros acumulativos: tipo + estado (+ búsqueda de texto).
@@ -238,6 +246,12 @@ function StaffPage() {
     render: (r) => (
       <div>
         <Badge variant="primary">{STAFF_TYPE_LABELS[r.staff_type] ?? r.staff_type}</Badge>
+        {coordinationOf(r) &&
+          (r.staff_type === 'coordinator' ? (
+            <div className="cell-person__sub">Etapa: {coordinationOf(r)}</div>
+          ) : (
+            <Badge variant="info">Coordinador · {coordinationOf(r)}</Badge>
+          ))}
         {availabilityOf(r) && <div className="cell-person__sub">Disponible: {availabilityOf(r)}</div>}
       </div>
     ),
@@ -287,7 +301,8 @@ function StaffPage() {
   const groupColumns = [nameColumn, documentColumn, contactColumn, statusColumn, accessColumn];
 
   const canCreate = can('staff', 'create');
-  const importButton = canCreate && (
+  // La carga masiva no aplica el alcance del coordinador (el backend también la rechaza).
+  const importButton = canCreate && !coordinator && (
     <ImportButton type="staff" title="Importar personal desde Excel" onImported={refetch} />
   );
 
@@ -301,6 +316,7 @@ function StaffPage() {
     { header: 'Cédula/Documento',    value: (r) => r.national_id ?? '',              width: 16 },
     { header: 'Categoría',           value: (r) => STAFF_TYPE_LABELS[r.staff_type] ?? r.staff_type, width: 16 },
     { header: 'Disponibilidad',      value: (r) => availabilityOf(r) ?? '',           width: 18 },
+    { header: 'Coordina',            value: (r) => coordinationOf(r) ?? '',           width: 14 },
     { header: 'Teléfono',            value: (r) => r.phone ?? '',                    width: 14 },
     { header: 'Correo',              value: (r) => r.email ?? '',                    width: 26 },
     { header: 'Estado',              value: (r) => r.status === 'active' ? 'Activo' : 'Inactivo', width: 12 },
@@ -361,10 +377,19 @@ function StaffPage() {
   return (
     <div>
       <PageHeader
-        title="Personal del colegio"
-        subtitle="Administrativo, docente y obrero."
+        title={coordinator ? 'Docentes de mi etapa' : 'Personal del colegio'}
+        subtitle={
+          coordinator
+            ? coordinatorStage
+              ? `Coordinación de ${coordinatorStage}: registra a los docentes de la etapa, crea sus usuarios y supervisa su estado.`
+              : 'Tu usuario de coordinador aún no tiene etapa asignada.'
+            : 'Administrativo, docente y obrero.'
+        }
         actions={viewToggle}
       />
+      {coordinator && !coordinatorStage && (
+        <Alert variant="warning">Pide al Director que asigne la etapa que coordinas (en Personal → Gestionar acceso al sistema).</Alert>
+      )}
 
       {view === 'list' ? (
         <DataTable
@@ -497,6 +522,7 @@ function StaffPage() {
           fields={[
             { label: 'Cédula / documento', value: viewing.national_id },
             ...(viewing.staff_type === 'teaching' ? [{ label: 'Disponibilidad por nivel', value: availabilityOf(viewing) }] : []),
+            ...(coordinationOf(viewing) ? [{ label: 'Coordina la etapa', value: coordinationOf(viewing) }] : []),
             { label: 'Fecha de contratación', value: formatDate(viewing.hired_at) },
             { label: 'Teléfono', value: viewing.phone },
             { label: 'Correo', value: viewing.email },
@@ -550,7 +576,7 @@ function StaffPage() {
       )}
 
       {editing !== null && (
-        <StaffFormModal initial={editing} onClose={() => setEditing(null)} onSaved={refetch} />
+        <StaffFormModal initial={editing} coordinatorLevel={coordinator?.level || null} onClose={() => setEditing(null)} onSaved={refetch} />
       )}
 
       {managingAccess && (
@@ -571,8 +597,12 @@ function StaffPage() {
   );
 }
 
-function StaffFormModal({ initial, onClose, onSaved }) {
+/** `coordinatorLevel`: el coordinador solo registra DOCENTES disponibles para su etapa (o para todas). */
+function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) {
   const isEdit = Boolean(initial.id);
+  const availabilityOptions = coordinatorLevel
+    ? Object.entries(AVAILABILITY_LABELS).filter(([value]) => value === coordinatorLevel || value === 'all')
+    : Object.entries(AVAILABILITY_LABELS);
   const [form, setForm] = useState({
     staffType: initial.staff_type || 'teaching',
     firstName: initial.first_name || '',
@@ -582,9 +612,12 @@ function StaffFormModal({ initial, onClose, onSaved }) {
     email: initial.email || '',
     hiredAt: initial.hired_at ? initial.hired_at.slice(0, 10) : '',
     status: initial.status || 'active',
-    levelAvailability: initial.level_availability || 'all',
+    levelAvailability: initial.level_availability || coordinatorLevel || 'all',
+    coordinationLevel: initial.coordination_level || '',
   });
   const isTeacher = form.staffType === 'teaching';
+  const isCoordinator = form.staffType === 'coordinator';
+  const coordinationError = isCoordinator && !form.coordinationLevel ? 'Indica la etapa que coordina.' : null;
   const { run, loading, error, fieldErrors } = useMutation(
     isEdit ? (data) => staffApi.update(initial.id, data) : staffApi.create
   );
@@ -594,10 +627,11 @@ function StaffFormModal({ initial, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (coordinationError) return;
     try {
-      // La disponibilidad por nivel solo se envía para el personal docente.
-      const { levelAvailability, ...rest } = form;
-      await run(isTeacher ? { ...rest, levelAvailability } : rest);
+      // La disponibilidad por nivel solo va para el personal docente; la etapa, para el coordinador.
+      const { levelAvailability, coordinationLevel, ...rest } = form;
+      await run({ ...rest, ...(isTeacher ? { levelAvailability } : {}), ...(isCoordinator ? { coordinationLevel } : {}) });
       toast.success(isEdit ? 'Cambios guardados' : 'Personal registrado', `${form.firstName} ${form.lastName}`);
       onSaved();
       onClose();
@@ -618,16 +652,43 @@ function StaffFormModal({ initial, onClose, onSaved }) {
             <Input name="lastName" value={form.lastName} onChange={handleChange} required />
           </Field>
           <Field label="Tipo de personal" error={fieldErrors.staffType}>
-            <Select name="staffType" value={form.staffType} onChange={handleChange}>
+            <Select name="staffType" value={form.staffType} onChange={handleChange} disabled={Boolean(coordinatorLevel)}>
+              {/* Un coordinador solo registra docentes (no a otro coordinador: misma jerarquía). */}
+              {!coordinatorLevel && <option value="coordinator">Coordinador</option>}
               <option value="teaching">Docente</option>
-              <option value="administrative">Administrativo</option>
-              <option value="support">Obrero</option>
+              {!coordinatorLevel && <option value="administrative">Administrativo</option>}
+              {!coordinatorLevel && <option value="support">Obrero</option>}
             </Select>
           </Field>
+          {isCoordinator && (
+            <Field
+              label="Etapa que coordina"
+              error={fieldErrors.coordinationLevel || coordinationError}
+              hint="Gestionará a los docentes de esta etapa. Dale acceso con el rol Coordinador desde «Gestionar acceso al sistema»."
+              required
+            >
+              <Select name="coordinationLevel" value={form.coordinationLevel} onChange={handleChange}>
+                <option value="">Selecciona la etapa…</option>
+                {Object.entries(COORDINATION_LEVELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           {isTeacher && (
-            <Field label="Disponibilidad por nivel" error={fieldErrors.levelAvailability} hint="En «Secciones y personal docente» solo aparecerá en las secciones de este nivel.">
+            <Field
+              label="Disponibilidad por nivel"
+              error={fieldErrors.levelAvailability}
+              hint={
+                coordinatorLevel
+                  ? 'Como coordinador registras docentes de tu etapa (o disponibles para todos los niveles).'
+                  : 'En «Secciones y personal docente» solo aparecerá en las secciones de este nivel.'
+              }
+            >
               <Select name="levelAvailability" value={form.levelAvailability} onChange={handleChange}>
-                {Object.entries(AVAILABILITY_LABELS).map(([value, label]) => (
+                {availabilityOptions.map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
@@ -660,7 +721,7 @@ function StaffFormModal({ initial, onClose, onSaved }) {
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" loading={loading}>
+          <Button type="submit" loading={loading} disabled={Boolean(coordinationError)}>
             Guardar
           </Button>
         </div>

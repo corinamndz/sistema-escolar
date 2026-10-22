@@ -19,6 +19,23 @@ async function requireOwnPlan(req, res, next) {
   }
 }
 const { importUpload } = require('../../middlewares/upload.middleware');
+const { getCoordinatorScope } = require('../access/coordinatorScope');
+const { ApiError } = require('../../utils/ApiError');
+
+/**
+ * Personal: el Coordinador (migración 047) solo registra docentes de su etapa, y la
+ * carga masiva no aplica ese alcance; registra uno a uno desde Personal.
+ */
+async function blockCoordinatorStaffImport(req, res, next) {
+  try {
+    if (req.params.type === 'staff' && (await getCoordinatorScope(req))) {
+      throw ApiError.forbidden('Como coordinador registras a los docentes de tu etapa desde «Nuevo personal»; la importación masiva de personal es del Director.');
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
 
 router.use(authMiddleware, tenantMiddleware);
 
@@ -38,9 +55,9 @@ function requireImportPermission(req, res, next) {
   return requirePermission(...importer.permission)(req, res, next);
 }
 
-router.get('/:type/template', requireImportPermission, requireOwnPlan, controller.downloadTemplate);
+router.get('/:type/template', requireImportPermission, blockCoordinatorStaffImport, requireOwnPlan, controller.downloadTemplate);
 // El permiso se revisa ANTES de recibir el archivo.
-router.post('/:type/validate', requireImportPermission, importUpload, requireOwnPlan, controller.validate);
-router.post('/:type', requireImportPermission, importUpload, requireOwnPlan, controller.importFile);
+router.post('/:type/validate', requireImportPermission, blockCoordinatorStaffImport, importUpload, requireOwnPlan, controller.validate);
+router.post('/:type', requireImportPermission, blockCoordinatorStaffImport, importUpload, requireOwnPlan, controller.importFile);
 
 module.exports = router;

@@ -1,14 +1,19 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db, withTenantTransaction } = require('../../config/database');
+const { db, withTenantTransaction, tenantSchemaOf } = require('../../config/database');
 const { ApiError } = require('../../utils/ApiError');
 const { invalidatePermissionsCache } = require('../../middlewares/permission.middleware');
 
 const SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS) || 10;
 
+/**
+ * `schema`: esquema propio del colegio (tenants.schema_name) o null si sus datos
+ * siguen en public. tenant.middleware lo usa para fijar el search_path de cada
+ * petición (y lo contrasta con el registro de colegios, ver resolveRequestSchema).
+ */
 function signAccessToken(user) {
   return jwt.sign(
-    { sub: user.id, tenantId: user.tenant_id, username: user.username, roleIds: user.roleIds },
+    { sub: user.id, tenantId: user.tenant_id, schema: user.schema ?? null, username: user.username, roleIds: user.roleIds },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
   );
@@ -62,7 +67,7 @@ async function login({ tenantSlug, username, password }) {
 
     await trx('users').where({ id: user.id }).update({ last_login_at: trx.fn.now() });
 
-    const enriched = { ...user, roleIds };
+    const enriched = { ...user, roleIds, schema: tenant.schema_name ?? null };
     const accessToken = signAccessToken(enriched);
     const refreshToken = signRefreshToken(enriched);
 
@@ -99,7 +104,9 @@ async function refresh({ refreshToken }) {
       throw ApiError.unauthorized('Usuario ya no está activo.');
     }
     const roleRows = await trx('user_roles').where({ user_id: user.id }).select('role_id');
-    const accessToken = signAccessToken({ ...user, roleIds: roleRows.map((r) => r.role_id) });
+    // El esquema se toma del registro actual: si el colegio se migró a esquema propio, el nuevo token ya lo trae.
+    const schema = await tenantSchemaOf(payload.tenantId);
+    const accessToken = signAccessToken({ ...user, roleIds: roleRows.map((r) => r.role_id), schema });
     return { accessToken };
   });
 }

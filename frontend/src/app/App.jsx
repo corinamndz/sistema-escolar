@@ -13,7 +13,9 @@ import StaffPage from '../features/staff/pages/StaffPage';
 import StudentsPage from '../features/students/pages/StudentsPage';
 import StudentDetailPage from '../features/students/pages/StudentDetailPage';
 import GuardiansPage from '../features/students/pages/GuardiansPage';
-import AcademicsPage from '../features/academics/pages/AcademicsPage';
+import InitialSetupPage from '../features/academics/pages/InitialSetupPage';
+import AcademicSectionsPage from '../features/academics/pages/AcademicSectionsPage';
+import LegacyAcademicsRedirect from '../features/academics/pages/LegacyAcademicsRedirect';
 import PromotionPage from '../features/academics/pages/PromotionPage';
 import SchedulesPage from '../features/schedules/pages/SchedulesPage';
 import MySchedulePage from '../features/schedules/pages/MySchedulePage';
@@ -69,7 +71,11 @@ function App() {
             </Route>
 
             <Route element={<PermissionRoute module="academics" blockTeacher />}>
-              <Route path="academics" element={<AcademicsPage />} />
+              {/* Estructura académica en dos páginas: la base del colegio y la operación diaria. */}
+              <Route path="configuracion-inicial" element={<InitialSetupPage />} />
+              <Route path="secciones-academicas" element={<AcademicSectionsPage />} />
+              {/* Antes "Grados y secciones" con pestañas: los enlaces viejos llegan a la página que corresponde. */}
+              <Route path="academics" element={<LegacyAcademicsRedirect />} />
               <Route path="academics/sections/:id" element={<SectionDetailPage />} />
               <Route path="academics/subjects" element={<SubjectsPage />} />
             </Route>

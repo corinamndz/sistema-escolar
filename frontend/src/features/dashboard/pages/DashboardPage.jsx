@@ -61,7 +61,7 @@ function kpisFrom(summary) {
       icon: 'briefcase',
       tone: 'violet',
       to: '/staff',
-      hint: `${plural(staff.teaching, 'docente', 'docentes')} · ${staff.administrative + staff.support} administrativo${staff.administrative + staff.support === 1 ? '' : 's'} y obrero${staff.administrative + staff.support === 1 ? '' : 's'}`,
+      hint: `${staff.coordinator ? `${plural(staff.coordinator, 'coordinador', 'coordinadores')} · ` : ''}${plural(staff.teaching, 'docente', 'docentes')} · ${staff.administrative + staff.support} administrativo${staff.administrative + staff.support === 1 ? '' : 's'} y obrero${staff.administrative + staff.support === 1 ? '' : 's'}`,
     },
     academics && {
       key: 'academics',

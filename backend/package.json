@@ -7,6 +7,8 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "migrate": "node scripts/migrate.js",
+    "migrate:status": "node scripts/migrate.js --status",
+    "migrate:ci": "node scripts/migrate.js --fail-fast",
     "seed": "node scripts/seed.js",
     "test": "jest --runInBand"
   },

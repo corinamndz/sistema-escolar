@@ -210,8 +210,8 @@ function PromotionPage() {
         title="Cierre de año y promoción"
         subtitle="Promueve a los alumnos al año siguiente sin perder su historial: cada año queda cerrado con su resultado y su boleta."
         actions={
-          <Link to="/academics" className="btn btn--secondary">
-            <Icon name="arrowLeft" size={16} /> Estructura académica
+          <Link to="/configuracion-inicial" className="btn btn--secondary">
+            <Icon name="arrowLeft" size={16} /> Configuración inicial
           </Link>
         }
       />

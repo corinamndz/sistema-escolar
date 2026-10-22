@@ -17,16 +17,27 @@ const bcvSync = require('../modules/payments/bcvSync.service');
  */
 let running = false;
 
-/** Colegios activos que usan el bolívar (los que no configuraron monedas lo usan por defecto). */
+/**
+ * Colegios activos que usan el bolívar (los que no configuraron monedas lo usan
+ * por defecto). tenant_currencies es una tabla DEL COLEGIO: con esquemas por
+ * colegio se consulta dentro de la transacción de cada uno (search_path), no
+ * con una sola consulta sobre public.
+ */
 async function vesTenants() {
-  return db('tenants as t')
-    .whereIn('t.status', ['active', 'trial'])
-    .where((q) =>
-      q
-        .whereExists(db('tenant_currencies').whereRaw('tenant_id = t.id').andWhere('currency_code', 'VES').andWhere('is_active', true))
-        .orWhereNotExists(db('tenant_currencies').whereRaw('tenant_id = t.id'))
-    )
-    .pluck('t.id');
+  const candidates = await db('tenants').whereIn('status', ['active', 'trial']).pluck('id');
+  const result = [];
+  for (const id of candidates) {
+    try {
+      const usesVes = await withTenantTransaction(id, async (trx) => {
+        const rows = await trx('tenant_currencies').where({ tenant_id: id }).select('currency_code', 'is_active');
+        return rows.length === 0 || rows.some((r) => r.currency_code === 'VES' && r.is_active);
+      });
+      if (usesVes) result.push(id);
+    } catch (err) {
+      console.error(`[bcv] No se pudieron leer las monedas del colegio ${id}:`, err.message);
+    }
+  }
+  return result;
 }
 
 async function runOnce() {

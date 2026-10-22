@@ -11,7 +11,8 @@ const LEVEL_AVAILABILITY_LABELS = { initial: 'Inicial', primary: 'Primaria', sec
 let levelColumnReady = false;
 async function hasLevelColumn(trx) {
   if (levelColumnReady) return true;
-  const { rows } = await trx.raw("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'staff' AND column_name = 'level_availability') AS ok");
+  // La tabla que resuelve el search_path (esquema del colegio o public), no cualquier "staff" de la base.
+  const { rows } = await trx.raw("SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass('staff') AND attname = 'level_availability' AND NOT attisdropped) AS ok");
   levelColumnReady = rows[0].ok;
   return levelColumnReady;
 }
@@ -20,7 +21,7 @@ async function hasLevelColumn(trx) {
 const availableFor = (staff, levelCode) => !staff?.level_availability || staff.level_availability === 'all' || staff.level_availability === levelCode;
 
 /** Personal con el estado de su usuario de acceso (null = sin usuario). */
-async function list(trx, tenantId, { staffType } = {}) {
+async function list(trx, tenantId, { staffType, coordinator = null } = {}) {
   const query = trx('staff as s')
     .leftJoin('users as u', 'u.id', 's.user_id')
     .where('s.tenant_id', tenantId)
@@ -32,6 +33,12 @@ async function list(trx, tenantId, { staffType } = {}) {
     )
     .orderBy(['s.first_name', 's.last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
   if (staffType) query.andWhere('s.staff_type', staffType);
+  // Coordinador: solo los docentes disponibles para su etapa (o para todos los niveles).
+  if (coordinator) {
+    query.andWhere('s.staff_type', 'teaching').andWhere((q) => {
+      q.whereIn('s.level_availability', [coordinator.level, 'all']).orWhereNull('s.level_availability');
+    });
+  }
   return query;
 }
 
@@ -41,7 +48,20 @@ async function getById(trx, tenantId, id) {
   return staff;
 }
 
+/**
+ * Tipo "Coordinador" (migración 048): exige su etapa (initial | primary | secondary).
+ * Los demás tipos no la llevan (salvo un docente con el rol Coordinador, que la
+ * recibe al asignarle el rol en su acceso).
+ */
+const COORDINATION_LEVELS = { initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria' };
+function assertCoordinationLevel(staffType, level) {
+  if (staffType === 'coordinator' && !COORDINATION_LEVELS[level]) {
+    throw ApiError.badRequest('Indica la etapa que coordina (Inicial, Primaria o Secundaria).', [{ path: 'coordinationLevel', message: 'Requerida para un coordinador.' }]);
+  }
+}
+
 async function create(trx, tenantId, data) {
+  assertCoordinationLevel(data.staffType, data.coordinationLevel);
   const [staff] = await trx('staff')
     .insert({
       tenant_id: tenantId,
@@ -53,6 +73,7 @@ async function create(trx, tenantId, data) {
       phone: data.phone,
       email: data.email,
       hired_at: data.hiredAt,
+      coordination_level: data.staffType === 'coordinator' ? data.coordinationLevel : null,
       // Solo el personal docente se asigna a secciones; el resto queda en "todos" (no se usa).
       ...((await hasLevelColumn(trx)) ? { level_availability: data.staffType === 'teaching' ? data.levelAvailability || 'all' : 'all' } : {}),
     })
@@ -61,7 +82,13 @@ async function create(trx, tenantId, data) {
 }
 
 async function update(trx, tenantId, id, data) {
-  await getById(trx, tenantId, id);
+  const current = await getById(trx, tenantId, id);
+  const nextType = data.staffType ?? current.staff_type;
+  const nextLevel = data.coordinationLevel !== undefined ? data.coordinationLevel : current.coordination_level;
+  assertCoordinationLevel(nextType, nextLevel);
+  let coordinationLevel;
+  if (nextType === 'coordinator') coordinationLevel = nextLevel;
+  else if (current.staff_type === 'coordinator') coordinationLevel = (await hasCoordinatorRole(trx, current.user_id)) ? current.coordination_level : null;
   const payload = {
     staff_type: data.staffType,
     first_name: data.firstName,
@@ -71,6 +98,7 @@ async function update(trx, tenantId, id, data) {
     email: data.email,
     hired_at: data.hiredAt,
     status: data.status,
+    coordination_level: coordinationLevel,
     level_availability: (await hasLevelColumn(trx)) ? data.levelAvailability : undefined,
   };
   Object.keys(payload).forEach((key) => payload[key] === undefined && delete payload[key]);
@@ -83,6 +111,13 @@ async function update(trx, tenantId, id, data) {
     await trx('users').where({ id: updated.user_id }).update({ full_name: `${updated.first_name} ${updated.last_name}` });
   }
   return updated;
+}
+
+/** ¿Su usuario tiene el rol Coordinador? (entonces conserva su etapa aunque cambie de tipo). */
+async function hasCoordinatorRole(trx, userId) {
+  if (!userId) return false;
+  const row = await trx('user_roles as ur').join('roles as r', 'r.id', 'ur.role_id').where({ 'ur.user_id': userId, 'r.name': 'Coordinador' }).first('r.id');
+  return Boolean(row);
 }
 
 async function remove(trx, tenantId, id) {
@@ -105,4 +140,4 @@ async function remove(trx, tenantId, id) {
   await deactivateStaffUser(trx, tenantId, staff);
 }
 
-module.exports = { list, getById, create, update, remove, hasLevelColumn, availableFor, LEVEL_AVAILABILITY_LABELS };
+module.exports = { COORDINATION_LEVELS, list, getById, create, update, remove, hasLevelColumn, availableFor, LEVEL_AVAILABILITY_LABELS };

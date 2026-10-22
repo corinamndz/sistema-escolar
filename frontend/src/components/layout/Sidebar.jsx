@@ -34,7 +34,7 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
   const { isOpen: isSectionOpen, toggle: toggleSection, open: openSection } = useExpandedSet();
   const activeSection = sections.find((section) => section.items.some((item) => isActivePath(item.path, location.pathname)))?.label;
   // Opción activa: la coincidencia MÁS específica (en /academics/subjects se marca
-  // "Materias", no también "Grados y secciones", cuya ruta es un prefijo).
+  // "Materias", no también otra opción cuya ruta sea un prefijo).
   const activePath = sections
     .flatMap((section) => section.items.map((item) => item.path))
     .filter((path) => isActivePath(path, location.pathname))

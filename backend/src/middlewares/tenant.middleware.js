@@ -1,5 +1,21 @@
-const { db } = require('../config/database');
+const { db, scopeToTenant, tenantSchemaOf } = require('../config/database');
 const { ApiError } = require('../utils/ApiError');
+
+/**
+ * Esquema de la petición, a partir del JWT (`req.user.schema`, lo firma el login).
+ * Se contrasta con el registro de colegios (tenants.schema_name, cacheado): si el
+ * colegio cambió de esquema después del login, el token quedó desactualizado y se
+ * pide iniciar sesión de nuevo en vez de leer o escribir en el esquema anterior.
+ * Tokens emitidos antes de existir el campo (`schema` undefined): se usa el registro.
+ */
+async function resolveRequestSchema(user) {
+  const registered = await tenantSchemaOf(user.tenantId);
+  if (user.schema === undefined) return registered;
+  if ((user.schema || null) !== registered) {
+    throw ApiError.unauthorized('Tu sesión corresponde a una configuración anterior del colegio. Inicia sesión de nuevo.');
+  }
+  return registered;
+}
 
 /**
  * Multi-tenancy en acción: abre UNA transacción por request, fija
@@ -19,14 +35,19 @@ async function tenantMiddleware(req, res, next) {
   }
 
   let trx;
+  let schemaName = null;
   try {
+    // Esquema propio del colegio (del JWT, validado): SET LOCAL search_path TO "<esquema>", public.
+    schemaName = await resolveRequestSchema(req.user);
     trx = await db.transaction();
-    await trx.raw("SELECT set_config('app.tenant_id', ?, true)", [req.user.tenantId]);
+    await scopeToTenant(trx, req.user.tenantId, schemaName);
   } catch (err) {
+    if (trx && !trx.isCompleted()) await trx.rollback().catch(() => {});
     return next(err);
   }
 
   req.tenantId = req.user.tenantId;
+  req.tenantSchema = schemaName; // null = public
   req.db = trx;
 
   let settled = false;
@@ -72,4 +93,4 @@ async function tenantMiddleware(req, res, next) {
   next();
 }
 
-module.exports = { tenantMiddleware };
+module.exports = { tenantMiddleware, resolveRequestSchema };

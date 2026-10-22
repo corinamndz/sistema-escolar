@@ -104,7 +104,7 @@ async function getSummary(trx, tenantId, permissions) {
       .groupBy('staff_type')
       .select('staff_type', trx.raw('count(*)::int AS n'));
     const of = (type) => n(rows.find((r) => r.staff_type === type));
-    summary.staff = { total: rows.reduce((s, r) => s + r.n, 0), teaching: of('teaching'), administrative: of('administrative'), support: of('support') };
+    summary.staff = { total: rows.reduce((s, r) => s + r.n, 0), teaching: of('teaching'), coordinator: of('coordinator'), administrative: of('administrative'), support: of('support') };
   }
   if (canRead(permissions, 'academics')) {
     const subjects = await trx('subjects').where({ tenant_id: tenantId, is_active: true }).count('id as n').first();

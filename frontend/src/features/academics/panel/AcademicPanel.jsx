@@ -16,7 +16,7 @@ import { isSectionStaffed } from '../setup/useSetupStatus';
 import GradeWorkspace from './GradeWorkspace';
 
 /**
- * Panel por grado de Grados y secciones.
+ * Panel por grado de Secciones y docentes (/secciones-academicas).
  *   Izquierda: los grados por nivel, con su estado (secciones y cuántas tienen
  *   su personal docente completo) y alta rápida de grado.
  *   Derecha: el grado elegido, con sus secciones y su personal docente.

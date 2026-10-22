@@ -19,7 +19,7 @@ function readCollapsed(key) {
  * y cuál es la siguiente acción concreta. Empieza contraída ("Ver guía") y se
  * recuerda por navegador si el usuario la abre.
  */
-export function StepGuide({ step, guide }) {
+export function StepGuide({ step, guide, total = SETUP_STEPS.length, eyebrow = null }) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed(step.key));
 
   const toggle = () => {
@@ -40,7 +40,7 @@ export function StepGuide({ step, guide }) {
           <Icon name={step.icon} size={18} />
         </span>
         <div className="step-guide__heading">
-          <div className="step-guide__eyebrow">Paso {step.number} de {SETUP_STEPS.length}</div>
+          <div className="step-guide__eyebrow">{eyebrow || `Paso ${step.number} de ${total}`}</div>
           <h3>{step.title}</h3>
         </div>
         <button type="button" className="step-guide__toggle" onClick={toggle} aria-expanded={!collapsed}>
@@ -100,11 +100,15 @@ export function BlockedNotice({ blockedBy, onGo }) {
  * Pie de cada paso: volver / continuar. El botón de continuar es primario solo
  * cuando el paso actual ya está completo, para no competir con la acción
  * principal de la pantalla ("Nuevo grado", "Nueva sección"…).
+ * `steps`: los pasos del asistente; `finish` = { label, onClick } para el último
+ * (p. ej. "Continuar: Secciones y docentes", que es otra página).
  */
-export function StepFooter({ step, onGo }) {
-  const index = SETUP_STEPS.findIndex((s) => s.key === step.key);
-  const prev = SETUP_STEPS[index - 1];
-  const next = SETUP_STEPS[index + 1];
+export function StepFooter({ step, onGo, steps = SETUP_STEPS, finish = null }) {
+  const index = steps.findIndex((s) => s.key === step.key);
+  const prev = steps[index - 1];
+  const next = steps[index + 1];
+  const nextLabel = next ? next.short : finish?.label;
+  const goNext = next ? () => onGo(next.key) : finish?.onClick;
 
   return (
     <div className="step-footer">
@@ -115,11 +119,11 @@ export function StepFooter({ step, onGo }) {
       ) : (
         <span />
       )}
-      {next && (
+      {nextLabel && (
         <div className="step-footer__next">
           {!step.done && <span className="text-sm text-muted">Puedes seguir y volver luego.</span>}
-          <Button variant={step.done ? 'primary' : 'secondary'} onClick={() => onGo(next.key)}>
-            Continuar: {next.short}
+          <Button variant={step.done ? 'primary' : 'secondary'} onClick={goNext}>
+            Continuar: {nextLabel}
             <Icon name="arrowRight" size={16} />
           </Button>
         </div>

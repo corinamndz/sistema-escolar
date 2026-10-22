@@ -17,7 +17,8 @@ const NAV_SECTIONS = [
     items: [
       { moduleCode: 'students', label: 'Alumnos', teacherLabel: 'Mis alumnos', icon: 'graduation', path: '/students' },
       { moduleCode: 'guardians', label: 'Representantes', icon: 'users', path: '/guardians' },
-      { moduleCode: 'staff', label: 'Personal', icon: 'briefcase', path: '/staff' },
+      // Coordinador: gestiona solo a los docentes de su etapa.
+      { moduleCode: 'staff', label: 'Personal', coordinatorLabel: 'Docentes de mi etapa', icon: 'briefcase', path: '/staff' },
       // Sanciones disciplinarias: módulo de la administración. El docente consulta
       // las de sus alumnos en la ficha de cada uno; el representante, en el portal.
       { moduleCode: 'discipline', label: 'Convivencia', icon: 'shield', path: '/discipline', blockTeacher: true },
@@ -33,7 +34,9 @@ const NAV_SECTIONS = [
   {
     label: 'Académico',
     items: [
-      { moduleCode: 'academics', label: 'Grados y secciones', icon: 'school', path: '/academics', blockTeacher: true },
+      // Estructura académica: primero la base (asistente de pasos), luego la operación diaria.
+      { moduleCode: 'academics', label: 'Configuración inicial', icon: 'building', path: '/configuracion-inicial', blockTeacher: true },
+      { moduleCode: 'academics', label: 'Secciones y docentes', icon: 'school', path: '/secciones-academicas', blockTeacher: true },
       // Materias: en qué grados y secciones se dicta cada una y qué docente la imparte.
       { moduleCode: 'academics', label: 'Materias', icon: 'book', path: '/academics/subjects', blockTeacher: true },
       // Contenido programático: unidades y temas de cada materia con sus evaluaciones (docentes: sus materias).
@@ -91,9 +94,9 @@ function findRouteMeta(pathname) {
   return best;
 }
 
-/** Nombre del ítem para el usuario (el docente ve "Mis alumnos"). */
+/** Nombre del ítem para el usuario (el docente ve "Mis alumnos"; el coordinador, "Docentes de mi etapa"). */
 function navItemLabel(item, user) {
-  return (user?.isRestrictedTeacher && item.teacherLabel) || item.label;
+  return (user?.isRestrictedTeacher && item.teacherLabel) || (user?.coordinator && item.coordinatorLabel) || item.label;
 }
 
 /** ¿Se muestra este ítem del menú al usuario? */

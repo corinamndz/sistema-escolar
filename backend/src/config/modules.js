@@ -25,6 +25,8 @@ const MODULES = [
   { code: 'clubs', label: 'Clubes', sortOrder: 13, extraActions: [] },
   // Cartelera de eventos especiales (actos, asambleas, eventos familiares…).
   { code: 'events', label: 'Eventos y cartelera', sortOrder: 14, extraActions: [] },
+  // Citas con padres (migración 042). Debe estar aquí para que `npm run seed` la conserve.
+  { code: 'appointments', label: 'Citas con padres', sortOrder: 15, extraActions: [] },
 ];
 
 const MODULE_CODES = MODULES.map((m) => m.code);

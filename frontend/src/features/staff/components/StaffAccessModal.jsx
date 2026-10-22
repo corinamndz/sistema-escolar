@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import staffApi from '../../../api/endpoints/staff.api';
-import rolesApi from '../../../api/endpoints/roles.api';
+import Select from '../../../components/ui/Select';
 import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
@@ -19,6 +19,9 @@ import { PASSWORD_RULES, PasswordChooser, formatDateTime } from '../../students/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // El rol del portal de padres no se asigna al personal (el backend también lo rechaza).
 const isPortalRole = (role) => role.name.trim().toLowerCase() === 'representante';
+// Jerarquía Director > Coordinador > Docente: el Coordinador exige su etapa.
+const COORDINATOR_ROLE = 'Coordinador';
+export const COORDINATION_LEVELS = { initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria' };
 
 /** Estado del usuario de acceso de un empleado, para la tabla y el detalle. */
 export function StaffAccessBadge({ status }) {
@@ -34,7 +37,7 @@ export function StaffAccessBadge({ status }) {
  */
 function StaffAccessModal({ staff, onClose, onSaved }) {
   const { data, loading, error } = useFetch(() => staffApi.getAccess(staff.id), [staff.id]);
-  const { data: roles, loading: loadingRoles, error: rolesError } = useFetch(() => rolesApi.list(), []);
+  const { data: roles, loading: loadingRoles, error: rolesError } = useFetch(() => staffApi.assignableRoles(), []);
 
   const title = `Acceso al sistema · ${staff.first_name} ${staff.last_name}`;
   return (
@@ -55,9 +58,10 @@ function AccessForm({ staff, access, roles, onClose, onSaved }) {
   const isSelf = Boolean(access && access.id === user?.id);
   const defaultRoles = useMemo(() => {
     if (access) return access.roles.map((r) => r.id);
-    // Docentes: rol "Docente" preseleccionado.
-    const docente = staff.staff_type === 'teaching' && roles.find((r) => r.name.trim().toLowerCase() === 'docente');
-    return docente ? [docente.id] : [];
+    // Docentes: rol "Docente" preseleccionado; coordinadores: rol "Coordinador" (con la etapa de su ficha).
+    const byName = (name) => roles.find((r) => r.name.trim().toLowerCase() === name);
+    const preset = (staff.staff_type === 'teaching' && byName('docente')) || (staff.staff_type === 'coordinator' && byName('coordinador'));
+    return preset ? [preset.id] : [];
   }, [access, roles, staff.staff_type]);
 
   const [state, setState] = useState({
@@ -67,7 +71,10 @@ function AccessForm({ staff, access, roles, onClose, onSaved }) {
     resetPassword: false,
     passwordMode: 'auto',
     password: '',
+    coordinationLevel: staff.coordination_level || '',
   });
+  const coordinatorRole = roles.find((r) => r.name === COORDINATOR_ROLE);
+  const isCoordinator = Boolean(coordinatorRole && state.roleIds.includes(coordinatorRole.id));
   const { run, loading, error, fieldErrors } = useMutation((body) =>
     access ? staffApi.updateAccess(staff.id, body) : staffApi.createAccess(staff.id, body)
   );
@@ -76,6 +83,7 @@ function AccessForm({ staff, access, roles, onClose, onSaved }) {
   const errors = {};
   if (!EMAIL_RE.test(state.email.trim())) errors.email = 'Correo inválido.';
   if (state.roleIds.length === 0) errors.roleIds = 'Selecciona al menos un rol.';
+  if (isCoordinator && !state.coordinationLevel) errors.coordinationLevel = 'Indica la etapa que coordina.';
   const needsPassword = (!access || state.resetPassword) && state.passwordMode === 'custom';
   if (needsPassword) {
     const failed = PASSWORD_RULES.find((r) => !r.test(state.password));
@@ -89,11 +97,13 @@ function AccessForm({ staff, access, roles, onClose, onSaved }) {
   // Solo se envía lo que cambió.
   const buildBody = () => {
     const password = state.passwordMode === 'custom' ? state.password : undefined;
-    if (!access) return { email: state.email.trim(), roleIds: state.roleIds, password };
+    const coordinationLevel = isCoordinator ? state.coordinationLevel || null : null;
+    if (!access) return { email: state.email.trim(), roleIds: state.roleIds, password, ...(isCoordinator ? { coordinationLevel } : {}) };
     const body = {};
     if (state.email.trim().toLowerCase() !== access.username) body.email = state.email.trim();
     const current = access.roles.map((r) => r.id);
     if (state.roleIds.length !== current.length || state.roleIds.some((id) => !current.includes(id))) body.roleIds = state.roleIds;
+    if (isCoordinator && coordinationLevel !== (staff.coordination_level || null)) body.coordinationLevel = coordinationLevel;
     const status = state.active ? 'active' : 'inactive';
     if (status !== access.status) body.status = status;
     if (state.resetPassword) Object.assign(body, { resetPassword: true, password });
@@ -157,6 +167,24 @@ function AccessForm({ staff, access, roles, onClose, onSaved }) {
             ))}
           </div>
         </Field>
+
+        {isCoordinator && (
+          <Field
+            label="Etapa que coordina"
+            error={errors.coordinationLevel || fieldErrors.coordinationLevel}
+            hint="Podrá registrar y gestionar a los docentes de esta etapa."
+            required
+          >
+            <Select value={state.coordinationLevel} onChange={(e) => setState((s) => ({ ...s, coordinationLevel: e.target.value }))} disabled={isSelf}>
+              <option value="">Selecciona la etapa…</option>
+              {Object.entries(COORDINATION_LEVELS).map(([code, label]) => (
+                <option key={code} value={code}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
 
         {access && (
           <Switch

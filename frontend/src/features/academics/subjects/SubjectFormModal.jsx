@@ -212,7 +212,7 @@ function SubjectFormModal({ subject, period, onClose, onSaved }) {
 
             {!data.school_period && <Alert variant="info">No hay un año escolar: elige los grados; las secciones y sus docentes se asignan cuando lo crees.</Alert>}
             {closed && <Alert variant="info">El año {data.school_period.name} está finalizado: sus secciones y docentes son de solo lectura.</Alert>}
-            {groups.length === 0 && <Alert variant="warning">Aún no hay grados. Créalos en Grados y secciones.</Alert>}
+            {groups.length === 0 && <Alert variant="warning">Aún no hay grados. Créalos en Configuración inicial → Grados y aulas.</Alert>}
 
             {groups.map((group) => (
               <div key={group.code} className="subj-level">

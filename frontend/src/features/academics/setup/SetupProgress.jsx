@@ -5,8 +5,9 @@ import Button from '../../../components/ui/Button';
  * Barra de progreso de la configuración + navegación entre pasos.
  * Cada paso muestra su estado real (completo / pendiente / no aplica) y se
  * puede abrir en cualquier orden; el "siguiente recomendado" va resaltado.
+ * `done` = { title, text, action } para el mensaje de "todo listo".
  */
-function SetupProgress({ status, active, onSelect }) {
+function SetupProgress({ status, active, onSelect, done = null }) {
   const { steps, completed, total, next, allDone } = status;
   const percent = Math.round((completed / total) * 100);
 
@@ -17,7 +18,7 @@ function SetupProgress({ status, active, onSelect }) {
           <div className="setup-progress__title">
             {allDone ? (
               <>
-                <Icon name="checkCircle" size={18} /> Estructura académica lista
+                <Icon name="checkCircle" size={18} /> {done?.title || 'Estructura académica lista'}
               </>
             ) : (
               'Configuración del colegio'
@@ -25,10 +26,11 @@ function SetupProgress({ status, active, onSelect }) {
           </div>
           <div className="setup-progress__subtitle">
             {allDone
-              ? 'Ya puedes inscribir alumnos desde cada sección. Vuelve a cualquier paso cuando necesites cambiar algo.'
+              ? done?.text || 'Ya puedes inscribir alumnos desde cada sección. Vuelve a cualquier paso cuando necesites cambiar algo.'
               : `${completed} de ${total} pasos completos · Siguiente: ${next.title.toLowerCase()}`}
           </div>
         </div>
+        {allDone && done?.action}
         {!allDone && next.key !== active && (
           <Button size="sm" icon="arrowRight" onClick={() => onSelect(next.key)}>
             Ir al paso {next.number}

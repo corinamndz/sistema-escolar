@@ -30,10 +30,17 @@ const SHORTCUTS = [
     can: (can) => can('promotion', 'read'),
   },
   {
-    to: '/academics',
+    to: '/configuracion-inicial',
+    icon: 'building',
+    title: 'Configuración inicial',
+    text: 'Año escolar, grados y aulas: la base del colegio.',
+    can: (can) => can('academics', 'read'),
+  },
+  {
+    to: '/secciones-academicas',
     icon: 'school',
-    title: 'Estructura académica',
-    text: 'Grados, secciones, plan de estudios y carga docente.',
+    title: 'Secciones y docentes',
+    text: 'Secciones del año, su personal docente y la carga por docente.',
     can: (can) => can('academics', 'read'),
   },
 ];

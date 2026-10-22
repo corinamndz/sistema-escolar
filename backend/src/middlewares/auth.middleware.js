@@ -3,7 +3,7 @@ const { ApiError } = require('../utils/ApiError');
 
 /**
  * Decodifica el JWT del header `Authorization: Bearer <token>` y adjunta
- * `req.user = { id, tenantId, username, roleIds }` al request.
+ * `req.user = { id, tenantId, schema, username, roleIds }` al request.
  *
  * Debe ir ANTES de tenant.middleware en toda ruta protegida, porque
  * tenant.middleware lee `req.user.tenantId` para saber qué tenant activar
@@ -32,6 +32,8 @@ function authMiddleware(req, res, next) {
     req.user = {
       id: payload.sub,
       tenantId: payload.tenantId,
+      // Esquema del colegio (null = public). undefined = token emitido antes de existir el campo.
+      schema: payload.schema,
       username: payload.username,
       roleIds: payload.roleIds || [],
     };

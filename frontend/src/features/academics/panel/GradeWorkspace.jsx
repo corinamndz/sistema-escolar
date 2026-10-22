@@ -206,7 +206,7 @@ function GradeWorkspace({ gradeId, period, canEdit, canDelete, onChanged }) {
         </div>
 
         {!period ? (
-          <p className="text-muted">Crea el año escolar en curso para abrir secciones (Configuración general → Año escolar).</p>
+          <p className="text-muted">Crea el año escolar en curso para abrir secciones (Configuración inicial → Año escolar).</p>
         ) : sections.length === 0 ? (
           <div className="gp-empty">
             <p>

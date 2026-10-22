@@ -3,8 +3,10 @@ import academicsApi from '../../../api/endpoints/academics.api';
 import { useFetch } from '../../../hooks/useFetch';
 
 /**
- * Pasos de la configuración de Grados y secciones, en el orden en que dependen
- * entre sí: las secciones necesitan grado + año escolar. Las materias (y sus
+ * Pasos de la estructura académica, en el orden en que dependen entre sí: las
+ * secciones necesitan grado + año escolar. Los dos primeros forman la
+ * CONFIGURACIÓN INICIAL (/configuracion-inicial); las secciones y su personal
+ * docente son la operación diaria (/secciones-academicas). Las materias (y sus
  * docentes por sección) tienen su propio módulo.
  */
 export const SETUP_STEPS = [
@@ -12,6 +14,9 @@ export const SETUP_STEPS = [
   { key: 'structure', number: 2, title: 'Grados y aulas', short: 'Grados y aulas', icon: 'school' },
   { key: 'sections', number: 3, title: 'Secciones y personal docente', short: 'Secciones y docentes', icon: 'users' },
 ];
+/** Pasos del asistente de Configuración inicial. */
+export const INITIAL_SETUP_KEYS = ['period', 'structure'];
+export const INITIAL_SETUP_STEPS = SETUP_STEPS.filter((s) => INITIAL_SETUP_KEYS.includes(s.key));
 
 /**
  * Una sección está "completa" cuando tiene el personal que exige su nivel:
@@ -37,7 +42,7 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
  *   - todo: la siguiente acción concreta, o null si está completo
  *   - blockedBy: clave del paso previo que falta (para avisar en pantalla)
  */
-export function computeSetup({ periods, classrooms, grades, sections }) {
+export function computeSetup({ periods, classrooms, grades, sections }, keys = null) {
   const activePeriods = periods.filter((p) => p.is_active);
   const activeIds = new Set(activePeriods.map((p) => p.id));
   const currentSections = sections.filter((s) => activeIds.has(s.school_period_id));
@@ -71,18 +76,21 @@ export function computeSetup({ periods, classrooms, grades, sections }) {
   };
 
   const byKey = { period, structure, sections: sectionsStep };
-  const steps = SETUP_STEPS.map((s) => ({ ...s, ...byKey[s.key] }));
+  // `keys`: solo esos pasos cuentan para el progreso (la Configuración inicial usa los dos primeros).
+  const steps = SETUP_STEPS.filter((s) => !keys || keys.includes(s.key)).map((s) => ({ ...s, ...byKey[s.key] }));
   const completed = steps.filter((s) => s.done).length;
   const next = steps.find((s) => !s.done) || null;
 
-  return { steps, byKey: Object.fromEntries(steps.map((s) => [s.key, s])), completed, total: steps.length, next, allDone: !next };
+  // byKey trae TODOS los pasos (también los que no cuentan), para avisos como "falta el año escolar".
+  const all = SETUP_STEPS.map((s) => ({ ...s, ...byKey[s.key] }));
+  return { steps, byKey: Object.fromEntries(all.map((s) => [s.key, s])), completed, total: steps.length, next, allDone: !next };
 }
 
 /**
  * Carga lo necesario para el progreso. `version` fuerza la recarga cuando
  * una pestaña guarda cambios (crear grado, asignar docentes, etc.).
  */
-export function useSetupStatus(version) {
+export function useSetupStatus(version, keys = null) {
   const { data, loading, error } = useFetch(async () => {
     const [periods, classrooms, grades, sections] = await Promise.all([
       academicsApi.listSchoolPeriods(),
@@ -93,6 +101,7 @@ export function useSetupStatus(version) {
     return { periods, classrooms, grades, sections };
   }, [version]);
 
-  const status = useMemo(() => (data ? computeSetup(data) : null), [data]);
+  const keyList = keys ? keys.join(',') : '';
+  const status = useMemo(() => (data ? computeSetup(data, keyList ? keyList.split(',') : null) : null), [data, keyList]);
   return { status, loading: loading && !status, error };
 }

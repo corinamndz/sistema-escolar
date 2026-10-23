@@ -6,11 +6,12 @@ import Modal from '../ui/Modal';
 import { formatRate } from '../../features/payments/currency';
 import { formatDate } from '../../features/payments/paymentStatus';
 import { SOURCE_LABELS, timeAgo } from '../../features/payments/components/BcvRateCard';
-import { NOTIFICATIONS_REFRESH, notifyRatesChanged } from '../../lib/notificationEvents';
+import { NOTIFICATIONS_OPEN, NOTIFICATIONS_REFRESH, notifyRatesChanged } from '../../lib/notificationEvents';
 import { isEffective } from '../../features/payments/useRateAutoRefresh';
 
 const POLL_MS = 60 * 1000; // la tasa cambia pocas veces al día: un minuto de demora es suficiente
-const ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star', parent_meeting: 'users' };
+// Ícono por tipo de aviso (también lo usa el aviso al iniciar sesión).
+export const NOTIFICATION_ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star', parent_meeting: 'users' };
 
 /**
  * Campana de notificaciones del Topbar. Consulta las del usuario al cargar,
@@ -54,6 +55,14 @@ function NotificationBell({ dropdown }) {
       window.removeEventListener(NOTIFICATIONS_REFRESH, load);
     };
   }, [load]);
+
+  // Otro componente pide abrir el desplegable (aviso al iniciar sesión → "Ver notificaciones").
+  const { setOpen } = dropdown;
+  useEffect(() => {
+    const openMenu = () => setTimeout(() => setOpen(true), 0); // después del clic que lo pidió
+    window.addEventListener(NOTIFICATIONS_OPEN, openMenu);
+    return () => window.removeEventListener(NOTIFICATIONS_OPEN, openMenu);
+  }, [setOpen]);
 
   // Al abrir el menú, datos frescos.
   useEffect(() => {
@@ -119,7 +128,7 @@ function NotificationBell({ dropdown }) {
                   <li key={n.id}>
                     <button type="button" className={`notif-item ${n.read ? '' : 'is-unread'}`} onClick={() => open(n)} role="menuitem">
                       <span className="notif-item__icon">
-                        <Icon name={ICONS[n.type] || 'bell'} size={16} />
+                        <Icon name={NOTIFICATION_ICONS[n.type] || 'bell'} size={16} />
                       </span>
                       <span className="notif-item__body">
                         {/* El título (p. ej. el nombre del evento), salvo que el texto ya empiece con él. */}
@@ -148,7 +157,7 @@ function NotificationDetail({ notification: n, onClose }) {
       <Modal title={n.title} onClose={onClose}>
         <div className="notif-generic">
           <span className="notif-item__icon">
-            <Icon name={ICONS[n.type] || 'bell'} size={18} />
+            <Icon name={NOTIFICATION_ICONS[n.type] || 'bell'} size={18} />
           </span>
           <p>{n.body}</p>
         </div>

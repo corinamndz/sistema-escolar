@@ -71,6 +71,7 @@ async function getStudentById(trx, tenantId, id) {
   return { ...student, guardians, currentEnrollment: enrollment || null };
 }
 
+/** Crea el alumno y, si viene `data.guardians`, lo asocia a sus representantes en la misma transacción. */
 async function createStudent(trx, tenantId, data) {
   const [student] = await trx('students')
     .insert({
@@ -81,6 +82,7 @@ async function createStudent(trx, tenantId, data) {
       national_id: data.nationalId,
     })
     .returning('*');
+  if (data.guardians) await syncGuardiansOfStudent(trx, tenantId, student.id, data.guardians);
   return student;
 }
 
@@ -94,7 +96,8 @@ async function updateStudent(trx, tenantId, id, data) {
     status: data.status,
   };
   Object.keys(payload).forEach((key) => payload[key] === undefined && delete payload[key]);
-  const [updated] = await trx('students').where({ id }).update(payload).returning('*');
+  const [updated] = Object.keys(payload).length ? await trx('students').where({ id }).update(payload).returning('*') : [await trx('students').where({ id }).first()];
+  if (data.guardians) await syncGuardiansOfStudent(trx, tenantId, id, data.guardians);
   return updated;
 }
 
@@ -217,6 +220,7 @@ async function createGuardian(trx, tenantId, data) {
     .returning('*');
 
   const { access, temporaryPassword } = await applyPortalAccess(trx, tenantId, guardian, data.portal);
+  if (data.students) await syncStudentsOfGuardian(trx, tenantId, guardian.id, data.students);
   return { ...guardian, user_id: access?.id ?? guardian.user_id, portal: access, temporaryPassword };
 }
 
@@ -237,6 +241,7 @@ async function updateGuardian(trx, tenantId, id, data) {
   // También sincroniza el nombre del usuario del portal si el representante cambió de nombre.
   const portalChanges = data.portal || (updated.user_id && (data.firstName || data.lastName) ? {} : null);
   const { access, temporaryPassword } = await applyPortalAccess(trx, tenantId, updated, portalChanges);
+  if (data.students) await syncStudentsOfGuardian(trx, tenantId, id, data.students);
   return { ...updated, user_id: access?.id ?? updated.user_id, portal: access, temporaryPassword };
 }
 
@@ -294,12 +299,85 @@ async function linkGuardian(trx, tenantId, studentId, { guardianId, relationship
   return getStudentById(trx, tenantId, studentId);
 }
 
+/**
+ * Asociación MÚLTIPLE desde los formularios (N:M, tabla student_guardians).
+ * Recibe la lista COMPLETA deseada y aplica la diferencia: agrega los nuevos,
+ * actualiza relación / principal de los que siguen y quita los que ya no vienen.
+ *
+ * `pairs`: [{ studentId, guardianId, relationship, isPrimary }] del lado editado;
+ * `side`: { column: 'student_id' | 'guardian_id', id } = qué vínculos se reemplazan.
+ * Un alumno tiene a lo sumo un representante principal (índice único, migración 051):
+ * marcar a uno como principal le quita la marca al anterior de ese alumno.
+ */
+async function syncLinks(trx, tenantId, side, pairs) {
+  const studentIds = [...new Set(pairs.map((p) => p.studentId))];
+  const guardianIds = [...new Set(pairs.map((p) => p.guardianId))];
+  // Todos deben ser del colegio activo (si no, el where con tenant_id no los encuentra).
+  if (studentIds.length) {
+    const found = await trx('students').where({ tenant_id: tenantId }).whereIn('id', studentIds).pluck('id');
+    if (found.length !== studentIds.length) throw ApiError.badRequest('Uno de los alumnos elegidos no existe en el colegio.', [{ path: 'students', message: 'Alumno inválido.' }]);
+  }
+  if (guardianIds.length) {
+    const found = await trx('guardians').where({ tenant_id: tenantId }).whereIn('id', guardianIds).pluck('id');
+    if (found.length !== guardianIds.length) throw ApiError.badRequest('Uno de los representantes elegidos no existe en el colegio.', [{ path: 'guardians', message: 'Representante inválido.' }]);
+  }
+
+  const current = await trx('student_guardians').where(side.column, side.id);
+  const keyOf = (r) => `${r.student_id ?? r.studentId}|${r.guardian_id ?? r.guardianId}`;
+  const wanted = new Map(pairs.map((p) => [keyOf(p), p]));
+  const removed = current.filter((r) => !wanted.has(keyOf(r)));
+  if (removed.length) {
+    await trx('student_guardians')
+      .where(side.column, side.id)
+      .whereIn(side.column === 'student_id' ? 'guardian_id' : 'student_id', removed.map((r) => (side.column === 'student_id' ? r.guardian_id : r.student_id)))
+      .delete();
+  }
+
+  const existing = new Map(current.map((r) => [keyOf(r), r]));
+  const added = [];
+  // Primero se quitan las marcas de principal que cambian (el índice único no admite dos a la vez).
+  for (const p of pairs) {
+    if (p.isPrimary) {
+      await trx('student_guardians').where({ student_id: p.studentId, is_primary: true }).whereNot({ guardian_id: p.guardianId }).update({ is_primary: false });
+    }
+  }
+  for (const p of pairs) {
+    const row = { relationship: p.relationship?.trim() || null, is_primary: Boolean(p.isPrimary) };
+    const before = existing.get(keyOf(p));
+    if (!before) {
+      await trx('student_guardians').insert({ student_id: p.studentId, guardian_id: p.guardianId, ...row });
+      added.push(p.studentId);
+    } else if (before.relationship !== row.relationship || before.is_primary !== row.is_primary) {
+      await trx('student_guardians').where({ student_id: p.studentId, guardian_id: p.guardianId }).update(row);
+    }
+  }
+
+  // Alumnos inscritos que no tenían representante: sus mensualidades ya se pueden generar.
+  for (const studentId of new Set(added)) await tuition.generateTuition(trx, tenantId, { studentId });
+  return { added: added.length, removed: removed.length };
+}
+
+/** Representantes de un alumno (formulario del alumno): [{ guardianId, relationship, isPrimary }]. */
+async function syncGuardiansOfStudent(trx, tenantId, studentId, guardians) {
+  if (guardians.filter((g) => g.isPrimary).length > 1) {
+    throw ApiError.badRequest('Marca un solo representante principal.', [{ path: 'guardians', message: 'Solo un principal.' }]);
+  }
+  return syncLinks(trx, tenantId, { column: 'student_id', id: studentId }, guardians.map((g) => ({ ...g, studentId })));
+}
+
+/** Alumnos de un representante (formulario del representante): [{ studentId, relationship, isPrimary }]. */
+async function syncStudentsOfGuardian(trx, tenantId, guardianId, students) {
+  return syncLinks(trx, tenantId, { column: 'guardian_id', id: guardianId }, students.map((s) => ({ ...s, guardianId })));
+}
+
 async function unlinkGuardian(trx, tenantId, studentId, guardianId) {
   await getStudentById(trx, tenantId, studentId);
   await trx('student_guardians').where({ student_id: studentId, guardian_id: guardianId }).delete();
 }
 
 module.exports = {
+  syncGuardiansOfStudent,
+  syncStudentsOfGuardian,
   listStudents,
   getStudentById,
   createStudent,

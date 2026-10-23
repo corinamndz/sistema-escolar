@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import paymentsApi from '../../../api/endpoints/payments.api';
 import studentsApi from '../../../api/endpoints/students.api';
 import academicsApi from '../../../api/endpoints/academics.api';
@@ -398,8 +398,24 @@ function mergeAmounts(amounts) {
 // Tarifas de mensualidad por año escolar (general + por nivel)
 // ---------------------------------------------------------------------------
 
+/**
+ * Año escolar elegido en un modal. El valor por defecto (el activo, o el primero)
+ * se fija también si la lista de años llega DESPUÉS de abrir el modal: antes se
+ * calculaba una sola vez y, si aún no había cargado, quedaba vacío para siempre
+ * (el selector mostraba "2026-2027" pero no se cargaban ni guardaban tarifas).
+ */
+function usePeriodChoice(periods) {
+  const pick = () => periods.find((p) => p.is_active)?.id || periods[0]?.id || '';
+  const [schoolPeriodId, setSchoolPeriodId] = useState(pick);
+  useEffect(() => {
+    if (!periods.some((p) => p.id === schoolPeriodId)) setSchoolPeriodId(pick());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periods]);
+  return [schoolPeriodId, setSchoolPeriodId];
+}
+
 function TuitionFeesModal({ periods, onClose }) {
-  const [schoolPeriodId, setSchoolPeriodId] = useState(periods.find((p) => p.is_active)?.id || periods[0]?.id || '');
+  const [schoolPeriodId, setSchoolPeriodId] = usePeriodChoice(periods);
   const { data: fees, loading, error, refetch } = useFetch(
     () => (schoolPeriodId ? paymentsApi.listFees(schoolPeriodId) : Promise.resolve([])),
     [schoolPeriodId]
@@ -415,6 +431,7 @@ function TuitionFeesModal({ periods, onClose }) {
       </p>
       <Field label="Año escolar">
         <Select sorted value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)}>
+          {!schoolPeriodId && <option value="">{periods.length ? 'Selecciona…' : 'Cargando años escolares…'}</option>}
           {periods.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -469,8 +486,9 @@ function FeeRow({ schoolPeriodId, levelCode, fee, fallback, onChanged }) {
       await run({ schoolPeriodId, levelCode, amount: Number(form.amount), currency: 'USD', dueDay: Number(form.dueDay) });
       toast.success('Tarifa guardada', title);
       onChanged();
-    } catch {
-      // error visible en la fila
+    } catch (err) {
+      // Además del mensaje en la fila, un aviso visible: que nunca falle en silencio.
+      toast.error(`No se pudo guardar: ${title}`, getErrorMessage(err));
     }
   };
 
@@ -523,7 +541,7 @@ function FeeRow({ schoolPeriodId, levelCode, fee, fallback, onChanged }) {
 // ---------------------------------------------------------------------------
 
 function GenerateTuitionModal({ periods, onClose, onGenerated }) {
-  const [schoolPeriodId, setSchoolPeriodId] = useState(periods.find((p) => p.is_active)?.id || periods[0]?.id || '');
+  const [schoolPeriodId, setSchoolPeriodId] = usePeriodChoice(periods);
   const { run, loading, error } = useMutation(paymentsApi.generateTuition);
   const [result, setResult] = useState(null);
 

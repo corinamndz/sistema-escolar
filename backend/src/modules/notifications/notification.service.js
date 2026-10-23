@@ -112,6 +112,24 @@ async function listForUser(trx, tenantId, userId) {
   };
 }
 
+/**
+ * GET /notifications/unread-count → { unread_count, latest } — consulta liviana
+ * para el aviso al iniciar sesión: el conteo y las 3 no leídas más recientes
+ * (título, tipo y fecha), sin traer la lista completa. Vale para cualquier
+ * rol: cada usuario cuenta solo las de su público (administración y/o familia).
+ */
+async function unreadSummary(trx, tenantId, userId) {
+  if (!(await hasTables(trx))) return { unread_count: 0, latest: [] };
+  const who = await audiencesOf(trx, tenantId, userId);
+  if (!who.audiences.length) return { unread_count: 0, latest: [] };
+  const unread = await visibleQuery(trx, tenantId, userId, who).whereNull('r.read_at').count('* as n').first();
+  const count = Number(unread.n);
+  const latest = count
+    ? await visibleQuery(trx, tenantId, userId, who).whereNull('r.read_at').select('n.id', 'n.type', 'n.title', 'n.created_at').orderBy('n.created_at', 'desc').limit(3)
+    : [];
+  return { unread_count: count, latest };
+}
+
 /** Marca una como leída (solo si el usuario puede verla: si no, 404). */
 async function markRead(trx, tenantId, userId, id) {
   const who = (await hasTables(trx)) ? await audiencesOf(trx, tenantId, userId) : { audiences: [] };
@@ -172,4 +190,4 @@ async function deleteSimulated(trx, tenantId) {
   return trx('notifications').where({ tenant_id: tenantId }).andWhereRaw("(data->>'simulated')::boolean IS TRUE").delete();
 }
 
-module.exports = { createNotification, listForUser, markRead, markAllRead, countRecipients, deleteSimulated };
+module.exports = { unreadSummary, createNotification, listForUser, markRead, markAllRead, countRecipients, deleteSimulated };

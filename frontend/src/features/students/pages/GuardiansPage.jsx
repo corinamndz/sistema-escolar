@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import studentsApi from '../../../api/endpoints/students.api';
 import ExportButton from '../../../components/ui/ExportButton';
+import ImportButton from '../../../components/import/ImportButton';
 import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
@@ -21,6 +22,7 @@ import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
 import { LEVELS, LevelBadge, LevelFilter } from '../../academics/levels';
 import { sectionLabel } from '../components/StudentGroups';
+import LinksField, { linksChanged } from '../components/LinksField';
 import {
   PortalAccessFields,
   PortalStatusBadge,
@@ -385,6 +387,15 @@ function GuardiansPage() {
   const groupColumns = [nameColumn, documentColumn, contactColumn, portalColumn];
 
   const canCreate = can('guardians', 'create');
+  // Carga masiva: misma revisión previa y reporte de errores que las demás importaciones.
+  const importButton = canCreate && (
+    <ImportButton
+      type="guardians"
+      title="Importar representantes desde Excel"
+      description="Incluye las cédulas de sus hijos (separadas por comas) para vincularlos a alumnos ya registrados."
+      onImported={refetch}
+    />
+  );
   const canEdit = can('guardians', 'update');
 
   const exportColumns = [
@@ -480,7 +491,7 @@ function GuardiansPage() {
           createLabel="Nuevo representante"
           onCreate={() => setEditing({})}
           canCreate={canCreate}
-          headerActions={exportButton}
+          headerActions={<>{importButton}{exportButton}</>}
           onView={(g) => setViewingId(g.id)}
           onEdit={setEditing}
           canEdit={canEdit}
@@ -510,6 +521,7 @@ function GuardiansPage() {
                 <p className="card__subtitle">Cada grupo lista los representantes con alumnos inscritos en esa sección.</p>
               </div>
               <div className="data-table__header-actions">
+                {importButton}
                 {exportButton}
                 {canCreate && (
                   <Button icon="plus" onClick={() => setEditing({})}>
@@ -750,8 +762,33 @@ function GuardianDetailModal({ guardianId, onClose, onEdit }) {
   );
 }
 
+/** Opción del selector de alumnos: nombre, curso actual y cédula. */
+const studentOption = (s) => ({
+  id: s.id,
+  label: `${s.first_name} ${s.last_name}`,
+  sub: [s.grade_name ? `${s.grade_name} ${s.section_name || ''}`.trim() : 'Sin sección', s.national_id].filter(Boolean).join(' · '),
+  search: s.national_id || '',
+});
+
 function GuardianFormModal({ initial, onClose, onSaved }) {
   const isEdit = Boolean(initial.id);
+  const { can } = useAuth();
+  // Asociar alumnos es editar alumnos (el backend exige el mismo permiso).
+  const canLinkStudents = can('students', 'read') && can('students', 'update');
+  const { data: students } = useFetch(() => (canLinkStudents ? studentsApi.list() : Promise.resolve([])), [canLinkStudents]);
+  const { data: detail, loading: loadingDetail } = useFetch(
+    () => (isEdit && canLinkStudents ? studentsApi.getGuardian(initial.id) : Promise.resolve(null)),
+    [initial.id, canLinkStudents]
+  );
+  const originalLinks = useMemo(
+    () => (detail?.students || []).map((s) => ({ id: s.id, relationship: s.relationship || '', isPrimary: Boolean(s.is_primary) })),
+    [detail]
+  );
+  const [links, setLinks] = useState(null);
+  useEffect(() => {
+    if (links === null && (!isEdit || detail || !canLinkStudents)) setLinks(originalLinks);
+  }, [links, isEdit, detail, canLinkStudents, originalLinks]);
+  const studentOptions = useMemo(() => (students || []).map(studentOption), [students]);
   const [form, setForm] = useState({
     firstName: initial.first_name || '',
     lastName: initial.last_name || '',
@@ -778,7 +815,13 @@ function GuardianFormModal({ initial, onClose, onSaved }) {
     e.preventDefault();
     if (portalInvalid) return;
     try {
-      const saved = await run({ ...form, portal: buildPortalPayload(portal) });
+      // Los vínculos se envían solo si cambiaron (lista completa: el backend aplica la diferencia).
+      const sendLinks = canLinkStudents && links && (isEdit ? linksChanged(originalLinks, links) : links.length > 0);
+      const saved = await run({
+        ...form,
+        portal: buildPortalPayload(portal),
+        ...(sendLinks ? { students: links.map((l) => ({ studentId: l.id, relationship: l.relationship || null, isPrimary: l.isPrimary })) } : {}),
+      });
       const portalMsg = saved.temporaryPassword
         ? ' · usuario del portal listo'
         : saved.portal && !portal.existing
@@ -793,7 +836,7 @@ function GuardianFormModal({ initial, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={isEdit ? `Editar a ${initial.first_name} ${initial.last_name}` : 'Nuevo representante'} onClose={onClose}>
+    <Modal title={isEdit ? `Editar a ${initial.first_name} ${initial.last_name}` : 'Nuevo representante'} onClose={onClose} size={canLinkStudents ? 'lg' : undefined}>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
@@ -815,10 +858,28 @@ function GuardianFormModal({ initial, onClose, onSaved }) {
         </div>
         <PortalAccessFields state={portal} setState={setPortal} fieldErrors={fieldErrors} />
 
-        {isEdit && (
-          <p className="text-sm" style={{ marginTop: 14 }}>
-            Para vincular o desvincular alumnos, hazlo desde la ficha de cada alumno.
-          </p>
+        {canLinkStudents && (
+          <div className="links-section">
+            <Field
+              label="Alumnos que representa"
+              error={fieldErrors.students}
+              hint="Busca por nombre, cédula o curso y marca a sus hijos o representados. Indica la relación y si es su representante principal."
+              full
+            >
+              {links === null || (isEdit && loadingDetail) ? (
+                <Spinner />
+              ) : (
+                <LinksField
+                  options={studentOptions}
+                  links={links}
+                  onChange={setLinks}
+                  primaryMode="each"
+                  placeholder="Buscar alumno por nombre, cédula o curso…"
+                  emptyText="Ningún alumno coincide con"
+                />
+              )}
+            </Field>
+          </div>
         )}
         <div className="form-actions">
           <Button type="button" variant="secondary" onClick={onClose}>

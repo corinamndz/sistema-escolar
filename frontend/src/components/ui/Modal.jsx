@@ -9,8 +9,9 @@ let openModals = 0;
 /**
  * Modal centrado con overlay difuminado (en móvil se muestra como hoja inferior).
  * `size`: 'sm' | 'lg'. `hideHeader` para diálogos que dibujan su propio encabezado.
+ * `className` / `overlayClassName`: clases extra del diálogo y del fondo (diseños especiales).
  */
-function Modal({ title, onClose, children, size, hideHeader }) {
+function Modal({ title, onClose, children, size, hideHeader, className = '', overlayClassName = '' }) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -27,8 +28,8 @@ function Modal({ title, onClose, children, size, hideHeader }) {
   }, []);
 
   return createPortal(
-    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
-      <div className={`modal ${size ? `modal--${size}` : ''}`} role="dialog" aria-modal="true" aria-label={title}>
+    <div className={`modal-overlay ${overlayClassName}`} onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+      <div className={`modal ${size ? `modal--${size}` : ''} ${className}`} role="dialog" aria-modal="true" aria-label={title}>
         {!hideHeader && (
           <div className="modal__header">
             <h3>{title}</h3>

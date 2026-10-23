@@ -22,6 +22,7 @@ import ImportButton from '../../../components/import/ImportButton';
 import ExportButton from '../../../components/ui/ExportButton';
 import { LEVEL_CODES, LevelBadge, LevelFilter } from '../../academics/levels';
 import StudentGroups, { sectionLabel } from '../components/StudentGroups';
+import LinksField, { linksChanged } from '../components/LinksField';
 
 const STATUS_LABELS = { active: ['Activo', 'success'], inactive: ['Inactivo', 'neutral'], graduated: ['Egresado', 'primary'], withdrawn: ['Retirado', 'danger'] };
 const STATUS_FILTERS = [
@@ -418,8 +419,33 @@ function StudentsPage() {
   );
 }
 
+/** Opción del selector de representantes: nombre, contacto y cédula. */
+const guardianOption = (g) => ({
+  id: g.id,
+  label: `${g.first_name} ${g.last_name}`,
+  sub: [g.national_id, g.phone, g.email].filter(Boolean).join(' · ') || 'Sin datos de contacto',
+  search: `${g.national_id || ''} ${g.email || ''} ${g.phone || ''}`,
+});
+
 function StudentFormModal({ initial, onClose, onSaved }) {
   const isEdit = Boolean(initial.id);
+  const { can } = useAuth();
+  // Para elegir representantes hay que poder verlos (el backend lo exige igual).
+  const canLinkGuardians = can('guardians', 'read');
+  const { data: guardians } = useFetch(() => (canLinkGuardians ? studentsApi.listGuardians() : Promise.resolve([])), [canLinkGuardians]);
+  const { data: detail, loading: loadingDetail } = useFetch(
+    () => (isEdit && canLinkGuardians ? studentsApi.getOne(initial.id) : Promise.resolve(null)),
+    [initial.id, canLinkGuardians]
+  );
+  const originalLinks = useMemo(
+    () => (detail?.guardians || []).map((g) => ({ id: g.id, relationship: g.relationship || '', isPrimary: Boolean(g.is_primary) })),
+    [detail]
+  );
+  const [links, setLinks] = useState(null);
+  useEffect(() => {
+    if (links === null && (!isEdit || detail || !canLinkGuardians)) setLinks(originalLinks);
+  }, [links, isEdit, detail, canLinkGuardians, originalLinks]);
+  const guardianOptions = useMemo(() => (guardians || []).map(guardianOption), [guardians]);
   const [form, setForm] = useState({
     firstName: initial.first_name || '',
     lastName: initial.last_name || '',
@@ -444,6 +470,10 @@ function StudentFormModal({ initial, onClose, onSaved }) {
       nationalId: form.nationalId || undefined,
       ...(isEdit ? { status: form.status } : {}),
     };
+    // Representantes: lista completa, solo si cambió (el backend aplica la diferencia).
+    if (canLinkGuardians && links && (isEdit ? linksChanged(originalLinks, links) : links.length > 0)) {
+      data.guardians = links.map((l) => ({ guardianId: l.id, relationship: l.relationship || null, isPrimary: l.isPrimary }));
+    }
     try {
       await run(data);
       toast.success(isEdit ? 'Cambios guardados' : 'Alumno registrado', `${form.firstName} ${form.lastName}`);
@@ -455,7 +485,7 @@ function StudentFormModal({ initial, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={isEdit ? 'Editar alumno' : 'Nuevo alumno'} onClose={onClose}>
+    <Modal title={isEdit ? 'Editar alumno' : 'Nuevo alumno'} onClose={onClose} size={canLinkGuardians ? 'lg' : undefined}>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
@@ -480,6 +510,27 @@ function StudentFormModal({ initial, onClose, onSaved }) {
                   </option>
                 ))}
               </Select>
+            </Field>
+          )}
+          {canLinkGuardians && (
+            <Field
+              label="Representantes"
+              error={fieldErrors.guardians}
+              hint="Busca por nombre, cédula, teléfono o correo. El primero que agregues queda como principal; puedes cambiarlo."
+              full
+            >
+              {links === null || (isEdit && loadingDetail) ? (
+                <Spinner />
+              ) : (
+                <LinksField
+                  options={guardianOptions}
+                  links={links}
+                  onChange={setLinks}
+                  primaryMode="single"
+                  placeholder="Buscar representante por nombre, cédula o correo…"
+                  emptyText="Ningún representante coincide con"
+                />
+              )}
             </Field>
           )}
         </div>

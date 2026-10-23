@@ -4,6 +4,7 @@ import appointmentsApi from '../../../api/endpoints/appointments.api';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
+import { useLiveRefresh } from '../../../hooks/useLiveRefresh';
 import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import Select from '../../../components/ui/Select';
@@ -46,7 +47,10 @@ function AppointmentsPage() {
   const { can, user } = useAuth();
   const toast = useToast();
   const confirm = useConfirm();
-  const { data, loading, error, refetch } = useFetch(() => appointmentsApi.list(), []);
+  const { data, setData, loading, error, refetch } = useFetch(() => appointmentsApi.list(), []);
+  // Las confirmaciones del portal aparecen solas (sin recargar ni parpadeo).
+  useLiveRefresh(() => appointmentsApi.list().then(setData).catch(() => {}), 20000);
+  const [resending, setResending] = useState(null);
   const [status, setStatus] = useState('');
   const [period, setPeriod] = useState('upcoming');
   const [editing, setEditing] = useState(null);
@@ -76,6 +80,20 @@ function AppointmentsPage() {
       refetch();
     } catch (err) {
       toast.error('No se pudo cambiar el estado', getErrorMessage(err));
+    }
+  };
+
+  /** "Reenviar aviso": vuelve a avisar al representante por los canales de la cita. */
+  const resend = async (a) => {
+    setResending(a.id);
+    try {
+      const saved = await appointmentsApi.resend(a.id);
+      toast.success('Aviso reenviado', `${a.guardian_name} · ${notifiedText(saved.notified) || 'Aviso enviado.'}`);
+      setData((list) => (list || []).map((x) => (x.id === saved.id ? saved : x)));
+    } catch (err) {
+      toast.error('No se pudo reenviar el aviso', getErrorMessage(err));
+    } finally {
+      setResending(null);
     }
   };
 
@@ -126,14 +144,24 @@ function AppointmentsPage() {
     {
       key: 'status',
       header: 'Estado',
-      render: (a) => <Badge variant={APPOINTMENT_STATUSES[a.status].variant}>{APPOINTMENT_STATUSES[a.status].label}</Badge>,
+      render: (a) => (
+        <div>
+          <Badge variant={APPOINTMENT_STATUSES[a.status].variant}>{APPOINTMENT_STATUSES[a.status].label}</Badge>
+          {a.status === 'confirmed' && a.confirmed_at && (
+            <div className="cell-person__sub">
+              {a.confirmed_by_guardian ? 'Por el representante' : `Por ${a.confirmed_by_name || 'el colegio'}`} · {new Date(a.confirmed_at).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}
+            </div>
+          )}
+          {a.status === 'pending' && !a.guardian_has_portal && <div className="cell-person__sub">Sin usuario del portal: confírmala tú</div>}
+        </div>
+      ),
       sortValue: (a) => STATUS_KEYS.indexOf(a.status),
     },
     {
       key: 'notify',
       header: 'Aviso',
       render: (a) => (
-        <div className="appt-notify" title={a.last_notified_at ? `Último aviso: ${new Date(a.last_notified_at).toLocaleString('es')}` : 'Aún no se ha enviado ningún aviso'}>
+        <div className="appt-notify" title={a.last_notified_at ? `Último aviso: ${new Date(a.last_notified_at).toLocaleString('es')}${a.reminder_count ? ` (${a.reminder_count} reenvío${a.reminder_count === 1 ? '' : 's'})` : ''}` : 'Aún no se ha enviado ningún aviso'}>
           <span className={`appt-notify__ch ${a.notify_bell ? 'is-on' : ''}`} aria-label={a.notify_bell ? 'Campana: sí' : 'Campana: no'}>
             <Icon name="bell" size={14} />
           </span>
@@ -141,13 +169,23 @@ function AppointmentsPage() {
             <Icon name="mail" size={14} />
           </span>
           {a.last_notified_at && <Icon name="check" size={13} className="appt-notify__sent" />}
+          {a.last_notified_at && <span className="appt-notify__when">{new Date(a.last_notified_at).toLocaleString('es', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
         </div>
       ),
+      sortValue: (a) => a.last_notified_at || '',
     },
   ];
 
   const rowActions = manage('update')
     ? [
+        {
+          key: 'resend',
+          icon: resending ? 'clock' : 'bell',
+          label: 'Reenviar aviso',
+          // Citas vigentes con algún canal: las pendientes, sobre todo, para que la familia confirme.
+          show: (a) => ['pending', 'confirmed'].includes(a.status) && !a.is_past && (a.notify_bell || a.notify_email),
+          onClick: (a) => resending !== a.id && resend(a),
+        },
         { key: 'confirm', icon: 'checkCircle', label: 'Marcar como confirmada', show: (a) => a.status === 'pending', onClick: (a) => changeStatus(a, 'confirmed') },
         { key: 'complete', icon: 'check', label: 'Marcar como concluida', show: (a) => ['pending', 'confirmed'].includes(a.status) && a.meeting_date <= today, onClick: (a) => changeStatus(a, 'completed') },
         { key: 'cancel', icon: 'x', label: 'Cancelar la cita', show: (a) => ['pending', 'confirmed'].includes(a.status), onClick: (a) => changeStatus(a, 'cancelled') },

@@ -11,6 +11,7 @@ import Icon from '../../../components/ui/Icon';
 import { LevelBadge } from '../../academics/levels';
 import UpcomingEvents from '../../portal/components/UpcomingEvents';
 import { formatAmounts, formatDate, formatMoney } from '../../payments/paymentStatus';
+import MyAppointments from '../../appointments/components/MyAppointments';
 
 const STUDENT_STATUS = {
   active: ['Activo', 'success'],
@@ -197,6 +198,9 @@ function GuardianPanel() {
           }
         />
       </div>
+
+      {/* Citas por confirmar: lo primero que la familia debe atender. */}
+      <MyAppointments />
 
       <UpcomingEvents />
 

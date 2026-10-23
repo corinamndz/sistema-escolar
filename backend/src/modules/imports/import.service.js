@@ -5,6 +5,7 @@ const IMPORTERS = Object.fromEntries(
   [
     require('./importers/students.importer'),
     require('./importers/staff.importer'),
+    require('./importers/guardians.importer'),
     require('./importers/subjects.importer'),
     require('./importers/scores.importer'),
     require('./importers/schoolPeriods.importer'),

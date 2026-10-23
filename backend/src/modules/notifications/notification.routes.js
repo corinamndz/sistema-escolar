@@ -34,6 +34,8 @@ router.post(
   })
 );
 
+// Conteo de no leídas (aviso al iniciar sesión): más liviano que la lista completa.
+router.get('/unread-count', asyncHandler(async (req, res) => res.status(200).json(await service.unreadSummary(req.db, req.tenantId, req.user.id))));
 router.get('/', asyncHandler(async (req, res) => res.status(200).json(await service.listForUser(req.db, req.tenantId, req.user.id))));
 router.post('/read-all', asyncHandler(async (req, res) => res.status(200).json(await service.markAllRead(req.db, req.tenantId, req.user.id))));
 router.post(

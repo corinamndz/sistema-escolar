@@ -1,7 +1,8 @@
 /** Estados de una cita con padres (mismos códigos que el backend). */
 export const APPOINTMENT_STATUSES = {
-  pending: { label: 'Pendiente', variant: 'warning' },
-  confirmed: { label: 'Confirmada', variant: 'info' },
+  // Así nace toda cita: el representante la confirma desde el portal.
+  pending: { label: 'Pendiente de confirmación', short: 'Por confirmar', variant: 'warning' },
+  confirmed: { label: 'Confirmada', short: 'Confirmada', variant: 'info' },
   completed: { label: 'Concluida', variant: 'success' },
   cancelled: { label: 'Cancelada', variant: 'neutral' },
 };

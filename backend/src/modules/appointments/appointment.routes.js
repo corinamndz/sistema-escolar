@@ -16,6 +16,8 @@ router.get('/options', ...manage('create'), controller.options);
 router.get('/:id', can('read'), controller.get);
 router.post('/', ...manage('create'), controller.create);
 router.put('/:id', ...manage('update'), controller.update);
+// Reenviar el aviso al representante (campana y/o correo) y registrar la fecha.
+router.post('/:id/resend', ...manage('update'), controller.resend);
 router.delete('/:id', ...manage('delete'), controller.remove);
 
 module.exports = router;

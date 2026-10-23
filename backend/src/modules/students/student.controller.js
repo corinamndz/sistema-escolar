@@ -2,14 +2,45 @@ const { z } = require('zod');
 const service = require('./student.service');
 const academicRecord = require('../academics/academicRecord.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
+const { ApiError } = require('../../utils/ApiError');
 const teacherScope = require('../access/teacherScope');
+
+const relationshipSchema = z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? null : v), z.string().trim().max(30, 'Máximo 30 caracteres.').nullable().optional());
+
+/**
+ * Vínculos N:M (student_guardians) enviados desde los formularios: la lista
+ * COMPLETA deseada (se agregan, actualizan y quitan las diferencias).
+ * Sin el campo, los vínculos no se tocan.
+ */
+const guardianLinksSchema = z
+  .array(z.object({ guardianId: z.string().uuid(), relationship: relationshipSchema, isPrimary: z.boolean().default(false) }))
+  .max(10, 'Máximo 10 representantes por alumno.')
+  .refine((list) => new Set(list.map((g) => g.guardianId)).size === list.length, 'Hay un representante repetido.')
+  .optional();
+const studentLinksSchema = z
+  .array(z.object({ studentId: z.string().uuid(), relationship: relationshipSchema, isPrimary: z.boolean().default(false) }))
+  .max(50, 'Máximo 50 alumnos por representante.')
+  .refine((list) => new Set(list.map((s) => s.studentId)).size === list.length, 'Hay un alumno repetido.')
+  .optional();
 
 const studentSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   birthDate: z.string().optional(),
   nationalId: z.string().optional(),
+  guardians: guardianLinksSchema,
 });
+
+/**
+ * Asociar es editar AMBOS registros: desde la ficha del alumno se exige además
+ * leer representantes; desde la del representante, poder editar alumnos (igual
+ * que POST /students/:id/guardians).
+ */
+const can = (req, module, action) => Boolean(req.permissions?.[module]?.[`can_${action}`]);
+function assertCanLink(req, { fromStudent }) {
+  if (fromStudent && !can(req, 'guardians', 'read')) throw ApiError.forbidden('Para asociar representantes necesitas permiso para ver Representantes.');
+  if (!fromStudent && !can(req, 'students', 'update')) throw ApiError.forbidden('Para asociar alumnos necesitas permiso para editar Alumnos.');
+}
 
 // Un input vacío llega como "": se guarda como null (así, al editar, borrar el
 // teléfono o el correo realmente lo borra, y un correo vacío no falla .email()).
@@ -47,6 +78,7 @@ const guardianSchema = z.object({
   phone: optionalText(z.string().trim().max(30)),
   email: optionalText(z.string().trim().email('Correo inválido.').max(150)),
   portal: portalSchema,
+  students: studentLinksSchema,
 });
 
 const linkSchema = z.object({
@@ -74,12 +106,14 @@ const getStudent = asyncHandler(async (req, res) => {
 
 const createStudent = asyncHandler(async (req, res) => {
   const data = studentSchema.parse(req.body);
+  if (data.guardians) assertCanLink(req, { fromStudent: true });
   const row = await service.createStudent(req.db, req.tenantId, data);
   res.status(201).json(row);
 });
 
 const updateStudent = asyncHandler(async (req, res) => {
   const data = studentSchema.partial().extend({ status: z.enum(['active', 'inactive', 'graduated', 'withdrawn']).optional() }).parse(req.body);
+  if (data.guardians) assertCanLink(req, { fromStudent: true });
   const row = await service.updateStudent(req.db, req.tenantId, req.params.id, data);
   res.status(200).json(row);
 });
@@ -119,12 +153,14 @@ const getGuardian = asyncHandler(async (req, res) => {
 
 const createGuardian = asyncHandler(async (req, res) => {
   const data = guardianSchema.parse(req.body);
+  if (data.students) assertCanLink(req, { fromStudent: false });
   const row = await service.createGuardian(req.db, req.tenantId, data);
   res.status(201).json(row);
 });
 
 const updateGuardian = asyncHandler(async (req, res) => {
   const data = guardianSchema.partial().parse(req.body);
+  if (data.students) assertCanLink(req, { fromStudent: false });
   const row = await service.updateGuardian(req.db, req.tenantId, req.params.id, data);
   res.status(200).json(row);
 });

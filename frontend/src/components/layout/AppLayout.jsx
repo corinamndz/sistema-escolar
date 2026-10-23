@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import ErrorBoundary from '../ErrorBoundary';
 import SchoolFooter from './SchoolFooter';
+import LoginNoticeModal from './LoginNoticeModal';
 
 const COLLAPSED_KEY = 'ui.sidebarCollapsed';
 
@@ -57,6 +58,8 @@ function AppLayout() {
 
       <div className={`app-main ${collapsed ? 'app-main--collapsed' : ''}`}>
         <Topbar onOpenMobileSidebar={() => setMobileOpen(true)} />
+        {/* Notificaciones sin leer: aviso una vez por inicio de sesión. */}
+        <LoginNoticeModal />
         <main className="app-content" key={pathname}>
           {/* Si una pantalla falla al dibujarse, se muestra un aviso (no la app en blanco). */}
           <ErrorBoundary resetKey={pathname}>

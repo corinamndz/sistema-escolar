@@ -7701,3 +7701,175 @@ body.is-printing-boleta { overflow: hidden; }
   .generator-preview__bar .input, .generator__pickers .input { min-width: 0; width: 100%; }
   .generator-preview__grid { max-height: none; }
 }
+
+/* ── Selector múltiple con búsqueda (components/ui/MultiSelect) ───────────── */
+.multiselect { position: relative; }
+.multiselect__control {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  min-height: 42px; height: auto; padding: 6px 10px; cursor: text;
+}
+.multiselect__control input {
+  flex: 1 1 160px; min-width: 120px; border: 0; outline: 0; background: transparent;
+  font: inherit; color: var(--color-text); padding: 2px 0;
+}
+.multiselect.is-open .multiselect__control { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-ring); }
+.multiselect__icon { color: var(--color-text-muted); flex-shrink: 0; }
+.multiselect__count { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; }
+.multiselect__chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px;
+  border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary-text); font-size: 12.5px; font-weight: 600;
+}
+.multiselect__chip button { display: inline-flex; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 2px; border-radius: 50%; }
+.multiselect__list {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+  max-height: 260px; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+.multiselect__option { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--radius-xs); cursor: pointer; }
+.multiselect__option.is-active { background: var(--color-primary-softer); }
+.multiselect__check {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--color-border); color: var(--color-on-primary);
+}
+.multiselect__option.is-selected .multiselect__check { background: var(--color-primary); border-color: var(--color-primary); }
+.multiselect__text { display: flex; flex-direction: column; min-width: 0; }
+.multiselect__text strong { font-size: 14px; font-weight: 600; }
+.multiselect__text small { font-size: 12px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.multiselect__empty { padding: 8px; font-size: 13px; color: var(--color-text-muted); }
+
+/* ── Vínculos alumno ↔ representante en los formularios ── */
+.links-section { margin-top: 16px; }
+.links-field { display: flex; flex-direction: column; gap: 8px; }
+.links-field__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.links-field__row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) 190px auto auto; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface);
+}
+.links-field__row.is-primary { border-color: var(--color-primary); background: var(--color-primary-softer); }
+.links-field__who { display: flex; flex-direction: column; min-width: 0; }
+.links-field__who strong { font-size: 14px; }
+.links-field__who small { font-size: 12px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.links-field__primary { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.links-field__remove { display: inline-flex; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; padding: 6px; border-radius: var(--radius-xs); }
+.links-field__remove:hover { background: var(--color-danger-soft); color: var(--color-danger-text); }
+@media (max-width: 640px) {
+  .links-field__row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .links-field__relationship { grid-column: 1 / -1; }
+  .links-field__primary { grid-column: 1 / 3; }
+}
+
+/* ── Citas: último aviso y panel del representante ── */
+.appt-notify__when { font-size: 11.5px; color: var(--color-text-muted); margin-left: 2px; white-space: nowrap; }
+.my-appts { margin-bottom: 24px; }
+.my-appts__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.my-appts__item {
+  display: grid; grid-template-columns: minmax(170px, 220px) minmax(0, 1fr) auto; gap: 14px; align-items: center;
+  padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface);
+}
+.my-appts__item.is-pending { border-color: var(--color-warning-border); background: var(--color-warning-soft); }
+.my-appts__date, .my-appts__topic { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.my-appts__date span, .my-appts__topic span { font-size: 13px; }
+.my-appts__date span { color: var(--color-text-secondary); display: inline-flex; align-items: center; gap: 4px; }
+.my-appts__action { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 720px) {
+  .my-appts__item { grid-template-columns: 1fr; gap: 8px; }
+  .my-appts__action { justify-content: flex-start; }
+}
+
+/* ── Aviso al iniciar sesión: notificaciones sin leer ──────────────────────── */
+/* Fondo oscuro translúcido y centrado (equivale a backdrop-blur-sm bg-black/40). */
+.modal-overlay.modal-overlay--notice {
+  align-items: center;
+  padding: 24px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+/* Esquinas rounded-2xl, sombra shadow-lg; sin padding: cada franja trae el suyo. */
+.modal.modal--notice {
+  max-width: 420px;
+  padding: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px -12px rgba(15, 23, 42, 0.28), 0 8px 16px -8px rgba(15, 23, 42, 0.12);
+}
+.login-notice { position: relative; display: flex; flex-direction: column; }
+.login-notice__close {
+  position: absolute; top: 12px; right: 12px; z-index: 1;
+  display: inline-flex; padding: 6px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--color-text-muted); cursor: pointer;
+}
+.login-notice__close:hover { background: var(--color-surface-muted); color: var(--color-text); }
+
+/* Cabecera: círculo suave con la campana y el contador en su esquina. */
+.login-notice__header {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 32px 28px 20px;
+  background: linear-gradient(180deg, var(--color-primary-softer), var(--color-surface) 85%);
+}
+.login-notice__bell {
+  position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 72px; height: 72px; margin-bottom: 16px; border-radius: 50%;
+  background: var(--color-primary-soft); color: var(--color-primary-text);
+  box-shadow: 0 0 0 8px var(--color-primary-softer);
+}
+.login-notice__bell > svg { animation: login-notice-ring 1.2s ease-in-out 0.25s 2; transform-origin: 50% 10%; }
+.login-notice__count {
+  position: absolute; top: -2px; right: -2px;
+  display: flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 26px; padding: 0 7px; border-radius: 999px;
+  background: var(--color-danger); color: #fff;
+  font-size: 13px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+  border: 3px solid var(--color-surface);
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.35);
+}
+@keyframes login-notice-ring {
+  0%, 100% { transform: rotate(0); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-12deg); }
+  45% { transform: rotate(8deg); }
+  60% { transform: rotate(-4deg); }
+}
+@media (prefers-reduced-motion: reduce) { .login-notice__bell > svg { animation: none; } }
+.login-notice__heading { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; color: var(--color-text); }
+.login-notice__lead { margin: 8px 0 0; max-width: 320px; font-size: 14px; line-height: 1.5; color: var(--color-text-muted); }
+
+/* Lista: una tarjeta sutil por aviso (gris muy claro, bordes redondeados). */
+.login-notice__body { padding: 4px 24px 20px; }
+.login-notice__section {
+  margin: 0 0 10px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted);
+}
+.login-notice__cards { display: flex; flex-direction: column; gap: 8px; }
+.login-notice__card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: 12px;
+  background: var(--color-surface-muted); border: 1px solid var(--color-border);
+}
+.login-notice__tile {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 38px; height: 38px; border-radius: 10px;
+  background: var(--color-primary-soft); color: var(--color-primary-text);
+}
+.login-notice__card--payment_confirmed .login-notice__tile { background: var(--color-success-soft); color: var(--color-success-text); }
+.login-notice__card--school_event .login-notice__tile,
+.login-notice__card--club_enrollment .login-notice__tile { background: var(--color-warning-soft); color: var(--color-warning-text); }
+.login-notice__card--sanction .login-notice__tile { background: var(--color-danger-soft); color: var(--color-danger-text); }
+.login-notice__text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.login-notice__title {
+  font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--color-text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.login-notice__meta { font-size: 12.5px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-notice__dot { color: var(--color-border-strong, #cbd5e1); }
+.login-notice__more { margin: 10px 0 0; font-size: 13px; text-align: center; color: var(--color-text-muted); }
+
+/* Pie: secundario + primario, con aire. */
+.login-notice__footer {
+  display: flex; gap: 12px; justify-content: flex-end;
+  padding: 16px 24px 20px; border-top: 1px solid var(--color-border); background: var(--color-surface);
+}
+.login-notice__footer .btn { flex: 1 1 0; justify-content: center; min-height: 44px; border-radius: 10px; }
+@media (max-width: 480px) {
+  .login-notice__footer { flex-direction: column-reverse; }
+}

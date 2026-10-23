@@ -2,6 +2,7 @@ const router = require('express').Router();
 const controller = require('./portal.controller');
 const paymentAccounts = require('../payments/paymentAccounts.controller');
 const events = require('../events/event.controller');
+const appointments = require('../appointments/appointment.controller');
 const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 
@@ -10,6 +11,9 @@ const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 router.use(authMiddleware, tenantMiddleware);
 
 router.get('/me', controller.getMyPortal);
+// Citas con el colegio de la familia: verlas y confirmar asistencia.
+router.get('/appointments', appointments.myAppointments);
+router.post('/appointments/:id/confirm', appointments.confirmMine);
 router.get('/students/:studentId/grades', controller.getStudentGrades);
 router.get('/students/:studentId/evaluation-plans/:planId', controller.getStudentPlanDetail);
 router.get('/students/:studentId/history', controller.getStudentHistory);

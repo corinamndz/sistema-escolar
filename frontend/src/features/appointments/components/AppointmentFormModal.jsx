@@ -92,7 +92,7 @@ function AppointmentFormModal({ initial, onClose, onSaved }) {
         location: form.location.trim(),
         topic: form.topic.trim(),
         notes: form.notes.trim(),
-        status: form.status,
+        ...(isEdit ? { status: form.status } : {}),
         notifyBell: Boolean(form.notifyBell),
         notifyEmail: Boolean(form.notifyEmail),
       });
@@ -153,15 +153,21 @@ function AppointmentFormModal({ initial, onClose, onSaved }) {
             <Field label="Lugar" error={fieldErrors.location} hint="Opcional.">
               <Input value={form.location} onChange={set('location')} maxLength={150} placeholder="Ej. Dirección, Coordinación…" />
             </Field>
-            <Field label="Estado" error={fieldErrors.status}>
-              <Select value={form.status} onChange={set('status')}>
-                {STATUS_KEYS.map((s) => (
-                  <option key={s} value={s}>
-                    {APPOINTMENT_STATUSES[s].label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            {isEdit ? (
+              <Field label="Estado" error={fieldErrors.status} hint="El representante la confirma desde el portal; también puedes marcarla tú.">
+                <Select value={form.status} onChange={set('status')}>
+                  {STATUS_KEYS.map((s) => (
+                    <option key={s} value={s}>
+                      {APPOINTMENT_STATUSES[s].label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : (
+              <Field label="Estado" hint="Toda cita nueva queda pendiente hasta que el representante la confirme en el portal.">
+                <Input value={APPOINTMENT_STATUSES.pending.label} disabled />
+              </Field>
+            )}
             <Field label="Detalle" full error={fieldErrors.notes} hint="Opcional: antecedentes, qué traer o, al concluir, los acuerdos. No se muestra a la familia.">
               <textarea className="input" rows={3} maxLength={2000} value={form.notes} onChange={set('notes')} />
             </Field>

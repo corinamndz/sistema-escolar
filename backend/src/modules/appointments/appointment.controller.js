@@ -17,6 +17,7 @@ const fields = z.object({
   location: optionalText(150),
   topic: z.string().trim().min(1, 'Escribe el motivo de la cita.').max(200),
   notes: optionalText(2000),
+  // Al CREAR se ignora: toda cita nace pendiente de confirmación. Al editar, el personal puede cambiarlo.
   status: z.enum(service.STATUSES).optional(),
   notifyBell: z.boolean(),
   notifyEmail: z.boolean(),
@@ -59,7 +60,7 @@ const create = asyncHandler(async (req, res) => {
 
 /** PUT /appointments/:id (parcial) */
 const update = asyncHandler(async (req, res) => {
-  res.status(200).json(await service.updateAppointment(req.db, req.tenantId, uuid.parse(req.params.id), updateSchema.parse(req.body)));
+  res.status(200).json(await service.updateAppointment(req.db, req.tenantId, uuid.parse(req.params.id), updateSchema.parse(req.body), req.user.id));
 });
 
 /** DELETE /appointments/:id */
@@ -67,4 +68,21 @@ const remove = asyncHandler(async (req, res) => {
   res.status(200).json(await service.deleteAppointment(req.db, req.tenantId, uuid.parse(req.params.id)));
 });
 
-module.exports = { list, options, get, create, update, remove };
+/** POST /appointments/:id/resend — vuelve a avisar al representante (campana y/o correo de la cita). */
+const resend = asyncHandler(async (req, res) => {
+  res.status(200).json(await service.resendNotice(req.db, req.tenantId, uuid.parse(req.params.id)));
+});
+
+// ---- Portal del representante (filtrado por el usuario autenticado) ----
+
+/** GET /portal/appointments — citas próximas de la familia. */
+const myAppointments = asyncHandler(async (req, res) => {
+  res.status(200).json(await service.listMyAppointments(req.db, req.tenantId, req.user.id));
+});
+
+/** POST /portal/appointments/:id/confirm — el representante confirma su asistencia. */
+const confirmMine = asyncHandler(async (req, res) => {
+  res.status(200).json(await service.confirmMyAppointment(req.db, req.tenantId, req.user.id, uuid.parse(req.params.id)));
+});
+
+module.exports = { list, options, get, create, update, remove, resend, myAppointments, confirmMine };

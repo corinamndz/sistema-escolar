@@ -21,7 +21,10 @@ export const APP_ROUTES = new Set([
   'login', 'tenant', 'roles', 'staff', 'students', 'guardians', 'academics', 'schedules',
   'discipline', 'clubs', 'events', 'evaluation-plans', 'programmatic-content', 'grading',
   'payments', 'portal', 'api', 'storage', 'assets', 'src', 'node_modules', '@vite', '@react-refresh',
+  // Faltaban: recargar estas páginas (F5) o abrir sus enlaces las tomaba como colegio y mandaba al login.
+  'appointments', 'notifications', 'configuracion-inicial', 'secciones-academicas',
 ]);
+// ⚠ Toda ruta NUEVA de primer nivel de App.jsx va aquí (y en admin-modo-educa: utils/slug.js y lib/slug.js).
 
 function firstSegment(pathname) {
   try {

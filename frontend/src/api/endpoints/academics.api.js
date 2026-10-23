@@ -15,6 +15,10 @@ const academicsApi = {
   /** Borra el año y todo lo asociado. `confirmName`: el nombre exacto del año. */
   deleteSchoolPeriod: (id, confirmName) => axiosClient.delete(`/academics/school-periods/${id}`, { data: { confirmName } }).then((r) => r.data),
   /** Finaliza el año (exige que no queden alumnos cursando) / lo reabre para corregir. */
+  /** Transición de año: qué tiene el año de origen, qué se comparte, avisos y nombre/fechas sugeridos. */
+  getRolloverPreview: (id) => get(`/academics/school-periods/${id}/rollover-preview`),
+  /** `{ target: { name, startDate?, endDate? } | { periodId }, options: { sections, teachers, terms, evaluationRules, timeSlots, schedule, tuition } }` */
+  executeRollover: (id, data) => post(`/academics/school-periods/${id}/rollover`, data),
   closeSchoolPeriod: (id) => post(`/academics/school-periods/${id}/close`),
   reopenSchoolPeriod: (id) => post(`/academics/school-periods/${id}/reopen`),
   /** Normativa del año: nota mínima, reprobadas permitidas, promedio de lapsos (aritmético/ponderado), redondeo. */

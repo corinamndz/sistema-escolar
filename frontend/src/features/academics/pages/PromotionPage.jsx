@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import academicsApi from '../../../api/endpoints/academics.api';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
@@ -46,6 +46,7 @@ function PromotionPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const { data: periods, refetch: refetchPeriods } = useFetch(() => academicsApi.listSchoolPeriods(), []);
+  const [searchParams] = useSearchParams();
 
   const [fromId, setFromId] = useState('');
   const [toId, setToId] = useState('');
@@ -63,6 +64,14 @@ function PromotionPage() {
   // Sugerencia inicial: el año que finaliza = el que empezó primero; el nuevo = el siguiente.
   useEffect(() => {
     if (!periods || fromId) return;
+    // Desde el asistente de transición de año: ?from=<origen>&to=<nuevo>.
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
+    if (from && to && openPeriods.some((p) => p.id === from) && openPeriods.some((p) => p.id === to)) {
+      setFromId(from);
+      setToId(to);
+      return;
+    }
     const sorted = [...openPeriods].sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || '')));
     if (sorted.length >= 2) {
       setFromId(sorted[0].id);

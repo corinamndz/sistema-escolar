@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const service = require('./academic.service');
 const periodDeletion = require('./periodDeletion.service');
+const periodRollover = require('./periodRollover.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 
 // ---- Periodos escolares ----
@@ -25,6 +26,29 @@ const getPeriodDeletionImpact = asyncHandler(async (req, res) => {
 const deleteSchoolPeriod = asyncHandler(async (req, res) => {
   const { confirmName } = z.object({ confirmName: z.string().trim().min(1, 'Escribe el nombre del año escolar para confirmar.') }).parse(req.body || {});
   res.status(200).json(await periodDeletion.deleteSchoolPeriod(req.db, req.tenantId, z.string().uuid().parse(req.params.id), { confirmName }));
+});
+
+/** GET /academics/school-periods/:id/rollover-preview — qué se puede copiar del año al siguiente. */
+const getRolloverPreview = asyncHandler(async (req, res) => {
+  res.status(200).json(await periodRollover.previewRollover(req.db, req.tenantId, z.string().uuid().parse(req.params.id)));
+});
+
+const rolloverSchema = z.object({
+  target: z.union([
+    z.object({ periodId: z.string().uuid() }),
+    z.object({
+      name: z.string().trim().min(1, 'Escribe el nombre del nuevo año escolar.').max(30),
+      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+    }),
+  ]),
+  options: z.object(Object.fromEntries(periodRollover.PARTS.map((p) => [p, z.boolean().optional()]))),
+});
+
+/** POST /academics/school-periods/:id/rollover — copia la estructura al año nuevo (todo o nada). */
+const executeRollover = asyncHandler(async (req, res) => {
+  const data = rolloverSchema.parse(req.body);
+  res.status(201).json(await periodRollover.executeRollover(req.db, req.tenantId, z.string().uuid().parse(req.params.id), data));
 });
 
 // ---- Aulas ----
@@ -113,6 +137,8 @@ module.exports = {
   deleteSection,
   getPeriodDeletionImpact,
   deleteSchoolPeriod,
+  getRolloverPreview,
+  executeRollover,
   listSchoolPeriods,
   createSchoolPeriod,
   listClassrooms,

@@ -2,6 +2,9 @@ const { ApiError } = require('../../utils/ApiError');
 const mailer = require('../../services/email/mailer');
 const { CATALOG } = require('./notificationPreferences.service');
 const payments = require('../payments/payment.service');
+const { hashOrGenerate } = require('../auth/userAccount.service');
+const { invalidatePermissionsCache } = require('../../middlewares/permission.middleware');
+const { sendWelcomeEmail } = require('../../services/email/welcomeEmail');
 
 /**
  * Log de notificaciones (Administración): historial de lo que el colegio
@@ -9,9 +12,9 @@ const payments = require('../payments/payment.service');
  *   bell    campana (notifications)
  *   outbox  avisos por correo encolados (email_outbox)
  *   mail    correos directos: credenciales y comprobantes (mail_log, migración 043)
- * Cada registro se puede reenviar (salvo las credenciales: su contraseña
- * temporal no se guarda). El reenvío queda como un registro nuevo enlazado
- * al original (`resend_of`).
+ * Cada registro se puede reenviar. Las credenciales solo si su envío falló:
+ * como la contraseña temporal no se guarda, se genera una nueva. El reenvío
+ * queda como un registro nuevo enlazado al original (`resend_of`).
  */
 
 const SOURCES = ['bell', 'outbox', 'mail'];
@@ -116,6 +119,12 @@ async function mailRows(trx, tenantId, since) {
     .modify((q) => since && q.andWhere('created_at', '>=', since))
     .orderBy('created_at', 'desc')
     .limit(PER_SOURCE);
+  // Registros anteriores sin ref_id: el usuario se ubica por su correo (es su username).
+  const legacy = rows.filter((r) => r.kind === 'credentials' && r.status === 'failed' && !r.ref_id).map((r) => r.to_email.toLowerCase());
+  const known = new Set(
+    legacy.length ? (await trx('users').where('tenant_id', tenantId).whereIn(trx.raw('lower(username)'), legacy).pluck('username')).map((u) => u.toLowerCase()) : []
+  );
+  const credentialsResendable = (r) => r.status === 'failed' && (Boolean(r.ref_id) || known.has(r.to_email.toLowerCase()));
   return rows.map((r) => ({
     id: `mail:${r.id}`,
     source: 'mail',
@@ -134,11 +143,15 @@ async function mailRows(trx, tenantId, since) {
     created_at: r.created_at,
     sent_at: r.status === 'sent' ? r.created_at : null,
     resend_of: r.resend_of || null,
-    resendable: r.kind === 'payment_receipt' && Boolean(r.ref_id),
+    resendable: r.kind === 'credentials' ? credentialsResendable(r) : Boolean(r.ref_id),
     resend_hint:
-      r.kind === 'credentials'
-        ? 'Por seguridad la contraseña temporal no se guarda: genera un acceso nuevo desde la ficha del representante o del personal.'
-        : 'Regenera el comprobante en PDF y lo envía de nuevo al representante.',
+      r.kind !== 'credentials'
+        ? 'Regenera el comprobante en PDF y lo envía de nuevo al representante.'
+        : credentialsResendable(r)
+          ? 'Se generará una contraseña temporal NUEVA y se enviará al usuario (la anterior nunca le llegó).'
+          : r.status === 'sent'
+            ? 'Ya se entregó. Por seguridad la contraseña temporal no se guarda: si la perdió, genera un acceso nuevo desde la ficha del representante o del personal.'
+            : 'El usuario de este correo ya no existe: genera un acceso nuevo desde la ficha del representante o del personal.',
   }));
 }
 
@@ -207,14 +220,54 @@ async function resendOutbox(trx, tenantId, id, userId) {
     : { ok: true, id: `outbox:${copy.id}`, message: `Correo reenviado a ${m.to_email}.` };
 }
 
+/**
+ * Reenvía unas credenciales cuyo envío falló: genera una contraseña temporal
+ * nueva (la anterior no se guarda) y solo la aplica si el correo salió, para
+ * no invalidar una clave que el administrador pudo haber entregado a mano.
+ */
+async function resendCredentials(trx, tenantId, r, actorId) {
+  if (r.status !== 'failed') {
+    throw ApiError.conflict('Estas credenciales ya se entregaron. Si el usuario perdió su contraseña, genera un acceso nuevo desde su ficha.');
+  }
+  const user = await trx('users')
+    .where('tenant_id', tenantId)
+    .modify((q) => (r.ref_id ? q.andWhere('id', r.ref_id) : q.andWhereRaw('lower(username) = ?', [r.to_email.toLowerCase()])))
+    .first();
+  if (!user) throw ApiError.notFound('El usuario de estas credenciales ya no existe.');
+  if (user.status !== 'active') throw ApiError.unprocessable('El usuario está inactivo: actívalo antes de reenviarle el acceso.');
+  if (user.last_login_at) {
+    throw ApiError.conflict('El usuario ya inició sesión con su contraseña: no se reenvían credenciales para no cambiársela.');
+  }
+  const newer = await trx('mail_log')
+    .where({ tenant_id: tenantId, kind: 'credentials', status: 'sent' })
+    .andWhere((q) => q.where('ref_id', user.id).orWhereRaw('lower(to_email) = ?', [user.username.toLowerCase()]))
+    .andWhere('created_at', '>', r.created_at)
+    .first('id');
+  if (newer) throw ApiError.conflict('Ya se le envió un acceso más reciente a este usuario.');
+
+  const { hash, temporaryPassword } = await hashOrGenerate(null);
+  const tenant = await trx('tenants').where('id', tenantId).first('name');
+  const { sent, error } = await sendWelcomeEmail(trx, tenantId, {
+    to: user.username,
+    schoolName: tenant?.name ?? '',
+    fullName: user.full_name,
+    username: user.username,
+    temporaryPassword,
+    accountId: user.id,
+    resendOf: r.id,
+    actorId,
+  });
+  if (!sent) return { ok: false, message: `No se pudo reenviar: ${error}` };
+
+  await trx('users').where({ id: user.id }).update({ password_hash: hash, must_change_password: true, updated_at: trx.fn.now() });
+  invalidatePermissionsCache(tenantId, user.id);
+  return { ok: true, message: `Credenciales nuevas enviadas a ${user.username}.` };
+}
+
 async function resendMail(trx, tenantId, id, userId) {
   const r = await trx('mail_log').where({ id, tenant_id: tenantId }).first();
   if (!r) throw ApiError.notFound('Correo no encontrado.');
-  if (r.kind === 'credentials') {
-    throw ApiError.unprocessable(
-      'Las credenciales no se pueden reenviar: por seguridad su contraseña temporal no se guarda. Genera un acceso nuevo desde la ficha del representante o del personal.'
-    );
-  }
+  if (r.kind === 'credentials') return resendCredentials(trx, tenantId, r, userId);
   const payment = r.ref_id ? await trx('payments').where({ id: r.ref_id, tenant_id: tenantId }).first() : null;
   if (!payment || payment.status !== 'paid') throw ApiError.conflict('El pago ya no está confirmado: no hay comprobante para reenviar.');
   const { sent, error } = await payments.sendReceiptEmail(trx, tenantId, payment.id, { resendOf: r.id, userId });
@@ -223,6 +276,7 @@ async function resendMail(trx, tenantId, id, userId) {
 
 async function resend(trx, tenantId, { source, id, userId }) {
   if (source === 'bell') return resendBell(trx, tenantId, id);
+  await mailer.assertMailReady(trx, tenantId);
   if (source === 'outbox') return resendOutbox(trx, tenantId, id, userId);
   return resendMail(trx, tenantId, id, userId);
 }

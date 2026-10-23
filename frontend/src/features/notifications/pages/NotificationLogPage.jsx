@@ -9,6 +9,7 @@ import Tabs from '../../../components/ui/Tabs';
 import Select from '../../../components/ui/Select';
 import Badge from '../../../components/ui/Badge';
 import Icon from '../../../components/ui/Icon';
+import Button from '../../../components/ui/Button';
 import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 
@@ -46,19 +47,23 @@ function NotificationLogPage() {
   const [tab, setTab] = useState('all');
   const { data, loading, error, refetch } = useFetch(() => notificationLogApi.list(days), [days]);
   const canResend = can('tenant_settings', 'update');
+  const [resendingId, setResendingId] = useState(null);
 
   const rows = useMemo(() => data || [], [data]);
   const counts = useMemo(() => Object.fromEntries(TABS.map((t) => [t.key, rows.filter(t.match).length])), [rows]);
   const visible = rows.filter(TABS.find((t) => t.key === tab).match);
 
   const resend = async (r) => {
+    if (resendingId) return;
     const ok = await confirm({
-      title: r.channel === 'bell' ? '¿Publicar de nuevo en la campana?' : '¿Reenviar este correo?',
+      title:
+        r.channel === 'bell' ? '¿Publicar de nuevo en la campana?' : r.type === 'credentials' ? '¿Enviar credenciales nuevas?' : '¿Reenviar este correo?',
       message: `"${r.subject}" a ${r.recipient}. ${r.resend_hint}`,
       icon: 'refresh',
       confirmLabel: 'Reenviar',
     });
     if (!ok) return;
+    setResendingId(r.id);
     try {
       const res = await notificationLogApi.resend(r.source, r.row_id);
       if (res.ok) toast.success('Reenviado', res.message);
@@ -66,6 +71,8 @@ function NotificationLogPage() {
       refetch();
     } catch (err) {
       toast.error('No se pudo reenviar', getErrorMessage(err));
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -128,10 +135,27 @@ function NotificationLogPage() {
               {r.error}
             </div>
           )}
-          {!r.resendable && r.source === 'mail' && (
-            <div className="cell-person__sub" title={r.resend_hint}>
-              <Icon name="lock" size={11} /> No se puede reenviar
-            </div>
+          {r.status === 'failed' && r.resendable && canResend ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="refresh"
+              title={r.resend_hint}
+              loading={resendingId === r.id}
+              loadingText="Reenviando…"
+              disabled={Boolean(resendingId)}
+              onClick={() => resend(r)}
+              style={{ marginTop: 6 }}
+            >
+              Reenviar
+            </Button>
+          ) : (
+            !r.resendable &&
+            r.source === 'mail' && (
+              <div className="cell-person__sub" title={r.resend_hint}>
+                <Icon name="lock" size={11} /> No se puede reenviar
+              </div>
+            )
           )}
         </div>
       ),

@@ -5,7 +5,10 @@ const tuition = require('../payments/tuition.service');
 // ---------- Periodos escolares (años) ----------
 
 async function listSchoolPeriods(trx, tenantId) {
-  return trx('school_periods').where({ tenant_id: tenantId }).orderBy('start_date', 'desc');
+  return trx('school_periods as sp')
+    .where({ 'sp.tenant_id': tenantId })
+    .select('sp.*', trx.raw('(SELECT count(*)::int FROM sections s WHERE s.school_period_id = sp.id) AS section_count'))
+    .orderBy('sp.start_date', 'desc');
 }
 
 /** Todo año escolar nace con sus 3 lapsos (Lapso 1, 2 y 3; las fechas se completan después). */

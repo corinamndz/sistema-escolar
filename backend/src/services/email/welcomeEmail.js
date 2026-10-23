@@ -11,12 +11,13 @@ async function loginUrl(trx, tenantId) {
 }
 
 /**
- * Envía el correo de bienvenida con credenciales temporales al usuario
- * recién activado. Los errores se silencian: el correo es un plus y no
- * debe bloquear la operación principal.
+ * Envía el correo de bienvenida con credenciales temporales. Un fallo de
+ * envío no lanza: queda como "Fallido" en el log (con el usuario en `ref_id`
+ * para poder reenviarlo) y se devuelve { sent, error }.
  */
-async function sendWelcomeEmail(trx, tenantId, { to, schoolName, fullName, username, temporaryPassword }) {
-  if (!to) return;
+async function sendWelcomeEmail(trx, tenantId, { to, schoolName, fullName, username, temporaryPassword, accountId = null, resendOf = null, actorId = null }) {
+  if (!to) return { sent: false, error: 'Sin destinatario.' };
+  const log = { kind: 'credentials', to, toName: fullName, refId: accountId, resendOf, userId: actorId };
   try {
     const url = await loginUrl(trx, tenantId);
     const html = `<!doctype html><html><body style="margin:0;padding:24px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
@@ -51,12 +52,14 @@ async function sendWelcomeEmail(trx, tenantId, { to, schoolName, fullName, usern
     const subject = `Acceso activado — ${schoolName}`;
     try {
       await mailer.sendMail({ trx, tenantId, to, subject, html, text });
-      await mailLog.record(trx, tenantId, { kind: 'credentials', to, toName: fullName, subject });
+      await mailLog.record(trx, tenantId, { ...log, subject });
+      return { sent: true, error: null };
     } catch (err) {
-      await mailLog.record(trx, tenantId, { kind: 'credentials', to, toName: fullName, subject, error: err.message });
+      await mailLog.record(trx, tenantId, { ...log, subject, error: err.message });
+      return { sent: false, error: err.message };
     }
-  } catch {
-    // Error silenciado: el correo de bienvenida es un plus, no un requisito.
+  } catch (err) {
+    return { sent: false, error: err.message };
   }
 }
 

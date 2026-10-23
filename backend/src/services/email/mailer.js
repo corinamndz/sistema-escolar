@@ -2,6 +2,7 @@ const nodemailer = require('nodemailer');
 const { encrypt, decrypt } = require('../crypto/secretBox');
 const google = require('../google/googleOAuth');
 const { GmailApiTransport } = require('./gmailApiTransport');
+const { ApiError } = require('../../utils/ApiError');
 
 /**
  * Envío de correos.
@@ -169,6 +170,42 @@ function transportFor(cfg) {
   return transports.get(cfg.key);
 }
 
+const MAIL_SETUP_HINT = 'Configúralo en Configuración → Correo y envía un correo de prueba antes de continuar.';
+
+// Valores de ejemplo de plantillas/documentación: nunca son un servidor real.
+const PLACEHOLDER_HOST = /(^|\.)example\.(com|org|net)$|\.(example|invalid|test)$|^(smtp\.)?(your|tu|mi)[-_.]?(smtp|server|servidor|host)/i;
+const PLACEHOLDER_USER = /@example\.(com|org|net)$|^(user|usuario|your[-_.]?email|tu[-_.]?correo)(@|$)/i;
+
+/** Problema de la configuración resuelta (texto para el usuario) o null si sirve para enviar. */
+function configProblem(cfg) {
+  if (!cfg) return 'El envío de correos no está configurado.';
+  if (!cfg.enabled) return 'El envío de correos está desactivado para este colegio.';
+  if (cfg.provider === 'google') return null;
+  const host = String(cfg.options?.host || '').trim();
+  const user = String(cfg.options?.auth?.user || '').trim();
+  if (!host) return 'Falta el servidor de correo (SMTP).';
+  if (PLACEHOLDER_HOST.test(host)) return `El servidor de correo "${host}" es un valor de ejemplo, no un servidor real.`;
+  if (user && PLACEHOLDER_USER.test(user)) return `La cuenta de correo "${user}" es un valor de ejemplo.`;
+  if (user && !cfg.options.auth.pass) return 'Falta la contraseña de la cuenta de correo.';
+  return null;
+}
+
+/**
+ * Exige que el colegio tenga un correo utilizable antes de una operación que
+ * depende de él (activar accesos con contraseña temporal, reenviar correos).
+ * Lanza ApiError 422 con un mensaje que indica dónde configurarlo.
+ */
+async function assertMailReady(trx, tenantId) {
+  let problem;
+  try {
+    problem = configProblem(await resolveMailConfig(trx, tenantId));
+  } catch (err) {
+    if (err.code !== 'MAIL_DISABLED') throw err;
+    problem = err.message;
+  }
+  if (problem) throw ApiError.unprocessable(`${problem} ${MAIL_SETUP_HINT}`, [{ path: 'mail', message: 'Correo no configurado.' }]);
+}
+
 /**
  * Envía un correo con la configuración del colegio (o la global).
  * @param {object} opts
@@ -192,4 +229,4 @@ async function sendMail({ trx = null, tenantId = null, to, subject, html, text, 
 const escapeHtml = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-module.exports = { sendMail, resolveMailConfig, createTransport, transportOptions, formatFrom, normalizePassword, escapeHtml, MailDisabledError };
+module.exports = { sendMail, assertMailReady, resolveMailConfig, createTransport, transportOptions, formatFrom, normalizePassword, escapeHtml, MailDisabledError };

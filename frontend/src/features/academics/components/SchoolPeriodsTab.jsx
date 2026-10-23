@@ -14,6 +14,8 @@ import HelpTip from '../../../components/ui/HelpTip';
 import ImportActions from '../../../components/import/ImportActions';
 import { useAuth } from '../../../context/AuthContext';
 import DeleteSchoolPeriodModal from './DeleteSchoolPeriodModal';
+import YearRolloverWizard from './YearRolloverWizard';
+import Icon from '../../../components/ui/Icon';
 
 /** `onChanged` avisa al asistente de configuración para recalcular el progreso. */
 function SchoolPeriodsTab({ onChanged }) {
@@ -22,6 +24,8 @@ function SchoolPeriodsTab({ onChanged }) {
   const { run, loading: saving, error: saveError, fieldErrors } = useMutation(academicsApi.createSchoolPeriod);
   const { can } = useAuth();
   const [deleting, setDeleting] = useState(null); // año escolar a eliminar (abre el modal de advertencia)
+  const [rollover, setRollover] = useState(null); // { sourceId } abre el asistente de transición de año
+  const canRollover = can('academics', 'create') && rows?.length > 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -62,6 +66,18 @@ function SchoolPeriodsTab({ onChanged }) {
           </RequirePermission>
         </div>
         <Alert>{error}</Alert>
+        {canRollover && (
+          <div className="rollover-banner">
+            <Icon name="sparkles" size={22} />
+            <div>
+              <strong>¿Empieza un nuevo año escolar?</strong>
+              <p className="text-sm text-muted">Copia secciones, docentes, horario y mensualidades del año anterior en pocos pasos.</p>
+            </div>
+            <Button size="sm" icon="arrowRight" onClick={() => setRollover({ sourceId: null })}>
+              Preparar nuevo año
+            </Button>
+          </div>
+        )}
         {loading ? (
           <Spinner />
         ) : (
@@ -70,7 +86,21 @@ function SchoolPeriodsTab({ onChanged }) {
             rows={rows}
             emptyMessage="Aún no hay años escolares."
             // Nunca borra directo: abre el modal con la advertencia y la confirmación por nombre.
-            rowActions={can('academics', 'delete') ? [{ key: 'delete', icon: 'trash', label: 'Eliminar año escolar', tone: 'delete', onClick: (r) => setDeleting(r) }] : []}
+            rowActions={[
+              ...(canRollover ? [{ key: 'rollover', icon: 'layers', label: 'Copiar estructura a un año nuevo', onClick: (r) => setRollover({ sourceId: r.id }) }] : []),
+              ...(can('academics', 'delete') ? [{ key: 'delete', icon: 'trash', label: 'Eliminar año escolar', tone: 'delete', onClick: (r) => setDeleting(r) }] : []),
+            ]}
+          />
+        )}
+        {rollover && (
+          <YearRolloverWizard
+            periods={rows}
+            initialSourceId={rollover.sourceId}
+            onClose={() => setRollover(null)}
+            onDone={() => {
+              refetch();
+              onChanged?.();
+            }}
           />
         )}
         {deleting && (

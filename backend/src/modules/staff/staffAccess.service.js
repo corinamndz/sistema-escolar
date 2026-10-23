@@ -2,6 +2,7 @@ const { ApiError } = require('../../utils/ApiError');
 const { invalidatePermissionsCache } = require('../../middlewares/permission.middleware');
 const { normalizeEmail, assertUsernameAvailable, hashOrGenerate, deactivateUser } = require('../auth/userAccount.service');
 const { sendWelcomeEmail } = require('../../services/email/welcomeEmail');
+const { assertMailReady } = require('../../services/email/mailer');
 
 /**
  * Usuario de acceso al sistema de un miembro del personal, gestionado como
@@ -112,6 +113,8 @@ async function createStaffAccess(trx, tenantId, staffId, { email, password, role
   await assertUsernameAvailable(trx, tenantId, username);
   const { ids: validRoles, roles } = await assertRoles(trx, tenantId, roleIds, actor);
   await applyCoordinationLevel(trx, staff, roles, coordinationLevel);
+  // La contraseña temporal solo llega por correo: sin correo utilizable no se activa.
+  if (!password) await assertMailReady(trx, tenantId);
   const { hash, temporaryPassword } = await hashOrGenerate(password);
 
   const fullName = `${staff.first_name} ${staff.last_name}`;
@@ -136,6 +139,7 @@ async function createStaffAccess(trx, tenantId, staffId, { email, password, role
       fullName,
       username,
       temporaryPassword,
+      accountId: user.id,
     });
   }
 
@@ -164,6 +168,7 @@ async function updateStaffAccess(trx, tenantId, staffId, changes, actorUserId, a
     await assertUsernameAvailable(trx, tenantId, payload.username, { exceptUserId: account.id });
   }
   if (changes.resetPassword || changes.password) {
+    if (!changes.password) await assertMailReady(trx, tenantId);
     const result = await hashOrGenerate(changes.password);
     payload.password_hash = result.hash;
     temporaryPassword = result.temporaryPassword;
@@ -212,6 +217,7 @@ async function updateStaffAccess(trx, tenantId, staffId, changes, actorUserId, a
       fullName: payload.full_name,
       username: emailTo,
       temporaryPassword,
+      accountId: account.id,
     });
   }
 

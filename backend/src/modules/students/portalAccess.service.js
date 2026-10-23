@@ -8,6 +8,7 @@ const {
 } = require('../auth/userAccount.service');
 const { invalidatePermissionsCache } = require('../../middlewares/permission.middleware');
 const { sendWelcomeEmail } = require('../../services/email/welcomeEmail');
+const { assertMailReady } = require('../../services/email/mailer');
 
 /**
  * Usuario de acceso al portal para representantes.
@@ -78,6 +79,8 @@ async function applyPortalAccess(trx, tenantId, guardian, portal) {
     const username = normalizeEmail(portal.email);
     await assertUsernameAvailable(trx, tenantId, username);
     const roleId = await getGuardianRoleId(trx, tenantId);
+    // La contraseña temporal solo llega por correo: sin correo utilizable no se activa.
+    if (!portal.password) await assertMailReady(trx, tenantId);
 
     const passwordHash = await hashFor(portal.password);
     const [user] = await trx('users')
@@ -101,6 +104,7 @@ async function applyPortalAccess(trx, tenantId, guardian, portal) {
         fullName,
         username,
         temporaryPassword,
+        accountId: user.id,
       });
     }
 
@@ -118,6 +122,7 @@ async function applyPortalAccess(trx, tenantId, guardian, portal) {
     payload.username = username;
   }
   if (portal.resetPassword || portal.password) {
+    if (!portal.password) await assertMailReady(trx, tenantId);
     payload.password_hash = await hashFor(portal.password);
     payload.must_change_password = temporaryPassword !== null;
   }
@@ -137,6 +142,7 @@ async function applyPortalAccess(trx, tenantId, guardian, portal) {
       fullName,
       username: emailTo,
       temporaryPassword,
+      accountId: current.id,
     });
   }
 

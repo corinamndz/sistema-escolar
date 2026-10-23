@@ -51,6 +51,20 @@ const schedulesApi = {
       .then((r) => ({ blob: r.data, fileName: fileNameFrom(r.headers, 'evaluaciones.pdf') })),
   /** Horario semanal del docente autenticado. */
   mine: () => get('/schedules/mine'),
+
+  // ---- Generador automático (vista previa → guardar) ----
+  /**
+   * Genera una VISTA PREVIA (no toca el horario): { sectionIds?, mode: 'fill' | 'replace' }.
+   * → { id, mode, days, slots, sections, teachers, entries (nuevas), kept (ya estaban), conflicts, stats }
+   */
+  generate: (periodId, body) => axiosClient.post(`/schedules/periods/${periodId}/generate`, body).then((r) => r.data),
+  /** Guarda en el horario la vista previa revisada. 409 si los datos cambiaron desde entonces. */
+  applyGeneration: (id) => axiosClient.post(`/schedules/generations/${id}/apply`).then((r) => r.data),
+  discardGeneration: (id) => axiosClient.delete(`/schedules/generations/${id}`).then((r) => r.data),
+  /** Bloques NO disponibles de un docente en el año: { teacher, cells: [{ day_of_week, time_slot_id, reason }] }. */
+  getUnavailability: (periodId, staffId) => get(`/schedules/periods/${periodId}/unavailability/${staffId}`),
+  /** Reemplaza sus bloques no disponibles: [{ dayOfWeek, timeSlotId, reason? }] → { cells, warnings } */
+  saveUnavailability: (periodId, staffId, cells) => axiosClient.put(`/schedules/periods/${periodId}/unavailability/${staffId}`, { cells }).then((r) => r.data),
 };
 
 export default schedulesApi;

@@ -99,6 +99,28 @@ async function saveSlots(trx, tenantId, periodId, slots) {
 }
 
 // ---------------------------------------------------------------------------
+// Disponibilidad de los docentes (migración 050)
+// ---------------------------------------------------------------------------
+
+let unavailabilityReady = false;
+async function hasUnavailability(trx) {
+  if (unavailabilityReady) return true;
+  const { rows } = await trx.raw("SELECT to_regclass('teacher_unavailability') IS NOT NULL AS ok");
+  unavailabilityReady = rows[0].ok;
+  return unavailabilityReady;
+}
+
+/** Bloques no disponibles de esos docentes: [{ staff_id, day_of_week, time_slot_id, reason }]. */
+async function unavailabilityOf(trx, tenantId, staffIds, slotIds) {
+  if (!staffIds.length || !slotIds.length || !(await hasUnavailability(trx))) return [];
+  return trx('teacher_unavailability')
+    .where({ tenant_id: tenantId })
+    .whereIn('staff_id', staffIds)
+    .whereIn('time_slot_id', slotIds)
+    .select('staff_id', 'day_of_week', 'time_slot_id', 'reason');
+}
+
+// ---------------------------------------------------------------------------
 // Horario de una sección
 // ---------------------------------------------------------------------------
 
@@ -191,6 +213,16 @@ async function getSectionSchedule(trx, tenantId, sectionId, { editable = false }
       subject_name: e.subject_name,
     });
   });
+  // Bloques en que el docente no está disponible: también se marcan al arrastrar.
+  (await unavailabilityOf(trx, tenantId, teacherIds, slots.map((s) => s.id))).forEach((u) => {
+    (result.teacher_busy[u.staff_id] ||= []).push({
+      day_of_week: u.day_of_week,
+      time_slot_id: u.time_slot_id,
+      where: 'No disponible',
+      subject_name: u.reason || 'Bloque no disponible para el docente',
+      unavailable: true,
+    });
+  });
   return result;
 }
 
@@ -248,6 +280,13 @@ async function placeEntry(trx, tenantId, sectionId, { subjectId, dayOfWeek, time
   const clash = await entriesQuery(trx, tenantId).where({ ...where, 'cs.staff_id': subject.teacher.id }).modify((q) => entryId && q.whereNot('cs.id', entryId)).first();
   if (clash) {
     throw ApiError.conflict(conflictMessage(clash), [{ path: 'teacher', message: 'Cruce de horario del docente.' }]);
+  }
+  const blocked = (await unavailabilityOf(trx, tenantId, [subject.teacher.id], [timeSlotId])).find((u) => u.day_of_week === Number(dayOfWeek));
+  if (blocked) {
+    const when = `${dayName(dayOfWeek).toLowerCase()} ${hhmm(slot.start_time)}–${hhmm(slot.end_time)}`;
+    throw ApiError.conflict(`El profesor ${subject.teacher.name} no está disponible el ${when}${blocked.reason ? ` (${blocked.reason})` : ''}.`, [
+      { path: 'teacher', message: 'Docente no disponible.' },
+    ]);
   }
 
   const row = { subject_id: subjectId, staff_id: subject.teacher.id, day_of_week: dayOfWeek, time_slot_id: timeSlotId };

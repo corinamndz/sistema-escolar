@@ -7625,3 +7625,79 @@ body.is-printing-boleta { overflow: hidden; }
   .boleta-table tr { page-break-inside: avoid; }
   .boleta-signatures { page-break-inside: avoid; }
 }
+
+/* ── Generador automático de horarios ─────────────────────────────────────── */
+/* Botón destacado en la cabecera de Horarios (acento + primario). */
+.btn.btn--generate {
+  background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 55%, var(--color-accent-2)));
+  color: var(--color-on-primary);
+  box-shadow: 0 4px 14px -4px rgba(var(--color-primary-rgb), 0.6);
+}
+.btn.btn--generate:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 8px 20px -6px rgba(var(--color-primary-rgb), 0.7);
+}
+
+.generator { display: flex; flex-direction: column; gap: 14px; }
+.generator__label { margin: 4px 0 -6px; font-size: 13px; font-weight: 600; color: var(--color-text-secondary); }
+.generator__scope { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.generator__pickers { display: flex; flex-wrap: wrap; gap: 8px; }
+.generator__pickers .input { min-width: 160px; }
+.generator__modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.generator__mode {
+  display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; text-align: left;
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface);
+  color: var(--color-text); cursor: pointer; font: inherit;
+}
+.generator__mode span { display: flex; flex-direction: column; gap: 2px; }
+.generator__mode small { color: var(--color-text-muted); font-size: 12.5px; line-height: 1.4; }
+.generator__mode:hover { border-color: var(--color-primary); }
+.generator__mode.is-selected { border-color: var(--color-primary); background: var(--color-primary-softer); box-shadow: 0 0 0 3px var(--color-primary-ring); }
+.generator__mode.is-selected > svg { color: var(--color-primary-text); }
+.generator__tip { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--color-text-muted); }
+
+.generator-progress { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 28px 8px; text-align: center; }
+.generator-progress__spinner {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 3px solid var(--color-primary-soft); border-top-color: var(--color-primary);
+  animation: generator-spin 0.9s linear infinite;
+}
+@keyframes generator-spin { to { transform: rotate(360deg); } }
+.generator-progress__steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; font-size: 13.5px; }
+.generator-progress__steps li { display: flex; align-items: center; gap: 8px; color: var(--color-text-muted); opacity: 0.6; }
+.generator-progress__steps li.is-current { color: var(--color-text); opacity: 1; font-weight: 600; }
+.generator-progress__steps li.is-done { color: var(--color-success-text); opacity: 1; }
+
+.generator-summary { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid; }
+.generator-summary > div { display: flex; flex-direction: column; gap: 2px; }
+.generator-summary span { font-size: 13px; }
+.generator-summary.is-complete { background: var(--color-success-soft); border-color: var(--color-success-border); color: var(--color-success-text); }
+.generator-summary.is-partial { background: var(--color-warning-soft); border-color: var(--color-warning-border); color: var(--color-warning-text); }
+
+.generator-conflicts { border: 1px solid var(--color-danger-border); background: var(--color-danger-soft); border-radius: var(--radius-sm); padding: 10px 14px; }
+.generator-conflicts h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 14px; color: var(--color-danger-text); }
+.generator-conflicts ul, .generator-warnings ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 1.45; }
+.generator-warnings { font-size: 13px; color: var(--color-text-secondary); }
+.generator-warnings summary { cursor: pointer; font-weight: 600; margin-bottom: 4px; }
+
+.generator-preview__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.generator-preview__bar .input { width: auto; min-width: 200px; }
+.generator-preview__grid { max-height: 52vh; overflow: auto; }
+
+/* ── Disponibilidad del docente ── */
+.availability__bar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.availability__bar > * { flex: 1 1 220px; }
+.availability__days { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 10px; }
+.availability__grid .schedule-grid__cell { cursor: pointer; }
+.schedule-grid__cell.is-unavailable {
+  background: repeating-linear-gradient(-45deg, var(--color-danger-soft), var(--color-danger-soft) 6px, var(--color-surface) 6px, var(--color-surface) 12px);
+  box-shadow: inset 0 0 0 1px var(--color-danger);
+}
+.schedule-grid__cell.is-unavailable .schedule-grid__hint { color: var(--color-danger-text); }
+.schedule-grid__cell.is-available .schedule-grid__hint { color: var(--color-text-muted); font-weight: 500; }
+.schedule-grid__cell.is-available:hover { background: var(--color-primary-softer); }
+
+@media (max-width: 640px) {
+  .generator-preview__bar .input, .generator__pickers .input { min-width: 0; width: 100%; }
+  .generator-preview__grid { max-height: none; }
+}

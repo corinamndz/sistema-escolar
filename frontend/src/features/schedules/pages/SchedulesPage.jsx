@@ -19,6 +19,8 @@ import AssignmentsView from '../components/AssignmentsView';
 import EvaluationCalendar from '../components/EvaluationCalendar';
 import { TERM_OPTIONS } from '../../evaluation-plans/terms';
 import QuickAssign from '../components/QuickAssign';
+import ScheduleGeneratorModal from '../components/ScheduleGeneratorModal';
+import TeacherAvailabilityModal from '../components/TeacherAvailabilityModal';
 import { blobErrorMessage, saveBlob } from '../../../utils/download';
 
 /**
@@ -114,6 +116,9 @@ function SchedulesPage() {
   const [editingSlots, setEditingSlots] = useState(false);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [generating, setGenerating] = useState(false); // modal del generador automático
+  const [availabilityFor, setAvailabilityFor] = useState(null); // { teacherId } | null
+  const [scheduleVersion, setScheduleVersion] = useState(0); // recarga las vistas tras guardar lo generado
 
   // Año por defecto: el EN CURSO (el que contiene la fecha de hoy). Si hay
   // varios años activos (p. ej. ya se creó el próximo), no se abre el futuro,
@@ -206,9 +211,10 @@ function SchedulesPage() {
   const conflictAt = (item, day, slot) => {
     if (!item?.teacher) return null;
     const busy = data?.teacher_busy?.[item.teacher.id]?.find((b) => b.day_of_week === day && b.time_slot_id === slot.id);
-    return busy
-      ? `Conflicto de horario: El profesor ${item.teacher.name} ya dicta clase en ${busy.where} a esta misma hora (${busy.subject_name}).`
-      : null;
+    if (!busy) return null;
+    // Bloque marcado en "Disponibilidad docente".
+    if (busy.unavailable) return `El profesor ${item.teacher.name} no está disponible en este bloque (${busy.subject_name}).`;
+    return `Conflicto de horario: El profesor ${item.teacher.name} ya dicta clase en ${busy.where} a esta misma hora (${busy.subject_name}).`;
   };
 
   /** Clase que ya ocupa esa celda en la sección (sin contar la que se está moviendo). */
@@ -380,6 +386,22 @@ function SchedulesPage() {
                 Bloques horarios
               </Button>
             )}
+            {can('schedules', 'update') && period && !period.closed_at && (
+              <Button variant="secondary" icon="user" onClick={() => setAvailabilityFor({ teacherId: view === 'teacher' ? teacherId : '' })} disabled={!activeTeachers.length}>
+                Disponibilidad docente
+              </Button>
+            )}
+            {can('schedules', 'update') && period && !period.closed_at && (
+              <Button
+                className="btn--generate"
+                icon="sparkles"
+                onClick={() => setGenerating(true)}
+                disabled={noSlots}
+                title={noSlots ? 'Configura primero los bloques horarios del año' : 'Arma el horario de todas las secciones sin cruces de profesores'}
+              >
+                Generar Horario Automático
+              </Button>
+            )}
             <Button
               icon="download"
               onClick={downloadPdf}
@@ -497,7 +519,7 @@ function SchedulesPage() {
 
       {view === 'teacher' &&
         (teacherId && periodId ? (
-          <TeacherScheduleView periodId={periodId} teacherId={teacherId} onOpenSection={openSection} />
+          <TeacherScheduleView key={scheduleVersion} periodId={periodId} teacherId={teacherId} onOpenSection={openSection} />
         ) : (
           <p className="text-muted">Elige un docente para ver su semana completa en todas sus secciones, con sus huecos y su carga por día.</p>
         ))}
@@ -770,6 +792,36 @@ function SchedulesPage() {
             </div>
           )}
         </>
+      )}
+
+      {generating && period && (
+        <ScheduleGeneratorModal
+          periodId={periodId}
+          periodName={period.name}
+          grades={grades || []}
+          initialGradeId={view === 'section' ? gradeId : ''}
+          initialSectionId={view === 'section' ? sectionId : ''}
+          onClose={() => setGenerating(false)}
+          onOpenAvailability={() => setAvailabilityFor({ teacherId: '' })}
+          onApplied={() => {
+            setScheduleVersion((v) => v + 1);
+            refetchTeachers();
+            load(sectionId, { silent: true });
+          }}
+        />
+      )}
+
+      {availabilityFor && period && (
+        <TeacherAvailabilityModal
+          periodId={periodId}
+          slots={periodSlots || []}
+          teachers={activeTeachers}
+          initialTeacherId={availabilityFor.teacherId}
+          onClose={() => {
+            setAvailabilityFor(null);
+            if (sectionId) load(sectionId, { silent: true }); // marca los bloques no disponibles al arrastrar
+          }}
+        />
       )}
 
       {editingSlots && period && (

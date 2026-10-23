@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const service = require('./schedule.service');
+const generator = require('./scheduleGenerator.service');
 const evaluationCalendar = require('./evaluationCalendar.service');
 const academicService = require('../academics/academic.service');
 const assignmentService = require('../academics/assignment.service');
@@ -192,4 +193,51 @@ const mySchedule = asyncHandler(async (req, res) => {
   res.status(200).json(await service.getTeacherSchedule(req.db, req.tenantId, staff.id));
 });
 
-module.exports = { listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers, listGrades, listAssignments, downloadPdf, getEvaluationCalendar, downloadEvaluationPdf };
+// ---------------------------------------------------------------------------
+// Generador automático (vista previa → aplicar) y disponibilidad docente
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /schedules/periods/:periodId/generate — { sectionIds?, mode? }
+ *   mode 'fill' (por defecto): completa las horas que faltan respetando lo ya puesto;
+ *   mode 'replace': rehace desde cero el horario de esas secciones.
+ * No modifica el horario: devuelve la vista previa (ver scheduleGenerator.service).
+ */
+const generate = asyncHandler(async (req, res) => {
+  const body = z
+    .object({ sectionIds: z.array(uuid).max(300).optional(), mode: z.enum(['fill', 'replace']).default('fill') })
+    .parse(req.body || {});
+  res.status(201).json(await generator.generate(req.db, req.tenantId, uuid.parse(req.params.periodId), body, req.user.id));
+});
+
+/** GET /schedules/generations/:id — vista previa guardada (`stale`: los datos cambiaron). */
+const getGeneration = asyncHandler(async (req, res) => {
+  res.status(200).json(await generator.getGeneration(req.db, req.tenantId, uuid.parse(req.params.id)));
+});
+
+/** POST /schedules/generations/:id/apply — guarda en el horario lo revisado. */
+const applyGeneration = asyncHandler(async (req, res) => {
+  res.status(200).json(await generator.apply(req.db, req.tenantId, uuid.parse(req.params.id)));
+});
+
+/** DELETE /schedules/generations/:id — descarta la vista previa. */
+const discardGeneration = asyncHandler(async (req, res) => {
+  res.status(200).json(await generator.discard(req.db, req.tenantId, uuid.parse(req.params.id)));
+});
+
+/** GET /schedules/periods/:periodId/unavailability/:staffId */
+const getUnavailability = asyncHandler(async (req, res) => {
+  res.status(200).json(await generator.getUnavailability(req.db, req.tenantId, uuid.parse(req.params.periodId), uuid.parse(req.params.staffId)));
+});
+
+/** PUT /schedules/periods/:periodId/unavailability/:staffId — { cells: [{ dayOfWeek, timeSlotId, reason? }] } */
+const saveUnavailability = asyncHandler(async (req, res) => {
+  const { cells } = z
+    .object({
+      cells: z.array(z.object({ dayOfWeek: z.number().int().min(1).max(5), timeSlotId: uuid, reason: z.string().max(120).optional().nullable() })).max(200),
+    })
+    .parse(req.body);
+  res.status(200).json(await generator.saveUnavailability(req.db, req.tenantId, uuid.parse(req.params.periodId), uuid.parse(req.params.staffId), cells));
+});
+
+module.exports = { generate, getGeneration, applyGeneration, discardGeneration, getUnavailability, saveUnavailability, listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers, listGrades, listAssignments, downloadPdf, getEvaluationCalendar, downloadEvaluationPdf };

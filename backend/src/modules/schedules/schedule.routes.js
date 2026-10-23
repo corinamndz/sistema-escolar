@@ -30,4 +30,13 @@ router.post('/sections/:id/entries', admin('update'), controller.placeEntry);
 router.put('/entries/:id', admin('update'), controller.moveEntry);
 router.delete('/entries/:id', admin('update'), controller.removeEntry);
 
+// Generador automático: genera una vista previa; se guarda solo al aplicarla.
+router.post('/periods/:periodId/generate', admin('update'), controller.generate);
+router.get('/generations/:id', admin('read'), controller.getGeneration);
+router.post('/generations/:id/apply', admin('update'), controller.applyGeneration);
+router.delete('/generations/:id', admin('update'), controller.discardGeneration);
+// Disponibilidad de cada docente (bloques en que no puede dar clase).
+router.get('/periods/:periodId/unavailability/:staffId', admin('read'), controller.getUnavailability);
+router.put('/periods/:periodId/unavailability/:staffId', admin('update'), controller.saveUnavailability);
+
 module.exports = router;

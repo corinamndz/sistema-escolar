@@ -8063,3 +8063,119 @@ body.is-printing-boleta { overflow: hidden; }
 @media (max-width: 560px) {
   .rollover__footer { position: sticky; bottom: -22px; margin: 18px -18px -22px; padding: 12px 18px; border-radius: 0; }
 }
+
+/* =====================================================================
+   Panel lateral (Drawer) — usa .modal por debajo
+   ===================================================================== */
+.drawer-overlay.modal-overlay { justify-content: flex-end; align-items: stretch; padding: 0; overflow: hidden; }
+.modal.drawer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 520px;
+  height: 100%;
+  max-height: none;
+  padding: 0;
+  border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  animation: drawer-in 280ms var(--ease-out);
+}
+@keyframes drawer-in {
+  from { transform: translateX(40px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.drawer__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+.drawer__icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+}
+.drawer__titles { flex: 1; min-width: 0; }
+.drawer__titles h3 { margin: 0; font-size: 18px; }
+.drawer__titles p { margin: 2px 0 0; font-size: 13px; color: var(--color-text-muted); }
+.drawer__body { flex: 1; overflow-y: auto; padding: 18px 22px 24px; display: flex; flex-direction: column; gap: 14px; }
+.drawer__footer { padding: 12px 22px; border-top: 1px solid var(--color-border); background: var(--color-surface-muted); }
+@media (max-width: 560px) {
+  .modal.drawer { max-width: none; border-radius: 0; animation: sheet-in 280ms var(--ease-out); }
+  .drawer__header { padding: 16px 16px 14px; }
+  .drawer__body { padding: 16px; }
+  .drawer__footer { padding: 12px 16px; }
+}
+
+/* =====================================================================
+   Historial de tasas (RateHistoryDrawer)
+   ===================================================================== */
+.rate-log__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-softer);
+  border: 1px solid var(--color-primary-soft);
+}
+.rate-log__summary-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-primary-text); }
+.rate-log__summary strong { font-family: var(--font-display); font-size: 26px; line-height: 1.15; color: var(--color-text); }
+
+.rate-log__filters { display: flex; flex-direction: column; gap: 10px; }
+.rate-log__range { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.rate-log__range label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--color-text-muted); }
+.rate-log__range .input--sm { width: 150px; }
+
+.rate-log { display: flex; flex-direction: column; gap: 16px; transition: opacity 150ms; }
+.rate-log.is-loading { opacity: 0.5; }
+.rate-log__month { margin: 0 0 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+.rate-log__list { position: relative; margin: 0; padding: 0; list-style: none; }
+.rate-log__list::before { content: ''; position: absolute; left: 5px; top: 10px; bottom: 10px; width: 2px; background: var(--color-border); }
+.rate-log__item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 96px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 0 10px 22px;
+}
+.rate-log__item + .rate-log__item { border-top: 1px dashed var(--color-border); }
+.rate-log__dot {
+  position: absolute;
+  left: 0;
+  top: 15px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 2px solid var(--color-border-strong);
+}
+.rate-log__item.is-current .rate-log__dot { border-color: var(--color-success); background: var(--color-success); box-shadow: 0 0 0 4px var(--color-success-soft); }
+.rate-log__item.is-deleted .rate-log__dot { border-color: var(--color-danger); }
+.rate-log__date { display: flex; flex-direction: column; gap: 1px; }
+.rate-log__date strong { font-size: 13px; text-transform: capitalize; color: var(--color-text); }
+.rate-log__date span { font-size: 11px; color: var(--color-text-subtle); }
+.rate-log__main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rate-log__rate { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.rate-log__rate strong { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--color-text); }
+.rate-log__item.is-deleted .rate-log__rate strong { text-decoration: line-through; color: var(--color-text-muted); }
+.rate-log__change { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rate-log__change.is-up { color: var(--color-warning-text); }
+.rate-log__change.is-down { color: var(--color-success-text); }
+.rate-log__note { font-size: 12px; color: var(--color-warning-text); }
+.rate-log__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); }
+.rate-log__meta .chip { height: 20px; font-size: 11px; }
+.rate-log__tags { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.rate-log__empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 32px 12px; text-align: center; color: var(--color-text-muted); }
+.rate-log__empty p { margin: 0; }
+@media (max-width: 480px) {
+  .rate-log__item { grid-template-columns: 1fr auto; }
+  .rate-log__date { grid-column: 1 / -1; flex-direction: row; gap: 6px; align-items: baseline; }
+  .rate-log__tags { flex-direction: row; }
+}

@@ -10,7 +10,8 @@
 const NAV_SECTIONS = [
   {
     label: 'General',
-    items: [{ moduleCode: 'dashboard', label: 'Inicio', icon: 'home', path: '/', public: true }],
+    // Solo para quien tiene panel de inicio (ver hasDashboard); el resto entra directo a su módulo.
+    items: [{ moduleCode: 'dashboard', label: 'Inicio', icon: 'home', path: '/', home: true }],
   },
   {
     label: 'Comunidad escolar',
@@ -99,12 +100,29 @@ function navItemLabel(item, user) {
   return (user?.isRestrictedTeacher && item.teacherLabel) || (user?.coordinator && item.coordinatorLabel) || item.label;
 }
 
+/**
+ * ¿Tiene panel de inicio? Representantes y docentes ven su propio panel; el
+ * resto, solo con permiso "dashboard". Un rol acotado (ej. Finanzas) no lo
+ * tiene: su inicio es su primer módulo.
+ */
+function hasDashboard({ can, user }) {
+  return Boolean(user?.guardianId || user?.isRestrictedTeacher) || can('dashboard', 'read');
+}
+
 /** ¿Se muestra este ítem del menú al usuario? */
 function isNavItemVisible(item, { can, user }) {
+  if (item.home) return hasDashboard({ can, user });
   if (item.blockTeacher && user?.isRestrictedTeacher) return false;
   if (item.guardianOnly) return Boolean(user?.guardianId);
   if (item.teacherOnly) return Boolean(user?.teachingStaffId);
   return Boolean(item.public) || can(item.moduleCode, 'read');
 }
 
-export { NAV_SECTIONS, findRouteMeta, isNavItemVisible, navItemLabel };
+/** Página de inicio del usuario: el panel, o la primera página del menú que puede ver (null si ninguna). */
+function homePath(ctx) {
+  if (hasDashboard(ctx)) return '/';
+  const first = NAV_SECTIONS.flatMap((s) => s.items).find((item) => !item.home && isNavItemVisible(item, ctx));
+  return first?.path || null;
+}
+
+export { NAV_SECTIONS, findRouteMeta, isNavItemVisible, navItemLabel, hasDashboard, homePath };

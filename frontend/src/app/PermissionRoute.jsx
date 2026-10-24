@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import AccessDenied from './AccessDenied';
 
 /**
  * Bloquea una página completa si el usuario no tiene permiso de lectura sobre
@@ -12,14 +13,7 @@ function PermissionRoute({ module, blockTeacher = false, guardianOnly = false, t
 
   const ownOnly = guardianOnly ? Boolean(user?.guardianId) : teacherOnly ? Boolean(user?.teachingStaffId) : null;
   const allowed = !(blockTeacher && user?.isRestrictedTeacher) && (ownOnly ?? can(module, 'read'));
-  if (!allowed) {
-    return (
-      <div className="card">
-        <h2>Acceso restringido</h2>
-        <p>No tienes permiso para ver este módulo. Si crees que es un error, contacta a un administrador.</p>
-      </div>
-    );
-  }
+  if (!allowed) return <AccessDenied />;
 
   return <Outlet />;
 }

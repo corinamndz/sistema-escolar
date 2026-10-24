@@ -23,6 +23,10 @@ const paymentsApi = {
    * `currency`: moneda de referencia en que se estiman los pendientes (columnas conv_*).
    */
   list: (params) => get('/payments', params),
+  // Datos de otros módulos para los formularios, bajo el permiso de Pagos (rol Finanzas).
+  schoolPeriodOptions: () => get('/payments/options/school-periods'),
+  studentOptions: () => get('/payments/options/students'),
+  studentGuardianOptions: (studentId) => get(`/payments/options/students/${studentId}/guardians`),
   /** Totales por estado + `total_ref` en `currency` (o la predeterminada). */
   summary: (params) => get('/payments/summary', params),
   listMine: (params) => get('/payments/mine', params),
@@ -77,6 +81,8 @@ const paymentsApi = {
   currencyDeletionImpact: (code) => get(`/payments/currencies/${code}/deletion-impact`),
   /** Elimina la moneda JUNTO con sus pagos y tasas. confirmCode: el código (obligatorio si tiene registros). */
   removeCurrency: (code, confirmCode) => axiosClient.delete(`/payments/currencies/${code}`, { data: confirmCode ? { confirmCode } : {} }).then((r) => r.data),
+  /** Historial de cambios de la tasa: `{ from?, to? }` por fecha valor → { current, items: [{ action, rate_date, rate, previous_rate, change_pct, source, changed_by_name, changed_at, is_current, is_scheduled }] }. */
+  rateHistory: (code, { from, to } = {}) => get(`/payments/currencies/${code}/rate-history`, { from: from || undefined, to: to || undefined }),
   listRates: (currency) => get('/payments/exchange-rates', currency ? { currency } : undefined),
   /** { currency, rateDate: 'YYYY-MM-DD' (fecha valor), rate: moneda local por 1 USD } */
   upsertRate: (data) => axiosClient.put('/payments/exchange-rates', data).then((r) => r.data),

@@ -42,8 +42,9 @@ async function withTenantTransaction(tenantId, work) {
  * set_config(..., true) = equivalente a SET LOCAL, pero acepta parámetros
  * ligados; se deshace solo al terminar la transacción.
  */
-async function scopeToTenant(trx, tenantId, schemaName) {
-  await trx.raw("SELECT set_config('app.tenant_id', ?, true)", [tenantId]);
+async function scopeToTenant(trx, tenantId, schemaName, userId = null) {
+  // app.user_id: quién hace el cambio, para auditorías por trigger (ej. historial de tasas).
+  await trx.raw("SELECT set_config('app.tenant_id', ?, true), set_config('app.user_id', ?, true)", [tenantId, userId || '']);
   if (schemaName) {
     // Defensa en profundidad: además de citarse con %I, solo se aceptan nombres
     // válidos (mismas reglas que el Tenant Manager, migración 003 del admin).

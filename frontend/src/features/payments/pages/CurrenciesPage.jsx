@@ -20,8 +20,9 @@ import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { formatDate } from '../paymentStatus';
 import { formatRate } from '../currency';
 import DeleteCurrencyModal from '../components/DeleteCurrencyModal';
+import RateHistoryDrawer from '../components/RateHistoryDrawer';
 
-const SOURCE_LABELS = { bcv: 'BCV', manual: 'Manual' };
+const SOURCE_LABELS = { bcv: 'BCV', bcv_api: 'BCV (respaldo)', manual: 'Manual' };
 
 /** "CLP$ 110.000" / "COL$ 110.000,00" con los valores del formulario (vista previa). */
 function preview({ symbol, decimals, locale }) {
@@ -43,6 +44,7 @@ function CurrenciesPage() {
   const { data, loading, error, refetch } = useFetch(() => paymentsApi.currencyAdmin(), []);
   const [editing, setEditing] = useState(null); // null | {} (agregar) | moneda
   const [deleting, setDeleting] = useState(null); // moneda a eliminar (modal de advertencia)
+  const [history, setHistory] = useState(null); // moneda cuyo historial de tasas está abierto
 
   const update = async (c, body, successTitle) => {
     try {
@@ -145,8 +147,10 @@ function CurrenciesPage() {
         canCreate={canEdit && (data?.available?.length ?? 0) > 0}
         onEdit={setEditing}
         canEdit={canEdit}
-        rowActions={
-          canEdit
+        rowActions={[
+          // Consulta: visible también para quien solo puede ver Pagos.
+          { key: 'history', icon: 'clock', label: 'Ver historial de tasas', tone: 'view', onClick: setHistory },
+          ...(canEdit
             ? [
                 {
                   key: 'default',
@@ -171,12 +175,14 @@ function CurrenciesPage() {
                   onClick: toggleActive,
                 },
               ]
-            : []
-        }
+            : []),
+        ]}
         // Eliminar: modal propio que muestra todo lo que se borrará con la moneda.
         onDeleteClick={setDeleting}
         canDelete={(c) => canEdit && !c.is_default}
       />
+
+      {history && <RateHistoryDrawer currency={history} onClose={() => setHistory(null)} />}
 
       {deleting && (
         <DeleteCurrencyModal
@@ -245,7 +251,7 @@ function RateCell({ currency: c, today, canEdit, onSaved }) {
         <div>
           <strong>{formatRate(c.current.rate, c.code)}</strong>
           <div className={`cell-person__sub ${c.stale ? 'text-warning' : ''}`}>
-            {c.stale && <Icon name="alertTriangle" size={12} />} f. valor {formatDate(c.current.rate_date)} · {SOURCE_LABELS[c.current.source]}
+            {c.stale && <Icon name="alertTriangle" size={12} />} f. valor {formatDate(c.current.rate_date)} · {SOURCE_LABELS[c.current.source] || c.current.source}
           </div>
         </div>
       ) : (

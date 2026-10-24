@@ -473,6 +473,66 @@ async function deleteRate(trx, tenantId, id) {
   await trx('exchange_rates').where({ id }).delete();
 }
 
+const HISTORY_MAX = 2000;
+
+/**
+ * Historial de cambios de la tasa de una moneda (migración 054), del más
+ * reciente al más antiguo. Cada fila: alta, corrección o eliminación, con
+ * quién y cuándo, la variación frente al valor anterior y si es la que rige hoy
+ * (`is_current`) o una programada a futuro (`is_scheduled`).
+ * `from` / `to` filtran por fecha valor (desde cuándo rige).
+ */
+async function getRateHistory(trx, tenantId, currency, { from = null, to = null } = {}) {
+  const code = await assertConfiguredCurrency(trx, tenantId, currency);
+  if (code === BASE) throw ApiError.badRequest('El dólar es la moneda base: no lleva tasa.', [{ path: 'currency', message: 'No aplica.' }]);
+  const { rows } = await trx.raw('SELECT current_date::text AS today');
+  const { today } = rows[0];
+
+  const events = await trx('exchange_rate_history as h')
+    .leftJoin('users as u', 'u.id', 'h.changed_by')
+    .where({ 'h.tenant_id': tenantId, 'h.base_currency': BASE, 'h.quote_currency': code })
+    .select('h.id', 'h.action', 'h.rate_date', 'h.rate', 'h.previous_rate', 'h.source', 'h.changed_at', 'u.full_name as changed_by_name')
+    .orderBy('h.changed_at', 'asc')
+    .orderBy('h.id', 'asc')
+    .limit(HISTORY_MAX);
+
+  // Variación frente al valor que había antes de cada cambio (en orden cronológico).
+  let last = null;
+  const items = events.map((e) => {
+    const rate = Number(e.rate);
+    const before = e.action === 'updated' ? Number(e.previous_rate) : e.action === 'created' ? last : null;
+    if (e.action !== 'deleted') last = rate;
+    const rateDate = String(e.rate_date).slice(0, 10);
+    return {
+      ...e,
+      rate_date: rateDate,
+      rate,
+      previous_rate: e.previous_rate === null ? null : Number(e.previous_rate),
+      change_pct: before ? Number((((rate - before) / before) * 100).toFixed(2)) : null,
+      is_scheduled: e.action !== 'deleted' && rateDate > today,
+      is_current: false,
+    };
+  });
+
+  // La vigente: el último cambio (no eliminado) de la tasa que rige hoy.
+  const current = await getEffectiveRate(trx, tenantId, code);
+  if (current) {
+    const currentDate = String(current.rate_date).slice(0, 10);
+    const match = [...items].reverse().find((i) => i.rate_date === currentDate && i.action !== 'deleted');
+    if (match) match.is_current = true;
+  }
+
+  const filtered = items.filter((i) => (!from || i.rate_date >= from) && (!to || i.rate_date <= to)).reverse();
+  return {
+    currency: code,
+    today,
+    current: current ? { rate: current.rate, rate_date: String(current.rate_date).slice(0, 10), source: current.source } : null,
+    total: items.length,
+    truncated: events.length === HISTORY_MAX,
+    items: filtered,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Consulta a la página del BCV (solo bolívar)
 // ---------------------------------------------------------------------------
@@ -516,6 +576,7 @@ async function fetchBcvRate({ timeoutMs = 15000 } = {}) {
 
 module.exports = {
   BASE,
+  getRateHistory,
   listCurrencies,
   getCurrency,
   getTenantCurrencies,

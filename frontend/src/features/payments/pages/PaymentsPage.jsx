@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import paymentsApi from '../../../api/endpoints/payments.api';
-import studentsApi from '../../../api/endpoints/students.api';
-import academicsApi from '../../../api/endpoints/academics.api';
 import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
@@ -44,7 +42,7 @@ function PaymentsPage() {
   const { can, user } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
-  const { data: periods } = useFetch(() => academicsApi.listSchoolPeriods(), []);
+  const { data: periods } = useFetch(() => paymentsApi.schoolPeriodOptions(), []);
   const [status, setStatus] = useState('due');
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
   // Tasas de las monedas activas + moneda en que se muestran los equivalentes (se recuerda).
@@ -632,10 +630,10 @@ function GenerateTuitionModal({ periods, onClose, onGenerated }) {
 // ---------------------------------------------------------------------------
 
 function RegisterPaymentModal({ onClose, onCreated }) {
-  const { data: students, loading: loadingStudents } = useFetch(() => studentsApi.list({ status: 'active' }), []);
+  const { data: students, loading: loadingStudents } = useFetch(() => paymentsApi.studentOptions(), []);
   const [studentId, setStudentId] = useState('');
-  const { data: studentDetail, loading: loadingGuardians } = useFetch(
-    () => (studentId ? studentsApi.getOne(studentId) : Promise.resolve(null)),
+  const { data: studentGuardians, loading: loadingGuardians } = useFetch(
+    () => (studentId ? paymentsApi.studentGuardianOptions(studentId) : Promise.resolve(null)),
     [studentId]
   );
   const [form, setForm] = useState({ guardianId: '', periodLabel: '', amount: '', currency: 'USD' });
@@ -643,7 +641,7 @@ function RegisterPaymentModal({ onClose, onCreated }) {
   const { run, loading, error, fieldErrors } = useMutation(paymentsApi.register);
   const toast = useToast();
 
-  const guardians = useMemo(() => studentDetail?.guardians || [], [studentDetail]);
+  const guardians = useMemo(() => studentGuardians || [], [studentGuardians]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -702,7 +700,7 @@ function RegisterPaymentModal({ onClose, onCreated }) {
                   </option>
                 ))}
               </Select>
-              {studentId && studentDetail && guardians.length === 0 && (
+              {studentId && studentGuardians && guardians.length === 0 && (
                 <span className="form-hint">Este alumno no tiene representantes asociados todavía.</span>
               )}
             </Field>

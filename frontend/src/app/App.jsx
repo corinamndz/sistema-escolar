@@ -5,7 +5,7 @@ import ProtectedRoute from './ProtectedRoute';
 import PermissionRoute from './PermissionRoute';
 
 import LoginPage from '../features/auth/pages/LoginPage';
-import DashboardPage from '../features/dashboard/pages/DashboardPage';
+import HomeRoute from './HomeRoute';
 import TenantSettingsPage from '../features/tenant/pages/TenantSettingsPage';
 import RolesPage from '../features/roles/pages/RolesPage';
 import RoleDetailPage from '../features/roles/pages/RoleDetailPage';
@@ -46,7 +46,7 @@ function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
-            <Route index element={<DashboardPage />} />
+            <Route index element={<HomeRoute />} />
 
             <Route element={<PermissionRoute module="tenant_settings" />}>
               <Route path="tenant/settings" element={<TenantSettingsPage />} />

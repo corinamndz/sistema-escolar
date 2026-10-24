@@ -45,6 +45,13 @@ const ROLE_TEMPLATES = {
       events: { can_read: true },
     },
   },
+  // Personal de cobranza: solo Pagos (migración 053). Fuera de la jerarquía.
+  Finanzas: {
+    isSystem: true,
+    byModule: {
+      payments: { can_create: true, can_read: true, can_update: true, can_delete: true, extra_actions: { approve_payment: true, export: true } },
+    },
+  },
   Representante: {
     isSystem: true,
     // Solo el panel: el portal de padres (GET /portal/me, GET /payments/mine) filtra

@@ -40,7 +40,7 @@ async function tenantMiddleware(req, res, next) {
     // Esquema propio del colegio (del JWT, validado): SET LOCAL search_path TO "<esquema>", public.
     schemaName = await resolveRequestSchema(req.user);
     trx = await db.transaction();
-    await scopeToTenant(trx, req.user.tenantId, schemaName);
+    await scopeToTenant(trx, req.user.tenantId, schemaName, req.user.id);
   } catch (err) {
     if (trx && !trx.isCompleted()) await trx.rollback().catch(() => {});
     return next(err);

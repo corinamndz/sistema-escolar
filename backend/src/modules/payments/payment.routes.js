@@ -5,6 +5,17 @@ const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 const { requirePermission } = require('../../middlewares/permission.middleware');
 const { denyTeachers } = require('../access/teacherScope');
 const { proofUpload } = require('../../middlewares/upload.middleware');
+const { z } = require('zod');
+const { asyncHandler } = require('../../utils/asyncHandler');
+const optionsService = require('./paymentOptions.service');
+
+const options = {
+  schoolPeriods: asyncHandler(async (req, res) => res.status(200).json(await optionsService.listSchoolPeriods(req.db, req.tenantId))),
+  students: asyncHandler(async (req, res) => res.status(200).json(await optionsService.listStudents(req.db, req.tenantId))),
+  studentGuardians: asyncHandler(async (req, res) =>
+    res.status(200).json(await optionsService.listStudentGuardians(req.db, req.tenantId, z.string().uuid().parse(req.params.id)))
+  ),
+};
 
 // Los docentes no acceden a NINGUNA ruta de pagos (ni la administración ni "Mis pagos"): 403.
 router.use(authMiddleware, tenantMiddleware, denyTeachers);
@@ -32,6 +43,8 @@ router.get('/currencies/admin', requirePermission('payments', 'read'), controlle
 router.post('/currencies', requirePermission('payments', 'update'), controller.addCurrency);
 router.put('/currencies/:code', requirePermission('payments', 'update'), controller.updateCurrency);
 // Eliminar una moneda junto con sus pagos y tasas (modal de confirmación: primero el impacto).
+// Historial de cambios de la tasa (altas, correcciones y eliminaciones; migración 054).
+router.get('/currencies/:code/rate-history', requirePermission('payments', 'read'), controller.rateHistory);
 router.get('/currencies/:code/deletion-impact', requirePermission('payments', 'update'), controller.currencyDeletionImpact);
 router.delete('/currencies/:code', requirePermission('payments', 'update'), controller.removeCurrency);
 router.get('/exchange-rates/current', controller.currentRate);
@@ -45,6 +58,12 @@ router.get('/tuition/fees', requirePermission('payments', 'read'), controller.li
 router.put('/tuition/fees', requirePermission('payments', 'update'), controller.upsertFee);
 router.delete('/tuition/fees/:id', requirePermission('payments', 'update'), controller.deleteFee);
 router.post('/tuition/generate', requirePermission('payments', 'create'), controller.generateTuition);
+
+// ---- Datos de otros módulos para los formularios (rutas fijas antes de "/:id") ----
+// Bajo el permiso de Pagos: el rol Finanzas no necesita permisos de Alumnos ni Académico.
+router.get('/options/school-periods', requirePermission('payments', 'read'), options.schoolPeriods);
+router.get('/options/students', requirePermission('payments', 'create'), options.students);
+router.get('/options/students/:id/guardians', requirePermission('payments', 'create'), options.studentGuardians);
 
 // ---- Administración ----
 router.get('/summary', requirePermission('payments', 'read'), controller.summary);

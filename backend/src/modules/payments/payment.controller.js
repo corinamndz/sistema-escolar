@@ -287,6 +287,14 @@ const listRates = asyncHandler(async (req, res) => {
   res.status(200).json(await exchange.listRates(req.db, req.tenantId, { currency }));
 });
 
+/** GET /payments/currencies/:code/rate-history?from&to — historial de cambios de la tasa (fecha valor en el rango). */
+const rateHistory = asyncHandler(async (req, res) => {
+  const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida.').optional();
+  const { from, to } = z.object({ from: day, to: day }).parse({ from: req.query.from || undefined, to: req.query.to || undefined });
+  const code = z.string().trim().regex(/^[A-Za-z]{3}$/, 'Código de moneda inválido.').parse(req.params.code);
+  res.status(200).json(await exchange.getRateHistory(req.db, req.tenantId, code, { from, to }));
+});
+
 const upsertRate = asyncHandler(async (req, res) => {
   const data = z
     .object({
@@ -342,6 +350,7 @@ module.exports = {
   downloadReceipt,
   currentRate,
   listRates,
+  rateHistory,
   upsertRate,
   updateRateFromBcv,
   deleteRate,

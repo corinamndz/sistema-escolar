@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import paymentsApi from '../../../api/endpoints/payments.api';
 import { getErrorMessage } from '../../../api/axiosClient';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
@@ -62,7 +62,7 @@ function SimulateBcvModal({ suggested, onClose }) {
   };
 
   return (
-    <Modal title="Simular actualización BCV" onClose={onClose}>
+    <Drawer title="Simular actualización BCV" onClose={onClose}>
       <Alert variant="info">
         Envía a la campana el aviso de una tasa nueva para probar el flujo. <strong>La tasa no se registra</strong>: los montos en bolívares de
         cuotas y pagos no cambian. El aviso llega marcado como «[Prueba]».
@@ -96,7 +96,7 @@ function SimulateBcvModal({ suggested, onClose }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

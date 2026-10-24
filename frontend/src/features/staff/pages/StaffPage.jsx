@@ -6,11 +6,11 @@ import { useMutation } from '../../../hooks/useMutation';
 import { useExpandedSet } from '../../../hooks/useExpandedSet';
 import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
-import DetailModal from '../../../components/ui/DetailModal';
+import DetailDrawer from '../../../components/ui/DetailDrawer';
 import ImportButton from '../../../components/import/ImportButton';
 import ExportButton from '../../../components/ui/ExportButton';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -515,7 +515,7 @@ function StaffPage() {
       )}
 
       {viewing && (
-        <DetailModal
+        <DetailDrawer
           title={fullName(viewing)}
           subtitle={STAFF_TYPE_LABELS[viewing.staff_type]}
           badge={<StatusBadge status={viewing.status} />}
@@ -572,7 +572,7 @@ function StaffPage() {
               )}
             </div>
           </div>
-        </DetailModal>
+        </DetailDrawer>
       )}
 
       {editing !== null && (
@@ -641,7 +641,7 @@ function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) 
   };
 
   return (
-    <Modal title={isEdit ? 'Editar personal' : 'Nuevo personal'} onClose={onClose}>
+    <Drawer title={isEdit ? 'Editar personal' : 'Nuevo personal'} onClose={onClose}>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
@@ -726,7 +726,7 @@ function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) 
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

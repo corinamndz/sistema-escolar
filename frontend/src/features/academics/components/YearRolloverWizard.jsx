@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import academicsApi from '../../../api/endpoints/academics.api';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
@@ -176,12 +176,39 @@ function YearRolloverWizard({ periods, initialSourceId, onClose, onDone }) {
     }
   };
 
-  const close = running ? () => {} : onClose;
-
   if (result) return <RolloverDone result={result} source={preview.source} canPromote={can('promotion', 'update')} onClose={onClose} />;
 
   return (
-    <Modal title="Preparar el nuevo año escolar" size="lg" onClose={close} className="rollover">
+    <Drawer
+      title="Preparar el nuevo año escolar"
+      subtitle="Copia la estructura del año anterior en 4 pasos"
+      icon="sparkles"
+      size="lg"
+      busy={running}
+      onClose={onClose}
+      footer={
+        <>
+          <Button
+            variant="ghost"
+            style={{ marginRight: 'auto' }}
+            onClick={step === 0 ? onClose : () => setStep((s) => s - 1)}
+            disabled={running}
+            icon={step === 0 ? undefined : 'arrowLeft'}
+          >
+            {step === 0 ? 'Cancelar' : 'Atrás'}
+          </Button>
+          {step < STEPS.length - 1 ? (
+            <Button onClick={() => setStep((s) => s + 1)} disabled={!canNext || (step === 0 && !preview?.counts.sections)}>
+              Continuar <Icon name="arrowRight" size={16} />
+            </Button>
+          ) : (
+            <Button icon="sparkles" onClick={run} loading={running} loadingText="Copiando…" disabled={!canNext}>
+              {mode === 'new' ? `Crear ${targetName} y copiar` : `Copiar a ${targetName}`}
+            </Button>
+          )}
+        </>
+      }
+    >
       <Stepper step={step} />
 
       <div className="rollover__body">
@@ -354,22 +381,7 @@ function YearRolloverWizard({ periods, initialSourceId, onClose, onDone }) {
           </>
         )}
       </div>
-
-      <div className="rollover__footer">
-        <Button variant="ghost" onClick={step === 0 ? onClose : () => setStep((s) => s - 1)} disabled={running} icon={step === 0 ? undefined : 'arrowLeft'}>
-          {step === 0 ? 'Cancelar' : 'Atrás'}
-        </Button>
-        {step < STEPS.length - 1 ? (
-          <Button onClick={() => setStep((s) => s + 1)} disabled={!canNext || (step === 0 && !preview?.counts.sections)}>
-            Continuar <Icon name="arrowRight" size={16} />
-          </Button>
-        ) : (
-          <Button icon="sparkles" onClick={run} loading={running} loadingText="Copiando…" disabled={!canNext}>
-            {mode === 'new' ? `Crear ${targetName} y copiar` : `Copiar a ${targetName}`}
-          </Button>
-        )}
-      </div>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -448,7 +460,17 @@ function RolloverDone({ result, source, canPromote, onClose }) {
   const copied = PARTS.filter((p) => result.options[p.key]);
   const skipped = Object.entries(result.skipped).filter(([, n]) => n > 0);
   return (
-    <Modal title="Año escolar listo" size="lg" onClose={onClose} className="rollover">
+    <Drawer
+      title="Año escolar listo"
+      icon="checkCircle"
+      size="lg"
+      onClose={onClose}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          Cerrar
+        </Button>
+      }
+    >
       <div className="rollover__body rollover-done">
         <div className="rollover-done__icon">
           <Icon name="checkCircle" size={34} />
@@ -491,13 +513,7 @@ function RolloverDone({ result, source, canPromote, onClose }) {
           </Link>
         </div>
       </div>
-      <div className="rollover__footer">
-        <span />
-        <Button variant="secondary" onClick={onClose}>
-          Cerrar
-        </Button>
-      </div>
-    </Modal>
+    </Drawer>
   );
 }
 

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import eventsApi from '../../../api/endpoints/events.api';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -83,7 +83,7 @@ function EventFormModal({ initial = {}, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={isEdit ? `Editar ${initial.title}` : 'Nuevo evento'} onClose={onClose} size="lg">
+    <Drawer title={isEdit ? `Editar ${initial.title}` : 'Nuevo evento'} onClose={onClose} size="lg">
       <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <div className="form-grid">
@@ -200,7 +200,7 @@ function EventFormModal({ initial = {}, onClose, onSaved }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

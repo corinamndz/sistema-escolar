@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import notificationsApi from '../../api/endpoints/notifications.api';
 import Icon from '../ui/Icon';
-import Modal from '../ui/Modal';
+import Drawer from '../ui/Drawer';
 import { formatRate } from '../../features/payments/currency';
 import { formatDate } from '../../features/payments/paymentStatus';
 import { SOURCE_LABELS, timeAgo } from '../../features/payments/components/BcvRateCard';
@@ -154,7 +154,7 @@ function NotificationBell({ dropdown }) {
 function NotificationDetail({ notification: n, onClose }) {
   if (n.type !== 'bcv_rate') {
     return (
-      <Modal title={n.title} onClose={onClose}>
+      <Drawer title={n.title} onClose={onClose}>
         <div className="notif-generic">
           <span className="notif-item__icon">
             <Icon name={NOTIFICATION_ICONS[n.type] || 'bell'} size={18} />
@@ -172,7 +172,7 @@ function NotificationDetail({ notification: n, onClose }) {
             </Link>
           )}
         </div>
-      </Modal>
+      </Drawer>
     );
   }
   const { rate, rate_date: rateDate, previous_rate: prev, source, simulated, effective_at: effectiveAt, bcv_value_date: bcvValueDate } = n.data || {};
@@ -180,7 +180,7 @@ function NotificationDetail({ notification: n, onClose }) {
   const effectiveNow = isEffective(rateDate);
   const change = prev ? ((rate - prev) / prev) * 100 : null;
   return (
-    <Modal title={simulated ? 'Tasa BCV actualizada (prueba)' : 'Tasa BCV actualizada'} onClose={onClose}>
+    <Drawer title={simulated ? 'Tasa BCV actualizada (prueba)' : 'Tasa BCV actualizada'} onClose={onClose}>
       <div className="notif-rate">
         {simulated && (
           <div className="notif-rate__test">
@@ -234,7 +234,7 @@ function NotificationDetail({ notification: n, onClose }) {
           </Link>
         )}
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 

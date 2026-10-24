@@ -7,7 +7,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import StatCard from '../../../components/ui/StatCard';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -421,7 +421,7 @@ function TuitionFeesModal({ periods, onClose }) {
   const period = periods.find((p) => p.id === schoolPeriodId);
 
   return (
-    <Modal title="Tarifas de mensualidad" onClose={onClose} size="lg">
+    <Drawer title="Tarifas de mensualidad" onClose={onClose} size="lg">
       <p style={{ marginTop: -6 }}>
         Las mensualidades se configuran en <strong>dólares</strong> y cada familia las paga en la moneda que elija (bolívares, pesos, soles…) con la <strong>tasa del día</strong> de esa moneda.
         Se cobra una mensualidad por cada mes del año escolar. Cada nivel usa su tarifa propia o, si no tiene, la <strong>tarifa general</strong>.
@@ -464,7 +464,7 @@ function TuitionFeesModal({ periods, onClose }) {
           Listo
         </Button>
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -554,7 +554,7 @@ function GenerateTuitionModal({ periods, onClose, onGenerated }) {
   };
 
   return (
-    <Modal title="Generar mensualidades" onClose={onClose}>
+    <Drawer title="Generar mensualidades" onClose={onClose}>
       <Alert>{error}</Alert>
       {!result ? (
         <>
@@ -621,7 +621,7 @@ function GenerateTuitionModal({ periods, onClose, onGenerated }) {
           </div>
         </>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -656,7 +656,7 @@ function RegisterPaymentModal({ onClose, onCreated }) {
   };
 
   return (
-    <Modal title="Otro cobro" onClose={onClose}>
+    <Drawer title="Otro cobro" onClose={onClose}>
       <p style={{ marginTop: -6 }} className="text-sm">
         Para cargos puntuales (inscripción, uniforme, actividades). Las mensualidades se generan automáticamente.
       </p>
@@ -724,7 +724,7 @@ function RegisterPaymentModal({ onClose, onCreated }) {
           </div>
         </form>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

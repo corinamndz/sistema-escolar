@@ -6,7 +6,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import Select from '../../../components/ui/Select';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
@@ -449,7 +449,7 @@ function GradeSummaryPage() {
       )}
 
       {viewing && (
-        <Modal title={`Calificaciones · ${fullName(viewing)}`} onClose={() => setViewing(null)} size="lg">
+        <Drawer title={`Calificaciones · ${fullName(viewing)}`} onClose={() => setViewing(null)} size="lg">
           <p className="text-sm text-muted" style={{ marginTop: -6 }}>
             {sectionOf(viewing) || 'Sin inscripción en el año'} · Año escolar {data?.school_period?.name}
           </p>
@@ -471,7 +471,7 @@ function GradeSummaryPage() {
               Imprimir boleta
             </Button>
           </div>
-        </Modal>
+        </Drawer>
       )}
 
       {printing && (

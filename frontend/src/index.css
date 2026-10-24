@@ -7881,17 +7881,6 @@ body.is-printing-boleta { overflow: hidden; }
 .rollover__lead { margin: 0; color: var(--color-text-secondary); font-size: 15px; }
 .rollover__form { display: flex; flex-direction: column; gap: 12px; }
 .rollover__form p { margin: 0; }
-.rollover__footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin: 22px -26px -26px;
-  padding: 14px 26px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-surface-muted);
-  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
-}
 
 .rollover-stepper { margin-bottom: 20px; }
 .rollover-stepper ol { display: flex; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
@@ -8060,9 +8049,6 @@ body.is-printing-boleta { overflow: hidden; }
   .rollover-banner { flex-wrap: wrap; }
   .rollover-banner .btn { width: 100%; justify-content: center; }
 }
-@media (max-width: 560px) {
-  .rollover__footer { position: sticky; bottom: -22px; margin: 18px -18px -22px; padding: 12px 18px; border-radius: 0; }
-}
 
 /* =====================================================================
    Panel lateral (Drawer) — usa .modal por debajo
@@ -8104,9 +8090,74 @@ body.is-printing-boleta { overflow: hidden; }
 .drawer__titles h3 { margin: 0; font-size: 18px; }
 .drawer__titles p { margin: 2px 0 0; font-size: 13px; color: var(--color-text-muted); }
 .drawer__body { flex: 1; overflow-y: auto; padding: 18px 22px 24px; display: flex; flex-direction: column; gap: 14px; }
-.drawer__footer { padding: 12px 22px; border-top: 1px solid var(--color-border); background: var(--color-surface-muted); }
+.drawer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+}
+/* Texto informativo a la izquierda, botones a la derecha. */
+.drawer__footer > :first-child:not(.btn) { margin-right: auto; }
+.modal.drawer--lg { max-width: 800px; }
+
+/*
+ * Formularios migrados desde Modal: el <form> ocupa el alto del panel y su
+ * barra .form-actions queda pegada al pie (fija al hacer scroll).
+ */
+.drawer__body > form { flex: 1 0 auto; display: flex; flex-direction: column; }
+.drawer__body > form > .form-actions { margin-top: auto; }
+.drawer__body .form-actions {
+  position: sticky;
+  bottom: -24px;
+  z-index: 2;
+  margin: 24px -22px -24px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  background: var(--color-surface-muted);
+}
+@media (max-width: 560px) {
+  .drawer__body .form-actions { bottom: -16px; margin: 20px -16px -16px; padding: 12px 16px; }
+}
+
+/* Formularios dentro de un panel: secciones con título y separador. */
+.drawer-form { display: flex; flex-direction: column; gap: 0; }
+.drawer-section { display: flex; flex-direction: column; gap: 14px; padding: 18px 0; }
+.drawer-section:first-child { padding-top: 4px; }
+.drawer-section + .drawer-section { border-top: 1px solid var(--color-border); }
+.drawer-section__title { margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); }
+.drawer-section .form-hint { margin: -6px 0 0; }
+.currency-preview-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+.currency-preview-card span { font-size: 13px; color: var(--color-text-muted); }
+.currency-preview-card strong { font-family: var(--font-display); font-size: 18px; font-variant-numeric: tabular-nums; color: var(--color-text); }
+
+/* Salida: el panel vuelve a la derecha y el fondo se desvanece (Drawer espera 200 ms antes de desmontar). */
+.modal.drawer.is-closing { animation: drawer-out 200ms ease-in forwards; }
+.drawer-overlay.is-closing { animation: fade-out 200ms ease-in forwards; }
+@keyframes drawer-out { to { transform: translateX(48px); opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes sheet-out { to { transform: translateY(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .modal.drawer, .modal.drawer.is-closing, .drawer-overlay.is-closing { animation: none; }
+}
 @media (max-width: 560px) {
   .modal.drawer { max-width: none; border-radius: 0; animation: sheet-in 280ms var(--ease-out); }
+  .modal.drawer.is-closing { animation: sheet-out 200ms ease-in forwards; }
+  .drawer__footer .btn { flex: 1; justify-content: center; }
+  .drawer__footer > :first-child:not(.btn) { flex-basis: 100%; }
+  .drawer__footer { flex-wrap: wrap; }
   .drawer__header { padding: 16px 16px 14px; }
   .drawer__body { padding: 16px; }
   .drawer__footer { padding: 12px 16px; }

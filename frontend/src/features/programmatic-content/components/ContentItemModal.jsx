@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import programmaticContentApi from '../../../api/endpoints/programmaticContent.api';
 import { useMutation } from '../../../hooks/useMutation';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
@@ -41,7 +41,7 @@ function ContentItemModal({ initial, pair, units, defaultUnit, onClose, onSaved 
   };
 
   return (
-    <Modal title={isEdit ? 'Editar tema' : 'Nuevo tema del contenido programático'} onClose={onClose}>
+    <Drawer title={isEdit ? 'Editar tema' : 'Nuevo tema del contenido programático'} onClose={onClose}>
       <p className="text-sm text-muted pc-modal-context">
         {pair.subjectName} · {pair.gradeName}
       </p>
@@ -80,7 +80,7 @@ function ContentItemModal({ initial, pair, units, defaultUnit, onClose, onSaved 
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

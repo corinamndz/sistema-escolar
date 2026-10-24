@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import schedulesApi from '../../../api/endpoints/schedules.api';
 import { getErrorMessage } from '../../../api/axiosClient';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Select from '../../../components/ui/Select';
@@ -97,7 +97,7 @@ function ScheduleGeneratorModal({ periodId, periodName, grades, initialGradeId, 
 
   const title = phase === 'preview' ? 'Vista previa del horario generado' : 'Generar horario automático';
   return (
-    <Modal title={title} onClose={phase === 'running' ? undefined : phase === 'preview' ? discard : onClose} size="lg">
+    <Drawer title={title} onClose={phase === 'running' ? undefined : phase === 'preview' ? discard : onClose} size="lg">
       {phase === 'config' && (
         <div className="generator">
           <p className="text-muted" style={{ marginTop: 0 }}>
@@ -197,7 +197,7 @@ function ScheduleGeneratorModal({ periodId, periodName, grades, initialGradeId, 
       {phase === 'preview' && result && (
         <GenerationPreview result={result} error={error} applying={applying} onApply={apply} onDiscard={discard} onRetry={() => setPhase('config')} />
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

@@ -11,7 +11,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import Table from '../../../components/ui/Table';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -689,7 +689,7 @@ function GuardianDetailModal({ guardianId, onClose, onEdit }) {
   ];
 
   return (
-    <Modal title={guardian ? fullName(guardian) : 'Representante'} onClose={onClose} size="lg">
+    <Drawer title={guardian ? fullName(guardian) : 'Representante'} onClose={onClose} size="lg">
       <Alert>{error}</Alert>
       {loading || !guardian ? (
         <Spinner />
@@ -758,7 +758,7 @@ function GuardianDetailModal({ guardianId, onClose, onEdit }) {
           </div>
         </>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -836,7 +836,7 @@ function GuardianFormModal({ initial, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={isEdit ? `Editar a ${initial.first_name} ${initial.last_name}` : 'Nuevo representante'} onClose={onClose} size={canLinkStudents ? 'lg' : undefined}>
+    <Drawer title={isEdit ? `Editar a ${initial.first_name} ${initial.last_name}` : 'Nuevo representante'} onClose={onClose} size={canLinkStudents ? 'lg' : undefined}>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
@@ -890,7 +890,7 @@ function GuardianFormModal({ initial, onClose, onSaved }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

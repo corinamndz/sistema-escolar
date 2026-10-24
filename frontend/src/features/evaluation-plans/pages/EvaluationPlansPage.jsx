@@ -9,7 +9,7 @@ import { useExpandedSet } from '../../../hooks/useExpandedSet';
 import { useMutation } from '../../../hooks/useMutation';
 import PageHeader from '../../../components/ui/PageHeader';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -407,7 +407,7 @@ function CreateTermModal({ schoolPeriodId, initial, onClose, onCreated }) {
   };
 
   return (
-    <Modal title={initial ? `Fechas del ${termLabel(initial.term_number, initial.name)}` : 'Nuevo lapso'} onClose={onClose}>
+    <Drawer title={initial ? `Fechas del ${termLabel(initial.term_number, initial.name)}` : 'Nuevo lapso'} onClose={onClose}>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
         <Field label="Nombre" error={fieldErrors.name}>
@@ -431,7 +431,7 @@ function CreateTermModal({ schoolPeriodId, initial, onClose, onCreated }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -526,7 +526,7 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
   };
 
   return (
-    <Modal title="Nuevo plan de evaluación" onClose={onClose}>
+    <Drawer title="Nuevo plan de evaluación" onClose={onClose}>
       <Alert>{error}</Alert>
       {loadingSections ? (
         <Spinner />
@@ -686,7 +686,7 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
           </div>
         </form>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

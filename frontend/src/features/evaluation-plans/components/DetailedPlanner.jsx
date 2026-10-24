@@ -4,7 +4,7 @@ import { getErrorMessage } from '../../../api/axiosClient';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import Field from '../../../components/ui/Field';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
 import Icon from '../../../components/ui/Icon';
@@ -503,7 +503,7 @@ function MoveSectionModal({ plan, onClose, onSaved }) {
   };
 
   return (
-    <Modal title="Mover el plan a otra sección" onClose={onClose}>
+    <Drawer title="Mover el plan a otra sección" onClose={onClose}>
       <p style={{ marginTop: -6 }} className="text-sm">
         Hoy el plan de <strong>{plan.subject}</strong> está en <strong>{current}</strong>. Pásalo a la sección correcta: conserva sus actividades y
         ponderaciones, y lo verán los alumnos y representantes de esa sección. Solo es posible mientras no tenga notas cargadas.
@@ -527,7 +527,7 @@ function MoveSectionModal({ plan, onClose, onSaved }) {
           Mover plan
         </Button>
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -561,7 +561,7 @@ function SectionsModal({ plan, onClose, onSaved }) {
   };
 
   return (
-    <Modal title="Secciones del plan" onClose={onClose}>
+    <Drawer title="Secciones del plan" onClose={onClose}>
       <p style={{ marginTop: -6 }} className="text-sm">
         Elige a qué secciones de {plan.grade_name} se aplica el plan. El docente de la materia debe ser el mismo en todas. No se puede quitar
         una sección cuyos alumnos ya tengan notas.
@@ -586,6 +586,6 @@ function SectionsModal({ plan, onClose, onSaved }) {
           Guardar
         </Button>
       </div>
-    </Modal>
+    </Drawer>
   );
 }

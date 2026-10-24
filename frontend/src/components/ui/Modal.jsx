@@ -8,6 +8,12 @@ let openModals = 0;
 
 /**
  * Modal centrado con overlay difuminado (en móvil se muestra como hoja inferior).
+ *
+ * REGLA DEL PROYECTO: ningún formulario de creación o edición ni vista de detalle
+ * se abre en un modal central; van en un Drawer (ver Drawer.jsx). Modal solo para:
+ *   - confirmaciones destructivas o irreversibles (ConfirmDialog, eliminar año, eliminar moneda);
+ *   - alertas críticas que exigen atención total (credenciales mostradas una sola vez,
+ *     avisos pendientes al iniciar sesión).
  * `size`: 'sm' | 'lg'. `hideHeader` para diálogos que dibujan su propio encabezado.
  * `className` / `overlayClassName`: clases extra del diálogo y del fondo (diseños especiales).
  */

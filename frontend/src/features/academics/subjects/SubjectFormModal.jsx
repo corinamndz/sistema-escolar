@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import academicsApi from '../../../api/endpoints/academics.api';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useFetch } from '../../../hooks/useFetch';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
@@ -178,7 +178,7 @@ function SubjectFormModal({ subject, period, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={isEdit ? `Editar ${subject.name}` : 'Nueva materia'} onClose={onClose} size="lg">
+    <Drawer title={isEdit ? `Editar ${subject.name}` : 'Nueva materia'} onClose={onClose} size="lg">
       <Alert>{error || loadError}</Alert>
       {loading || !form ? (
         <Spinner />
@@ -306,7 +306,7 @@ function SubjectFormModal({ subject, period, onClose, onSaved }) {
           </div>
         </form>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

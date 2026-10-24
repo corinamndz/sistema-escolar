@@ -6,7 +6,7 @@ import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
 import DataTable from '../../../components/ui/DataTable';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -191,7 +191,7 @@ function SectionFormModal({ initial, onClose, onSaved }) {
   const loadingOptions = loadingGrades || loadingPeriods || loadingClassrooms;
 
   return (
-    <Modal title={isEdit ? `Editar sección ${initial.grade_name} ${initial.name}` : 'Nueva sección'} onClose={onClose}>
+    <Drawer title={isEdit ? `Editar sección ${initial.grade_name} ${initial.name}` : 'Nueva sección'} onClose={onClose}>
       <Alert>{error}</Alert>
       {loadingOptions ? (
         <Spinner />
@@ -263,7 +263,7 @@ function SectionFormModal({ initial, onClose, onSaved }) {
           </div>
         </form>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

@@ -11,7 +11,7 @@ import Select from '../../../components/ui/Select';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import ExportButton from '../../../components/ui/ExportButton';
@@ -259,9 +259,9 @@ function SchoolDisciplineView() {
       />
 
       {viewing && (
-        <Modal title="Detalle de la sanción" onClose={() => setViewing(null)}>
+        <Drawer title="Detalle de la sanción" onClose={() => setViewing(null)}>
           <SanctionCard sanction={viewing} showStudent />
-        </Modal>
+        </Drawer>
       )}
       {modal}
     </div>

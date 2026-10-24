@@ -5,7 +5,7 @@ import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
 import DataTable from '../../../components/ui/DataTable';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Alert from '../../../components/ui/Alert';
@@ -102,7 +102,7 @@ function GradeFormModal({ initial, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={isEdit ? `Editar ${initial.name}` : 'Nuevo grado'} onClose={onClose}>
+    <Drawer title={isEdit ? `Editar ${initial.name}` : 'Nuevo grado'} onClose={onClose}>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
         <Field label="Nivel educativo" error={fieldErrors.levelCode} required>
@@ -149,7 +149,7 @@ function GradeFormModal({ initial, onClose, onSaved }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

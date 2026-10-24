@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import schedulesApi from '../../../api/endpoints/schedules.api';
 import { getErrorMessage } from '../../../api/axiosClient';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Select from '../../../components/ui/Select';
@@ -84,7 +84,7 @@ function TeacherAvailabilityModal({ periodId, slots, teachers, initialTeacherId,
   };
 
   return (
-    <Modal title="Disponibilidad del docente" onClose={onClose} size="lg">
+    <Drawer title="Disponibilidad del docente" onClose={onClose} size="lg">
       <p className="text-muted" style={{ marginTop: 0 }}>
         Toca los bloques en que el profesor <strong>no puede</strong> dar clase. El generador automático no le asignará clases ahí y la grilla tampoco
         dejará colocarlas.
@@ -154,7 +154,7 @@ function TeacherAvailabilityModal({ periodId, slots, teachers, initialTeacherId,
           Guardar disponibilidad
         </Button>
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 

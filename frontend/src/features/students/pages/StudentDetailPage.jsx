@@ -6,7 +6,7 @@ import { useMutation } from '../../../hooks/useMutation';
 import RequirePermission from '../../../components/RequirePermission';
 import PageHeader from '../../../components/ui/PageHeader';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -161,7 +161,7 @@ function LinkGuardianModal({ studentId, onClose, onLinked }) {
   };
 
   return (
-    <Modal title="Asociar representante" onClose={onClose}>
+    <Drawer title="Asociar representante" onClose={onClose}>
       <Alert>{error}</Alert>
       {loadingGuardians ? (
         <Spinner />
@@ -230,7 +230,7 @@ function LinkGuardianModal({ studentId, onClose, onLinked }) {
           </div>
         </form>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

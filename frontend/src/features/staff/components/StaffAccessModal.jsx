@@ -4,7 +4,7 @@ import Select from '../../../components/ui/Select';
 import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
@@ -41,14 +41,14 @@ function StaffAccessModal({ staff, onClose, onSaved }) {
 
   const title = `Acceso al sistema · ${staff.first_name} ${staff.last_name}`;
   return (
-    <Modal title={title} onClose={onClose}>
+    <Drawer title={title} onClose={onClose}>
       <Alert>{error || rolesError}</Alert>
       {loading || loadingRoles || !data || !roles ? (
         <Spinner />
       ) : (
         <AccessForm staff={staff} access={data.access} roles={roles.filter((r) => !isPortalRole(r))} onClose={onClose} onSaved={onSaved} />
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

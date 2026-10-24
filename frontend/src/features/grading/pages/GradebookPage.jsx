@@ -12,7 +12,7 @@ import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import { useToast } from '../../../components/ui/Toast';
 import ImportButton from '../../../components/import/ImportButton';
@@ -264,7 +264,7 @@ function IndicatorScoreModal({ activity, student, score, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={`${activity.title} · ${student.first_name} ${student.last_name}`} onClose={onClose}>
+    <Drawer title={`${activity.title} · ${student.first_name} ${student.last_name}`} onClose={onClose}>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
         <table className="table indicator-scores">
@@ -313,7 +313,7 @@ function IndicatorScoreModal({ activity, student, score, onClose, onSaved }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

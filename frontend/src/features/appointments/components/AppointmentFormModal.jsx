@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import appointmentsApi from '../../../api/endpoints/appointments.api';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -105,7 +105,7 @@ function AppointmentFormModal({ initial, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={isEdit ? 'Editar cita' : 'Agendar cita con representante'} onClose={onClose} size="lg">
+    <Drawer title={isEdit ? 'Editar cita' : 'Agendar cita con representante'} onClose={onClose} size="lg">
       <Alert>{optionsError || error}</Alert>
       {loadingOptions ? (
         <Spinner />
@@ -214,7 +214,7 @@ function AppointmentFormModal({ initial, onClose, onSaved }) {
           </div>
         </form>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

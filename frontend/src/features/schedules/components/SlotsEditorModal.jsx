@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import schedulesApi from '../../../api/endpoints/schedules.api';
 import { getErrorMessage } from '../../../api/axiosClient';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import Field from '../../../components/ui/Field';
@@ -132,7 +132,7 @@ function SlotsEditorModal({ period, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={`Bloques horarios · ${period.name}`} onClose={onClose} size="lg">
+    <Drawer title={`Bloques horarios · ${period.name}`} onClose={onClose} size="lg">
       <Alert>{error}</Alert>
       {rows === null ? (
         <Spinner label="Cargando bloques…" />
@@ -268,7 +268,7 @@ function SlotsEditorModal({ period, onClose, onSaved }) {
           </div>
         </>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import paymentsApi from '../../../api/endpoints/payments.api';
 import { getErrorMessage } from '../../../api/axiosClient';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
@@ -45,7 +45,7 @@ export function ProofViewerModal({ payment, onClose }) {
   const isPdf = payment.proof_mime === 'application/pdf';
 
   return (
-    <Modal title="Comprobante del pago" onClose={onClose} size="lg">
+    <Drawer title="Comprobante del pago" onClose={onClose} size="lg">
       <div className="detail__intro">
         <Icon name="paperclip" size={16} />
         <strong>{payment.proof_original_name || 'Comprobante'}</strong>
@@ -77,7 +77,7 @@ export function ProofViewerModal({ payment, onClose }) {
           </a>
         )}
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 

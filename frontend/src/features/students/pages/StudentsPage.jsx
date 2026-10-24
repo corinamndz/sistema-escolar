@@ -8,7 +8,7 @@ import { useMutation } from '../../../hooks/useMutation';
 import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -485,7 +485,7 @@ function StudentFormModal({ initial, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={isEdit ? 'Editar alumno' : 'Nuevo alumno'} onClose={onClose} size={canLinkGuardians ? 'lg' : undefined}>
+    <Drawer title={isEdit ? 'Editar alumno' : 'Nuevo alumno'} onClose={onClose} size={canLinkGuardians ? 'lg' : undefined}>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
@@ -543,7 +543,7 @@ function StudentFormModal({ initial, onClose, onSaved }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

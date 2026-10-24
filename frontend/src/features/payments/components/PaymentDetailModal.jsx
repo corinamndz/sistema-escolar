@@ -1,6 +1,6 @@
 import paymentsApi from '../../../api/endpoints/payments.api';
 import { useFetch } from '../../../hooks/useFetch';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Icon from '../../../components/ui/Icon';
 import Spinner from '../../../components/ui/Spinner';
@@ -57,7 +57,7 @@ export function PaymentDetailModal({ payment: p, showStudentHistory = true, acti
   const siblings = (others || []).filter((o) => o.id !== p.id && o.status !== 'cancelled').slice(0, 8);
 
   return (
-    <Modal title={p.period_label} onClose={onClose} size="lg">
+    <Drawer title={p.period_label} onClose={onClose} size="lg">
       <div className="detail__intro">
         <PaymentStatusBadge payment={p} />
         <span className="text-muted">
@@ -163,6 +163,6 @@ export function PaymentDetailModal({ payment: p, showStudentHistory = true, acti
         </Button>
         {actions}
       </div>
-    </Modal>
+    </Drawer>
   );
 }

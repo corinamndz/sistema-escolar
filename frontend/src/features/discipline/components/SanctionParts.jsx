@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import disciplineApi from '../../../api/endpoints/discipline.api';
 import { useMutation } from '../../../hooks/useMutation';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -143,7 +143,7 @@ export function SanctionFormModal({ initial, studentId: fixedStudentId, students
   };
 
   return (
-    <Modal title={isEdit ? 'Editar sanción' : 'Registrar sanción'} onClose={onClose}>
+    <Drawer title={isEdit ? 'Editar sanción' : 'Registrar sanción'} onClose={onClose}>
       <Alert>{error}</Alert>
       <form onSubmit={submit} className="sanction-form">
         {students && !isEdit && (
@@ -204,6 +204,6 @@ export function SanctionFormModal({ initial, studentId: fixedStudentId, students
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }

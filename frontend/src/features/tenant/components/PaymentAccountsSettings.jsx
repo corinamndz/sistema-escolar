@@ -4,7 +4,7 @@ import { getErrorMessage } from '../../../api/axiosClient';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
 import Card from '../../../components/ui/Card';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
@@ -177,7 +177,7 @@ function AccountFormModal({ initial, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={`${isEdit ? 'Editar' : 'Nuevo'} · ${ACCOUNT_METHODS[form.method].label}`} onClose={onClose}>
+    <Drawer title={`${isEdit ? 'Editar' : 'Nuevo'} · ${ACCOUNT_METHODS[form.method].label}`} onClose={onClose}>
       <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <div className="form-grid">
@@ -267,7 +267,7 @@ function AccountFormModal({ initial, onClose, onSaved }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

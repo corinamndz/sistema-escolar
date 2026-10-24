@@ -6,7 +6,7 @@ import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
 import { getErrorMessage } from '../../../api/axiosClient';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -216,7 +216,7 @@ function RateFormModal({ status, initialCurrency, onClose, onSaved }) {
   };
 
   return (
-    <Modal title="Registrar tasa del día" onClose={onClose}>
+    <Drawer title="Registrar tasa del día" onClose={onClose}>
       <p style={{ marginTop: -6 }} className="text-sm">
         Indica cuántas unidades de la moneda equivalen a <strong>1 dólar</strong> y su <strong>fecha valor</strong> (el día desde el que
         rige). Si ya existe una tasa para esa fecha, se corrige.
@@ -281,7 +281,7 @@ function RateFormModal({ status, initialCurrency, onClose, onSaved }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

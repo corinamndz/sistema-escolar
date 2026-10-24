@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
 import { getErrorMessage } from '../../../api/axiosClient';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
@@ -186,7 +186,7 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
   };
 
   return (
-    <Modal title="Incluir evaluación" onClose={onClose} size="lg">
+    <Drawer title="Incluir evaluación" onClose={onClose} size="lg">
       <div className="pc-include-topic">
         <span className="pc-unit-chip">{item.unit}</span>
         <strong>{item.topic}</strong>
@@ -349,7 +349,7 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

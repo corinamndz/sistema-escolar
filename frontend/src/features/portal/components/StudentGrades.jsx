@@ -6,7 +6,7 @@ import Badge from '../../../components/ui/Badge';
 import Select from '../../../components/ui/Select';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import { formatDate } from '../../payments/paymentStatus';
 import { isQualitative, literalFor } from '../../grading/gradingScale';
 import LiteralBadge from '../../grading/components/LiteralBadge';
@@ -190,9 +190,9 @@ function StudentGrades({ studentId }) {
       )}
 
       {selectedSubject && (
-        <Modal title={termName ? `${selectedSubject.name} · ${termName}` : selectedSubject.name} size="lg" onClose={() => setOpenSubject(null)}>
+        <Drawer title={termName ? `${selectedSubject.name} · ${termName}` : selectedSubject.name} size="lg" onClose={() => setOpenSubject(null)}>
           <SubjectDetail subject={selectedSubject} scale={scale} passing={passing} showTerm={!termId} termName={termName} />
-        </Modal>
+        </Drawer>
       )}
     </div>
   );

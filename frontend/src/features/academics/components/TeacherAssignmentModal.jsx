@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import academicsApi from '../../../api/endpoints/academics.api';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Field from '../../../components/ui/Field';
 import Select from '../../../components/ui/Select';
@@ -60,10 +60,10 @@ function TeacherAssignmentModal({ sectionId, onClose, onSaved }) {
   const section = data?.section;
 
   return (
-    <Modal title={section ? `Personal docente · ${section.grade_name} ${section.name}` : 'Personal docente'} onClose={onClose}>
+    <Drawer title={section ? `Personal docente · ${section.grade_name} ${section.name}` : 'Personal docente'} onClose={onClose}>
       <Alert>{error}</Alert>
       {loading || loadingLoad || !data ? <Spinner /> : <StaffForm data={data} load={load} onClose={onClose} onSaved={onSaved} />}
-    </Modal>
+    </Drawer>
   );
 }
 

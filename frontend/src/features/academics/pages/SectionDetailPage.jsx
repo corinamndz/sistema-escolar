@@ -9,7 +9,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import Card from '../../../components/ui/Card';
 import Table from '../../../components/ui/Table';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
@@ -244,7 +244,7 @@ function EnrollModal({ sectionId, onClose, onEnrolled }) {
   const allChecked = filtered.length > 0 && filtered.every((s) => selected.has(s.id));
 
   return (
-    <Modal title="Inscribir alumnos" onClose={onClose}>
+    <Drawer title="Inscribir alumnos" onClose={onClose}>
       <Alert>{error}</Alert>
       {loadingStudents ? (
         <Spinner />
@@ -354,7 +354,7 @@ function EnrollModal({ sectionId, onClose, onEnrolled }) {
           </div>
         </form>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

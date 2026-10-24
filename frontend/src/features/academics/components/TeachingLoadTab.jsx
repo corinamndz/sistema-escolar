@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import academicsApi from '../../../api/endpoints/academics.api';
 import { useFetch } from '../../../hooks/useFetch';
 import DataTable from '../../../components/ui/DataTable';
-import DetailModal from '../../../components/ui/DetailModal';
+import DetailDrawer from '../../../components/ui/DetailDrawer';
 import Select from '../../../components/ui/Select';
 import Badge from '../../../components/ui/Badge';
 import { LEVELS, LevelBadge, LevelFilter, teacherName } from '../levels';
@@ -115,7 +115,7 @@ function TeachingLoadTab() {
       />
 
       {viewing && (
-        <DetailModal
+        <DetailDrawer
           title={teacherName(viewing)}
           subtitle={`${viewing.sectionCount} sección(es) · ${viewing.subjectCount} materia(s)`}
           badge={viewing.levels.map((code) => (
@@ -145,7 +145,7 @@ function TeachingLoadTab() {
               .map(([, l]) => l.rule)
               .join(' ')}
           </p>
-        </DetailModal>
+        </DetailDrawer>
       )}
     </>
   );

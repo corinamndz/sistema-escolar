@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import paymentsApi from '../../../api/endpoints/payments.api';
 import { getErrorMessage } from '../../../api/axiosClient';
@@ -7,7 +7,8 @@ import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
 import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
+import Switch from '../../../components/ui/Switch';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -198,7 +199,7 @@ function CurrenciesPage() {
       )}
 
       {editing !== null && (
-        <CurrencyFormModal
+        <CurrencyFormDrawer
           initial={editing}
           available={data?.available || []}
           onClose={() => setEditing(null)}
@@ -283,8 +284,11 @@ function RateCell({ currency: c, today, canEdit, onSaved }) {
   );
 }
 
-/** Agregar (desde el catálogo) o editar una moneda del colegio. */
-function CurrencyFormModal({ initial, available, onClose, onSaved }) {
+const FORM_ID = 'currency-form';
+
+/** Agregar (desde el catálogo) o editar una moneda del colegio, en panel lateral. */
+function CurrencyFormDrawer({ initial, available, onClose, onSaved }) {
+  const drawer = useRef(null);
   const isEdit = Boolean(initial.code);
   const catalogOf = (code) => available.find((a) => a.code === code);
   const [code, setCode] = useState(initial.code || '');
@@ -326,22 +330,40 @@ function CurrencyFormModal({ initial, available, onClose, onSaved }) {
       const saved = await run(isEdit ? body : { code, ...body, isDefault: form.isDefault });
       toast.success(isEdit ? 'Moneda actualizada' : 'Moneda agregada', `${saved.name} (${saved.code})`);
       onSaved();
-      onClose();
+      drawer.current?.close();
     } catch {
-      // error visible en el modal
+      // error visible en el panel
     }
   };
 
   const customized = catalog && (form.name !== catalog.name || form.symbol !== catalog.symbol || Number(form.decimals) !== catalog.decimals);
 
   return (
-    <Modal title={isEdit ? `Editar ${initial.name} (${initial.code})` : 'Agregar moneda'} onClose={onClose}>
+    <Drawer
+      ref={drawer}
+      title={isEdit ? 'Editar moneda' : 'Agregar moneda'}
+      subtitle={isEdit ? `${initial.name} (${initial.code})` : 'Desde el catálogo de monedas ISO 4217'}
+      icon={isEdit ? 'pencil' : 'plus'}
+      busy={loading}
+      onClose={onClose}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={() => drawer.current?.close()} disabled={loading}>
+            Cancelar
+          </Button>
+          <Button type="submit" form={FORM_ID} loading={loading} loadingText="Guardando…" disabled={!code}>
+            {isEdit ? 'Guardar cambios' : 'Agregar moneda'}
+          </Button>
+        </>
+      }
+    >
       <Alert>{error}</Alert>
-      <form onSubmit={handleSubmit}>
-        <div className="form-grid">
+      <form id={FORM_ID} onSubmit={handleSubmit} className="drawer-form">
+        <section className="drawer-section">
+          <h4 className="drawer-section__title">Moneda</h4>
           {!isEdit && (
-            <Field label="Moneda del catálogo" error={fieldErrors.code} full required hint="Monedas con código ISO 4217 que el colegio aún no tiene.">
-              <Select sorted value={code} onChange={pick} required>
+            <Field label="Moneda del catálogo" error={fieldErrors.code} required hint="Monedas que el colegio aún no tiene.">
+              <Select sorted value={code} onChange={pick} required autoFocus>
                 <option value="">Selecciona…</option>
                 {available.map((c) => (
                   <option key={c.code} value={c.code}>
@@ -354,62 +376,59 @@ function CurrencyFormModal({ initial, available, onClose, onSaved }) {
           <Field label="Nombre" error={fieldErrors.name} required>
             <Input value={form.name} onChange={set('name')} maxLength={60} required disabled={!code} />
           </Field>
-          <Field label="Símbolo" error={fieldErrors.symbol} required hint="Ej.: COL$, S/, Bs.">
-            <Input value={form.symbol} onChange={set('symbol')} maxLength={8} required disabled={!code} />
-          </Field>
-          <Field label="Decimales" error={fieldErrors.decimals} hint="Los pesos chilenos y guaraníes se usan sin decimales.">
-            <Select value={form.decimals} onChange={set('decimals')} disabled={!code}>
-              <option value={0}>Sin decimales</option>
-              <option value={1}>1 decimal</option>
-              <option value={2}>2 decimales</option>
-            </Select>
-          </Field>
-          <Field label="Vista previa">
-            <div className="currency-preview">{code ? preview({ ...form, decimals: Number(form.decimals), locale: catalog?.locale }) : '—'}</div>
-          </Field>
-          <Field label="Estado" full>
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={form.isActive}
-                disabled={initial.is_default}
-                onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked, isDefault: e.target.checked ? f.isDefault : false }))}
-              />
-              Activa: se ofrece en los selectores de pago
-            </label>
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={form.isDefault}
-                disabled={initial.is_default || !form.isActive}
-                onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))}
-              />
-              Predeterminada del colegio
-            </label>
-            {initial.is_default && <span className="form-hint">Para desactivarla, marca antes otra moneda como predeterminada.</span>}
-          </Field>
-        </div>
-        {isEdit && customized && (
-          <p className="form-hint">
-            Personalizada respecto al catálogo ({catalog.name}, {catalog.symbol}, {catalog.decimals} decimales).{' '}
-            <button type="button" className="link-button" onClick={resetToCatalog}>
-              Restablecer
-            </button>
-          </p>
-        )}
-        {isEdit && Number(form.decimals) !== initial.decimals && (
-          <Alert variant="warning">Cambiar los decimales afecta solo a las conversiones futuras: los pagos ya confirmados no cambian.</Alert>
-        )}
-        <div className="form-actions">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="submit" loading={loading} disabled={!code}>
-            {isEdit ? 'Guardar cambios' : 'Agregar moneda'}
-          </Button>
-        </div>
+          {isEdit && customized && (
+            <p className="form-hint">
+              Personalizada respecto al catálogo ({catalog.name}, {catalog.symbol}, {catalog.decimals} decimales).{' '}
+              <button type="button" className="link-button" onClick={resetToCatalog}>
+                Restablecer
+              </button>
+            </p>
+          )}
+        </section>
+
+        <section className="drawer-section">
+          <h4 className="drawer-section__title">Formato</h4>
+          <div className="form-grid">
+            <Field label="Símbolo" error={fieldErrors.symbol} required hint="Ej.: COL$, S/, Bs.">
+              <Input value={form.symbol} onChange={set('symbol')} maxLength={8} required disabled={!code} />
+            </Field>
+            <Field label="Decimales" error={fieldErrors.decimals}>
+              <Select value={form.decimals} onChange={set('decimals')} disabled={!code}>
+                <option value={0}>Sin decimales</option>
+                <option value={1}>1 decimal</option>
+                <option value={2}>2 decimales</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="currency-preview-card">
+            <span>Así se verán los montos</span>
+            <strong>{code ? preview({ ...form, decimals: Number(form.decimals), locale: catalog?.locale }) : '—'}</strong>
+          </div>
+          {isEdit && Number(form.decimals) !== initial.decimals && (
+            <Alert variant="warning">Cambiar los decimales afecta solo a las conversiones futuras: los pagos ya confirmados no cambian.</Alert>
+          )}
+        </section>
+
+        <section className="drawer-section">
+          <h4 className="drawer-section__title">Disponibilidad</h4>
+          <Switch
+            checked={form.isActive}
+            disabled={initial.is_default || !code}
+            onChange={(on) => setForm((f) => ({ ...f, isActive: on, isDefault: on ? f.isDefault : false }))}
+            label="Activa"
+            description="Se ofrece en los selectores de pago y en el portal de las familias."
+          />
+          <Switch
+            checked={form.isDefault}
+            disabled={initial.is_default || !form.isActive || !code}
+            onChange={(on) => setForm((f) => ({ ...f, isDefault: on }))}
+            label="Predeterminada del colegio"
+            description="La que se muestra si nadie elige otra moneda."
+          />
+          {initial.is_default && <p className="form-hint">Para desactivarla, marca antes otra moneda como predeterminada.</p>}
+        </section>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

@@ -3,7 +3,7 @@ import paymentsApi from '../../../api/endpoints/payments.api';
 import { useMutation } from '../../../hooks/useMutation';
 import { useFetch } from '../../../hooks/useFetch';
 import { getErrorMessage } from '../../../api/axiosClient';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -138,7 +138,7 @@ export function PaymentFormModal({ payment, mode = 'report', onClose, onDone }) 
   };
 
   return (
-    <Modal title={config.title} onClose={onClose}>
+    <Drawer title={config.title} onClose={onClose}>
       <div className="pay-summary">
         <div>
           <div className="pay-card__concept">{payment.period_label}</div>
@@ -246,6 +246,6 @@ export function PaymentFormModal({ payment, mode = 'report', onClose, onDone }) 
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }

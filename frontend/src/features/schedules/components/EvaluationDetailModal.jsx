@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Badge from '../../../components/ui/Badge';
 import Icon from '../../../components/ui/Icon';
 import { hueOf } from './ScheduleGrid';
@@ -57,7 +57,7 @@ function EvaluationDetailModal({ evaluation: e, section, onClose }) {
       : null;
 
   return (
-    <Modal title={e.title} onClose={onClose}>
+    <Drawer title={e.title} onClose={onClose}>
       <div className="eval-detail" style={{ '--entry-hue': hue }}>
         <div className="eval-detail__hero">
           <span className="eval-detail__subject">
@@ -181,7 +181,7 @@ function EvaluationDetailModal({ evaluation: e, section, onClose }) {
           </button>
         </div>
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 

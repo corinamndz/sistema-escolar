@@ -1,4 +1,4 @@
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Button from '../../../components/ui/Button';
 import Icon from '../../../components/ui/Icon';
 import { categoryOf, longDate, todayStr } from '../eventCatalog';
@@ -13,7 +13,7 @@ function EventDetailModal({ event: ev, onClose, onEdit, onDelete, onManageAppoin
   const isAppointment = ev.kind === 'appointment';
 
   return (
-    <Modal title={ev.title} onClose={onClose}>
+    <Drawer title={ev.title} onClose={onClose}>
       <div className={`evt-detail evt--${ev.category}`}>
         <div className="evt-detail__hero">
           <span className="evt-detail__icon">
@@ -93,7 +93,7 @@ function EventDetailModal({ event: ev, onClose, onEdit, onDelete, onManageAppoin
           </Button>
         )}
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 

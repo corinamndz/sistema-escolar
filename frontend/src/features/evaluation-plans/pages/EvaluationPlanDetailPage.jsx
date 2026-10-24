@@ -9,7 +9,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import Card from '../../../components/ui/Card';
 import Table from '../../../components/ui/Table';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -435,7 +435,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
   };
 
   return (
-    <Modal title={isEdit ? 'Editar actividad' : 'Nueva actividad'} onClose={onClose} size={detailed ? 'lg' : undefined}>
+    <Drawer title={isEdit ? 'Editar actividad' : 'Nueva actividad'} onClose={onClose} size={detailed ? 'lg' : undefined}>
       <Alert>{localError || error}</Alert>
       <div className="activity-term">
         <span className="student-card__label">Lapso académico</span>
@@ -584,7 +584,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -624,7 +624,7 @@ function ProjectFormModal({ planId, plan, existing, remaining, onClose, onCreate
   };
 
   return (
-    <Modal title={existing ? 'Ponderar proyecto pedagógico' : 'Proyecto pedagógico de aula'} onClose={onClose}>
+    <Drawer title={existing ? 'Ponderar proyecto pedagógico' : 'Proyecto pedagógico de aula'} onClose={onClose}>
       <p className="text-sm text-muted" style={{ marginTop: -6 }}>
         El proyecto se agrega como una actividad del {termLabel(plan.term_number, plan.term_name)}: su ponderación suma al 100% del plan y su nota cuenta
         en el acumulado y en la nota definitiva de {plan.subject}. Las competencias se evalúan además de forma cualitativa.
@@ -721,7 +721,7 @@ function ProjectFormModal({ planId, plan, existing, remaining, onClose, onCreate
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

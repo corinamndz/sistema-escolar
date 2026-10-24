@@ -2,7 +2,7 @@ import { useState } from 'react';
 import academicsApi from '../../../api/endpoints/academics.api';
 import { useMutation } from '../../../hooks/useMutation';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -97,7 +97,7 @@ function RulesModal({ period, rules, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={`Normativa de evaluación · ${period.name}`} onClose={onClose}>
+    <Drawer title={`Normativa de evaluación · ${period.name}`} onClose={onClose}>
       <Alert>{error}</Alert>
       <form onSubmit={submit} className="rules-form">
         <div className="form-grid">
@@ -155,7 +155,7 @@ function RulesModal({ period, rules, onClose, onSaved }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

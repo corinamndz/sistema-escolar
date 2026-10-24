@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import importsApi, { saveBlob } from '../../api/endpoints/imports.api';
 import { getErrorMessage } from '../../api/axiosClient';
-import Modal from '../ui/Modal';
+import Drawer from '../ui/Drawer';
 import Button from '../ui/Button';
 import Alert from '../ui/Alert';
 import Icon from '../ui/Icon';
@@ -100,7 +100,7 @@ function ImportModal({ type, title, description, params, onClose, onImported }) 
   const close = () => !busy && onClose();
 
   return (
-    <Modal title={title} onClose={close} size="lg">
+    <Drawer title={title} onClose={close} size="lg">
       <ol className="import-steps" aria-label="Pasos de la importación">
         {STEPS.map((label, i) => (
           <li key={label} className={i < stepIndex ? 'is-done' : i === stepIndex ? 'is-current' : ''}>
@@ -273,7 +273,7 @@ function ImportModal({ type, title, description, params, onClose, onImported }) 
           Las filas con errores no se importarán. Puedes importar ahora las válidas y luego subir un archivo solo con las corregidas.
         </p>
       )}
-    </Modal>
+    </Drawer>
   );
 }
 

@@ -5,7 +5,7 @@ import studentsApi from '../../../api/endpoints/students.api';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
@@ -95,7 +95,7 @@ export function ClubFormModal({ initial = {}, existingNames = [], onClose, onSav
   };
 
   return (
-    <Modal title={isEdit ? `Editar ${initial.name}` : 'Nuevo club o actividad'} onClose={onClose} size="lg">
+    <Drawer title={isEdit ? `Editar ${initial.name}` : 'Nuevo club o actividad'} onClose={onClose} size="lg">
       <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <div className="form-grid">
@@ -177,7 +177,7 @@ export function ClubFormModal({ initial = {}, existingNames = [], onClose, onSav
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -253,7 +253,7 @@ export function EnrollModal({ clubs, schoolPeriodId, periodName, initialClubId =
   };
 
   return (
-    <Modal title={`Inscribir alumnos · ${periodName}`} onClose={onClose} size="lg">
+    <Drawer title={`Inscribir alumnos · ${periodName}`} onClose={onClose} size="lg">
       <Alert>{error}</Alert>
       <form onSubmit={submit} className="club-enroll">
         <div className="form-grid">
@@ -334,7 +334,7 @@ export function EnrollModal({ clubs, schoolPeriodId, periodName, initialClubId =
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -353,7 +353,7 @@ export function MembersModal({ club, schoolPeriodId, periodName, canManage, onCl
     }
   };
   return (
-    <Modal title={`${club.name} · ${periodName}`} onClose={onClose} size="lg">
+    <Drawer title={`${club.name} · ${periodName}`} onClose={onClose} size="lg">
       <div className="club-members__head">
         <span className="text-sm text-muted">
           {club.coordinator_name ? `Coordina: Prof. ${club.coordinator_name}` : 'Sin coordinador'}
@@ -407,6 +407,6 @@ export function MembersModal({ club, schoolPeriodId, periodName, canManage, onCl
           </table>
         </div>
       )}
-    </Modal>
+    </Drawer>
   );
 }

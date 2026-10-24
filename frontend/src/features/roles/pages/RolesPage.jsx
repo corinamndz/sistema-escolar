@@ -7,7 +7,7 @@ import RequirePermission from '../../../components/RequirePermission';
 import PageHeader from '../../../components/ui/PageHeader';
 import Table from '../../../components/ui/Table';
 import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
+import Drawer from '../../../components/ui/Drawer';
 import Field from '../../../components/ui/Field';
 import Input from '../../../components/ui/Input';
 import Alert from '../../../components/ui/Alert';
@@ -77,7 +77,7 @@ function CreateRoleModal({ onClose, onCreated }) {
   };
 
   return (
-    <Modal title="Nuevo rol" onClose={onClose}>
+    <Drawer title="Nuevo rol" onClose={onClose}>
       <Alert>{error}</Alert>
       <form onSubmit={handleSubmit}>
         <Field label="Nombre del rol">
@@ -92,7 +92,7 @@ function CreateRoleModal({ onClose, onCreated }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

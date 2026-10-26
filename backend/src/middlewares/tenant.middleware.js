@@ -1,4 +1,5 @@
 const { db, scopeToTenant, tenantSchemaOf } = require('../config/database');
+const audit = require('../services/audit/audit.service');
 const { ApiError } = require('../utils/ApiError');
 
 /**
@@ -49,6 +50,7 @@ async function tenantMiddleware(req, res, next) {
   req.tenantId = req.user.tenantId;
   req.tenantSchema = schemaName; // null = public
   req.db = trx;
+  audit.attach(req, res);
 
   let settled = false;
   /** Confirma o revierte; devuelve false si la confirmación falló. */
@@ -77,7 +79,9 @@ async function tenantMiddleware(req, res, next) {
   const originalEnd = res.end.bind(res);
   res.end = function endAfterCommit(...args) {
     if (settled) return originalEnd(...args);
-    finalize(res.statusCode < 400).then((ok) => {
+    // Bitácora: en la misma transacción que el cambio, antes de confirmarla.
+    const audited = res.statusCode < 400 ? audit.recordRequest(req, res).catch((err) => console.error('[auditoría]', err.message)) : Promise.resolve();
+    audited.then(() => finalize(res.statusCode < 400)).then((ok) => {
       if (ok || res.headersSent) return originalEnd(...args);
       res.statusCode = 500;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');

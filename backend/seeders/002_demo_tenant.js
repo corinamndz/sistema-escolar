@@ -12,20 +12,12 @@ const ROLE_TEMPLATES = {
   Coordinador: {
     isSystem: true,
     hierarchyLevel: 2,
-    // Gestiona a los docentes de su etapa (Personal) y supervisa en consulta el resto.
+    // Solo sus módulos; el backend limita todo a su nivel (migración 057, access/coordinatorScope.js).
     byModule: {
       dashboard: { can_read: true },
       staff: { can_create: true, can_read: true, can_update: true, can_delete: true },
-      students: { can_read: true },
-      guardians: { can_read: true },
-      academics: { can_read: true },
-      evaluation_plans: { can_read: true },
-      grading: { can_read: true, extra_actions: { view_all_sections: true } },
-      schedules: { can_read: true },
-      discipline: { can_read: true },
-      clubs: { can_read: true },
-      events: { can_read: true },
-      appointments: { can_read: true },
+      evaluation_plans: { can_create: true, can_read: true, can_update: true, can_delete: true },
+      schedules: { can_create: true, can_read: true, can_update: true, can_delete: true },
     },
   },
   Docente: {

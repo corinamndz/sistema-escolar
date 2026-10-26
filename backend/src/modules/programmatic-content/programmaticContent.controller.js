@@ -26,7 +26,7 @@ const getContent = asyncHandler(async (req, res) => {
     })
     .parse({ ...req.query, schoolPeriodId: req.query.schoolPeriodId || undefined });
   await teacherScope.assertGradeSubjectAccess(req, query.gradeId, query.subjectId);
-  const scope = await teacherScope.getTeacherScope(req);
+  const scope = await teacherScope.getAccessScope(req);
   res.status(200).json(
     await service.getContent(req.db, req.tenantId, query, { scope, coversPlan: teacherScope.coversPlan, coversSubject: teacherScope.coversSubject })
   );

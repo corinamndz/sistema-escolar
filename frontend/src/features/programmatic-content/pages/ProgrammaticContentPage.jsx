@@ -7,6 +7,7 @@ import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
 import PageHeader from '../../../components/ui/PageHeader';
+import { ReviewButton, ReviewInbox } from '../../reviews/components/ReviewWidgets';
 import Button from '../../../components/ui/Button';
 import Select from '../../../components/ui/Select';
 import Field from '../../../components/ui/Field';
@@ -266,6 +267,8 @@ function ProgrammaticContentPage() {
         subtitle="Unidades y temas de cada materia, con las evaluaciones de cada tema. Despliega un tema para ver sus evaluaciones o incluir una nueva."
       />
       <Alert>{optionsError}</Alert>
+      {/* Coordinador / Director: programas que esperan su revisión. */}
+      <ReviewInbox type="content" onChanged={reload} />
 
       {options?.length === 0 ? (
         <div className="card empty-state">
@@ -292,6 +295,12 @@ function ProgrammaticContentPage() {
                     : 'Elige la materia y el grado para ver su temario.'}
                 </p>
               </div>
+              {content && (
+                <div className="data-table__header-actions">
+                  {/* Revisión del programa completo de esta materia en este grado. */}
+                  <ReviewButton target={{ gradeId, subjectId }} title={`${content.subject_name} · ${content.grade_name}`} key={`${gradeId}|${subjectId}|${version}`} />
+                </div>
+              )}
               {canCreate && (
                 <div className="data-table__header-actions">
                   <ImportButton

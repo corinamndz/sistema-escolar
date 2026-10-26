@@ -24,6 +24,7 @@ import ClubsPage from '../features/clubs/pages/ClubsPage';
 import EventsPage from '../features/events/pages/EventsPage';
 import AppointmentsPage from '../features/appointments/pages/AppointmentsPage';
 import NotificationLogPage from '../features/notifications/pages/NotificationLogPage';
+import AuditPage from '../features/audit/pages/AuditPage';
 import GradeSummaryPage from '../features/grading/pages/GradeSummaryPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
@@ -90,6 +91,9 @@ function App() {
             </Route>
             <Route element={<PermissionRoute module="tenant_settings" blockTeacher />}>
               <Route path="notifications/log" element={<NotificationLogPage />} />
+            </Route>
+            <Route element={<PermissionRoute adminOnly />}>
+              <Route path="audit" element={<AuditPage />} />
             </Route>
             <Route element={<PermissionRoute module="appointments" />}>
               <Route path="appointments" element={<AppointmentsPage />} />

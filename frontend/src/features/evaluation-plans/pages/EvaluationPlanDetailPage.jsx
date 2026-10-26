@@ -21,6 +21,7 @@ import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { useToast } from '../../../components/ui/Toast';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
+import { ReviewButton } from '../../reviews/components/ReviewWidgets';
 import { TermBadge, termLabel } from '../terms';
 import { INSTRUMENT_LABELS } from '../instruments';
 import {
@@ -182,14 +183,19 @@ function EvaluationPlanDetailPage() {
         }
         actions={
           <>
+            {/* Revisión y aprobación: el docente envía; coordinación del nivel o dirección revisan. */}
+            <ReviewButton target={{ planId: plan.id }} title={plan.subject || ''} status={plan.review_status} onChanged={refetch} />
             {plan.subject_id && (
               <Link to={`/programmatic-content?materia=${plan.subject_id}&grado=${plan.grade_id}&ano=${plan.school_period_id}`} className="btn btn--secondary">
                 Contenido programático
               </Link>
             )}
-            <Link to={`/grading/plans/${id}`} className="btn btn--secondary">
-              Ver calificaciones
-            </Link>
+            {/* Calificaciones es otro módulo (el coordinador, por ejemplo, no lo tiene). */}
+            {can('grading', 'read') && (
+              <Link to={`/grading/plans/${id}`} className="btn btn--secondary">
+                Ver calificaciones
+              </Link>
+            )}
             <Link to="/evaluation-plans" className="btn btn--secondary">
               Volver
             </Link>

@@ -388,7 +388,7 @@ function StaffPage() {
         actions={viewToggle}
       />
       {coordinator && !coordinatorStage && (
-        <Alert variant="warning">Pide al Director que asigne la etapa que coordinas (en Personal → Gestionar acceso al sistema).</Alert>
+        <Alert variant="warning">Pide al Director que asigne tu nivel de coordinación (en Personal → Gestionar acceso al sistema).</Alert>
       )}
 
       {view === 'list' ? (
@@ -600,8 +600,9 @@ function StaffPage() {
 /** `coordinatorLevel`: el coordinador solo registra DOCENTES disponibles para su etapa (o para todas). */
 function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) {
   const isEdit = Boolean(initial.id);
+  // Coordinador: solo SU nivel (al editar, también la disponibilidad que el docente ya tenía).
   const availabilityOptions = coordinatorLevel
-    ? Object.entries(AVAILABILITY_LABELS).filter(([value]) => value === coordinatorLevel || value === 'all')
+    ? Object.entries(AVAILABILITY_LABELS).filter(([value]) => value === coordinatorLevel || (isEdit && value === initial.level_availability))
     : Object.entries(AVAILABILITY_LABELS);
   const [form, setForm] = useState({
     staffType: initial.staff_type || 'teaching',
@@ -617,7 +618,7 @@ function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) 
   });
   const isTeacher = form.staffType === 'teaching';
   const isCoordinator = form.staffType === 'coordinator';
-  const coordinationError = isCoordinator && !form.coordinationLevel ? 'Indica la etapa que coordina.' : null;
+  const coordinationError = isCoordinator && !form.coordinationLevel ? 'Indica el nivel de coordinación.' : null;
   const { run, loading, error, fieldErrors } = useMutation(
     isEdit ? (data) => staffApi.update(initial.id, data) : staffApi.create
   );
@@ -662,13 +663,13 @@ function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) 
           </Field>
           {isCoordinator && (
             <Field
-              label="Etapa que coordina"
+              label="Nivel de coordinación"
               error={fieldErrors.coordinationLevel || coordinationError}
               hint="Gestionará a los docentes de esta etapa. Dale acceso con el rol Coordinador desde «Gestionar acceso al sistema»."
               required
             >
               <Select name="coordinationLevel" value={form.coordinationLevel} onChange={handleChange}>
-                <option value="">Selecciona la etapa…</option>
+                <option value="">Selecciona el nivel…</option>
                 {Object.entries(COORDINATION_LEVELS).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
@@ -683,7 +684,7 @@ function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) 
               error={fieldErrors.levelAvailability}
               hint={
                 coordinatorLevel
-                  ? 'Como coordinador registras docentes de tu etapa (o disponibles para todos los niveles).'
+                  ? 'Como coordinador registras docentes de tu nivel de coordinación.'
                   : 'En «Secciones y personal docente» solo aparecerá en las secciones de este nivel.'
               }
             >

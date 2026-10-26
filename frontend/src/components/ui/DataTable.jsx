@@ -108,6 +108,8 @@ function DataTable({
   deleteSuccessMessage = 'Registro eliminado',
   // Acciones adicionales: [{ key, icon, label, onClick(row), show?(row), tone?: 'accent' | 'view' | 'edit' | 'delete' }]
   rowActions = [],
+  // Clic (o Enter) en la fila: abre el detalle (ej. un Drawer).
+  onRowClick,
   // Otros
   emptyMessage = 'No hay registros todavía.',
   stackOnMobile = true,
@@ -326,7 +328,18 @@ function DataTable({
               const key = row[rowKey];
               const deleting = deletingKey === key;
               return (
-                <tr key={key} className={deleting ? 'is-busy' : undefined}>
+                <tr
+                  key={key}
+                  className={[deleting && 'is-busy', onRowClick && 'is-clickable'].filter(Boolean).join(' ') || undefined}
+                  {...(onRowClick
+                    ? {
+                        tabIndex: 0,
+                        // Los botones y enlaces de la fila mantienen su propia acción.
+                        onClick: (e) => !e.target.closest('button, a, input, select, label') && onRowClick(row),
+                        onKeyDown: (e) => e.key === 'Enter' && e.target === e.currentTarget && onRowClick(row),
+                      }
+                    : {})}
+                >
                   {columns.map((col) => (
                     <td
                       key={col.key}

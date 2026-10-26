@@ -27,17 +27,17 @@ const coordinationLevel = z.enum(['initial', 'primary', 'secondary']).nullable()
  * personal o una disponibilidad fuera de su etapa se rechaza (no se corrige en
  * silencio, para que sepa por qué).
  */
-function assertCoordinatorData(scope, data, { creating }) {
+function assertCoordinatorData(scope, data, { creating, current = null }) {
   if (!scope) return data;
   coordinator.assertHasLevel(scope);
   const label = coordinator.LEVEL_LABELS[scope.level];
+  // Estricto: registra docentes de SU nivel; al editar puede dejar la disponibilidad que ya tenía.
+  const allowed = [scope.level, ...(current?.level_availability && current.level_availability !== scope.level ? [current.level_availability] : [])];
   if ((creating || data.staffType !== undefined) && (data.staffType || 'teaching') !== 'teaching') {
     throw ApiError.forbidden(`Como coordinador de ${label} solo gestionas personal docente.`, [{ path: 'staffType', message: 'Solo docentes.' }]);
   }
-  if (data.levelAvailability !== undefined && ![scope.level, 'all'].includes(data.levelAvailability)) {
-    throw ApiError.forbidden(`Como coordinador de ${label} solo registras docentes disponibles para ${label} (o para todos los niveles).`, [
-      { path: 'levelAvailability', message: `Solo ${label} o Todos.` },
-    ]);
+  if (data.levelAvailability !== undefined && !allowed.includes(data.levelAvailability)) {
+    throw ApiError.forbidden(`Como coordinador de ${label} solo registras docentes de ${label}.`, [{ path: 'levelAvailability', message: `Solo ${label}.` }]);
   }
   return { ...data, staffType: 'teaching', ...(creating ? { levelAvailability: data.levelAvailability || scope.level } : {}) };
 }
@@ -71,7 +71,8 @@ const create = asyncHandler(async (req, res) => {
 const update = asyncHandler(async (req, res) => {
   const scope = await coordinator.getCoordinatorScope(req);
   const parsed = staffSchema.partial().extend({ status: z.enum(['active', 'inactive']).optional() }).parse(req.body);
-  const data = scope ? assertCoordinatorData(scope, parsed, { creating: false }) : parsed;
+  const current = scope ? await req.db('staff').where({ id: req.params.id, tenant_id: req.tenantId }).first('level_availability') : null;
+  const data = scope ? assertCoordinatorData(scope, parsed, { creating: false, current }) : parsed;
   const row = await staffService.update(req.db, req.tenantId, req.params.id, data);
   res.status(200).json(row);
 });

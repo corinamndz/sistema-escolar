@@ -1,6 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
 const { exclusionOf } = require('../academics/sectionSubjects');
+const coordinatorScope = require('./coordinatorScope');
 
 /**
  * Alcance del DOCENTE: qué secciones y materias le corresponden según la carga
@@ -47,6 +48,21 @@ async function getTeacherScope(req) {
   }
   req.teacherScope = scope;
   return scope;
+}
+
+/**
+ * Alcance para los módulos de contenido (planes de evaluación, contenido
+ * programático, horario de una sección): el del DOCENTE (su carga) o, si es
+ * un COORDINADOR restringido, todas las secciones y materias de su nivel
+ * (kind 'coordinator', ver coordinatorScope.levelScope). null = sin restricción.
+ * Lo exclusivo del docente (denyTeachers, "solo a tu nombre"…) sigue usando
+ * getTeacherScope.
+ */
+async function getAccessScope(req) {
+  if (req.accessScope !== undefined) return req.accessScope;
+  const teacher = await getTeacherScope(req);
+  req.accessScope = teacher ? { kind: 'teacher', ...teacher } : await coordinatorScope.levelScope(req);
+  return req.accessScope;
 }
 
 /** Solo secciones de años escolares ACTIVOS y no finalizados (la carga del período en curso). */
@@ -104,7 +120,7 @@ function coversSubject(scope, sectionId, subjectId) {
   return !subjectId || !scope.specialistTaken.has(`${sectionId}|${subjectId}`);
 }
 
-const notFound = (what) => ApiError.notFound(`${what} no encontrado o no asignado a tu carga docente.`);
+const notFound = (what) => ApiError.notFound(`${what} no encontrado o fuera de tu alcance (carga docente o nivel de coordinación).`);
 
 /** Limita una consulta de alumnos (alias de la columna id) a los inscritos en la carga del docente. */
 function restrictStudents(query, scope, studentIdColumn = 's.id', { activeOnly = true } = {}) {
@@ -119,7 +135,7 @@ function restrictStudents(query, scope, studentIdColumn = 's.id', { activeOnly =
 
 /** 404 si el alumno no tiene ninguna inscripción en una sección de la carga del docente. */
 async function assertStudentAccess(req, studentId) {
-  const scope = await getTeacherScope(req);
+  const scope = await getAccessScope(req);
   if (!scope) return;
   const ok = await req.db('enrollments').where({ tenant_id: req.tenantId, student_id: studentId }).whereIn('section_id', scope.sectionIds).first();
   if (!ok) throw notFound('Alumno');
@@ -127,7 +143,7 @@ async function assertStudentAccess(req, studentId) {
 
 /** 404 si la sección no está en la carga del docente. */
 async function assertSectionAccess(req, sectionId) {
-  const scope = await getTeacherScope(req);
+  const scope = await getAccessScope(req);
   if (!coversSection(scope, sectionId)) throw notFound('Sección');
 }
 
@@ -138,7 +154,7 @@ function coversPlan(scope, plan, sectionIds) {
 
 /** 404 si el plan de evaluación no corresponde a la carga del docente. */
 async function assertPlanAccess(req, planId) {
-  const scope = await getTeacherScope(req);
+  const scope = await getAccessScope(req);
   if (!scope) return;
   const plan = await req.db('evaluation_plans').where({ id: planId, tenant_id: req.tenantId }).select('id', 'subject_id').first();
   if (!plan) return; // el servicio responde su propio 404
@@ -166,7 +182,7 @@ async function assertCompetencyAccess(req, competencyId) {
  * (sin restricción).
  */
 async function teachingPairs(req) {
-  const scope = await getTeacherScope(req);
+  const scope = await getAccessScope(req);
   if (!scope) return null;
   if (!scope.sectionIds.length) return new Set();
   const rows = await req
@@ -212,6 +228,7 @@ async function denyTeachers(req, res, next) {
 module.exports = {
   TEACHER_ROLE,
   getTeacherScope,
+  getAccessScope,
   coversSection,
   coversSubject,
   coversPlan,

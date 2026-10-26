@@ -4,6 +4,8 @@ const { asyncHandler } = require('../../utils/asyncHandler');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
 const { getTeacherScope } = require('../access/teacherScope');
 const { loadCoordinatorScope } = require('../access/coordinatorScope');
+const audit = require('../../services/audit/audit.service');
+const { isAdmin } = require('../../middlewares/admin.middleware');
 
 const loginSchema = z.object({
   tenantSlug: z.string().min(1, 'tenantSlug es requerido.'),
@@ -13,7 +15,7 @@ const loginSchema = z.object({
 
 const login = asyncHandler(async (req, res) => {
   const data = loginSchema.parse(req.body);
-  const result = await authService.login(data);
+  const result = await authService.login(data, audit.requestContext(req));
   res.status(200).json(result);
 });
 
@@ -40,6 +42,8 @@ const me = asyncHandler(async (req, res) => {
     isRestrictedTeacher: Boolean(scope),
     teachingStaffId: staff?.id || null,
     coordinator: coord ? { level: coord.level } : null,
+    // Director (rol de sistema Administrador): módulos exclusivos como Auditoría.
+    isAdmin: await isAdmin(req.db, req.tenantId, req.user.id),
   });
 });
 

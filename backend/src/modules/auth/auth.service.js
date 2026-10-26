@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { db, withTenantTransaction, tenantSchemaOf } = require('../../config/database');
 const { ApiError } = require('../../utils/ApiError');
 const { invalidatePermissionsCache } = require('../../middlewares/permission.middleware');
+const { logAudit } = require('../../services/audit/audit.service');
 
 const SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS) || 10;
 
@@ -34,7 +35,30 @@ function signRefreshToken(user) {
  * registro raíz de colegios), así que este lookup no necesita transacción
  * con `app.tenant_id` fijado.
  */
-async function login({ tenantSlug, username, password }) {
+/** Intento fallido: en su propia transacción (la del login se revierte al lanzar el error). */
+async function auditFailedLogin(tenantId, username, user, reason, context) {
+  try {
+    await withTenantTransaction(tenantId, (trx) =>
+      logAudit(trx, {
+        tenantId,
+        userId: user?.id || null,
+        actorName: user?.full_name || null,
+        actorUsername: String(username || '').slice(0, 150),
+        action: 'INICIO_SESION_FALLIDO',
+        module: 'auth',
+        entity: 'users',
+        entityId: user?.id,
+        summary: `Intento de inicio de sesión fallido: ${reason}`,
+        ...context,
+      })
+    );
+  } catch (err) {
+    console.error('[auditoría] No se pudo registrar el intento fallido:', err.message);
+  }
+}
+
+/** `context`: { ip, userAgent } de la petición, para la bitácora. */
+async function login({ tenantSlug, username, password }, context = {}) {
   // Los slugs son minúsculas: "Demo" o " demo " deben encontrar el mismo colegio
   // (igual que el branding público del login).
   const slug = String(tenantSlug || '').trim().toLowerCase();
@@ -48,24 +72,39 @@ async function login({ tenantSlug, username, password }) {
   // Los usuarios que no son correo se comparan tal cual, como siempre.
   const lookup = typeof username === 'string' && username.includes('@') ? username.trim().toLowerCase() : username;
 
-  return withTenantTransaction(tenant.id, async (trx) => {
+  let failure = null;
+  const result = await withTenantTransaction(tenant.id, async (trx) => {
     const user = await trx('users')
       .where({ tenant_id: tenant.id, username: lookup })
       .first();
 
     if (!user || user.status !== 'active') {
-      throw ApiError.unauthorized('Usuario o contraseña incorrectos.');
+      failure = { user, reason: user ? 'usuario inactivo' : 'usuario inexistente' };
+      return null;
     }
 
     const passwordOk = await bcrypt.compare(password, user.password_hash);
     if (!passwordOk) {
-      throw ApiError.unauthorized('Usuario o contraseña incorrectos.');
+      failure = { user, reason: 'contraseña incorrecta' };
+      return null;
     }
 
     const roleRows = await trx('user_roles').where({ user_id: user.id }).select('role_id');
     const roleIds = roleRows.map((r) => r.role_id);
 
     await trx('users').where({ id: user.id }).update({ last_login_at: trx.fn.now() });
+    await logAudit(trx, {
+      tenantId: tenant.id,
+      userId: user.id,
+      actorName: user.full_name,
+      actorUsername: user.username,
+      action: 'INICIAR_SESION',
+      module: 'auth',
+      entity: 'users',
+      entityId: user.id,
+      summary: 'Inició sesión',
+      ...context,
+    });
 
     const enriched = { ...user, roleIds, schema: tenant.schema_name ?? null };
     const accessToken = signAccessToken(enriched);
@@ -85,6 +124,12 @@ async function login({ tenantSlug, username, password }) {
       },
     };
   });
+
+  if (failure) {
+    await auditFailedLogin(tenant.id, username, failure.user, failure.reason, context);
+    throw ApiError.unauthorized('Usuario o contraseña incorrectos.');
+  }
+  return result;
 }
 
 async function refresh({ refreshToken }) {
@@ -116,6 +161,17 @@ async function createUser(trx, tenantId, { username, password, fullName, roleIds
   const existing = await trx('users').where({ tenant_id: tenantId, username }).first();
   if (existing) {
     throw ApiError.conflict('Ya existe un usuario con ese nombre de usuario en este colegio.');
+  }
+
+  // El Coordinador necesita su nivel de coordinación, que vive en la ficha de personal:
+  // se da desde Personal → Acceso al sistema (la base también lo exige, migración 056).
+  if (roleIds.length) {
+    const coordinator = await trx('roles').where({ tenant_id: tenantId, name: 'Coordinador' }).whereIn('id', roleIds).first('id');
+    if (coordinator) {
+      throw ApiError.unprocessable('El rol Coordinador se asigna desde Personal → Acceso al sistema, donde se indica su nivel de coordinación (Inicial, Primaria o Secundaria).', [
+        { path: 'roleIds', message: 'Asígnalo desde Personal.' },
+      ]);
+    }
   }
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);

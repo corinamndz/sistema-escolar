@@ -7,6 +7,13 @@ const { ApiError } = require('./utils/ApiError');
 
 const app = express();
 
+// Detrás de un proxy (Nginx, balanceador): IP real del cliente en req.ip (bitácora de auditoría).
+// TRUST_PROXY=1 (un salto), =true, o una lista de IPs/subredes de confianza.
+if (process.env.TRUST_PROXY) {
+  const v = process.env.TRUST_PROXY.trim();
+  app.set('trust proxy', /^\d+$/.test(v) ? Number(v) : v === 'true' ? true : v);
+}
+
 app.use(helmet());
 // Content-Disposition expuesto: el frontend lee el nombre de los archivos descargados (PDF de horarios).
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true, exposedHeaders: ['Content-Disposition'] }));

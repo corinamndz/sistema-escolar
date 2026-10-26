@@ -1,5 +1,6 @@
 const path = require('path');
 const { ApiError } = require('../../utils/ApiError');
+const { logAudit } = require('../../services/audit/audit.service');
 
 /**
  * Eliminar una moneda del colegio JUNTO con todo lo registrado en ella
@@ -111,17 +112,19 @@ async function deleteTenantCurrencyCascade(trx, tenantId, rawCode, { confirmCode
   const deletedRates = await trx('exchange_rates').where({ tenant_id: tenantId, quote_currency: code }).delete();
   await trx('tenant_currencies').where({ tenant_id: tenantId, currency_code: code }).delete();
 
-  await trx('audit_logs').insert({
-    tenant_id: tenantId,
-    user_id: userId,
-    action: 'delete',
+  await logAudit(trx, {
+    tenantId,
+    userId,
+    action: 'ELIMINAR_MONEDA',
+    module: 'payments',
     entity: 'tenant_currencies',
-    diff: JSON.stringify({
+    summary: `Eliminó la moneda ${impact.currency.name} (${code}) con ${deletedPayments} pago(s) y ${deletedRates} tasa(s)`,
+    diff: {
       currency: code,
       name: impact.currency.name,
       deleted: { payments: deletedPayments, exchange_rates: deletedRates, files: files.length },
       payments: payments.map((p) => ({ id: p.id, status: p.status, amount: p.amount, currency: p.currency, ref_amount: p.ref_amount, period_label: p.period_label })),
-    }),
+    },
   });
 
   return {

@@ -83,7 +83,7 @@ function AccessForm({ staff, access, roles, onClose, onSaved }) {
   const errors = {};
   if (!EMAIL_RE.test(state.email.trim())) errors.email = 'Correo inválido.';
   if (state.roleIds.length === 0) errors.roleIds = 'Selecciona al menos un rol.';
-  if (isCoordinator && !state.coordinationLevel) errors.coordinationLevel = 'Indica la etapa que coordina.';
+  if (isCoordinator && !state.coordinationLevel) errors.coordinationLevel = 'Indica el nivel de coordinación.';
   const needsPassword = (!access || state.resetPassword) && state.passwordMode === 'custom';
   if (needsPassword) {
     const failed = PASSWORD_RULES.find((r) => !r.test(state.password));
@@ -170,13 +170,13 @@ function AccessForm({ staff, access, roles, onClose, onSaved }) {
 
         {isCoordinator && (
           <Field
-            label="Etapa que coordina"
+            label="Nivel de coordinación"
             error={errors.coordinationLevel || fieldErrors.coordinationLevel}
-            hint="Podrá registrar y gestionar a los docentes de esta etapa."
+            hint="Delimita sus permisos y vistas: solo gestionará a los docentes de ese nivel."
             required
           >
             <Select value={state.coordinationLevel} onChange={(e) => setState((s) => ({ ...s, coordinationLevel: e.target.value }))} disabled={isSelf}>
-              <option value="">Selecciona la etapa…</option>
+              <option value="">Selecciona el nivel…</option>
               {Object.entries(COORDINATION_LEVELS).map(([code, label]) => (
                 <option key={code} value={code}>
                   {label}

@@ -1,5 +1,6 @@
 const { ApiError } = require('../../utils/ApiError');
 const { deactivateStaffUser } = require('./staffAccess.service');
+const { restrictStaffToLevel } = require('../access/coordinatorScope');
 
 /** Etiquetas de staff.level_availability (migración 046). */
 const LEVEL_AVAILABILITY_LABELS = { initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria', all: 'Todos los niveles' };
@@ -33,12 +34,8 @@ async function list(trx, tenantId, { staffType, coordinator = null } = {}) {
     )
     .orderBy(['s.first_name', 's.last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
   if (staffType) query.andWhere('s.staff_type', staffType);
-  // Coordinador: solo los docentes disponibles para su etapa (o para todos los niveles).
-  if (coordinator) {
-    query.andWhere('s.staff_type', 'teaching').andWhere((q) => {
-      q.whereIn('s.level_availability', [coordinator.level, 'all']).orWhereNull('s.level_availability');
-    });
-  }
+  // Coordinador: SOLO los docentes de su nivel (disponibles para él, o "todos los niveles" con carga en él).
+  if (coordinator) restrictStaffToLevel(query, trx, coordinator.level, 's');
   return query;
 }
 
@@ -56,7 +53,7 @@ async function getById(trx, tenantId, id) {
 const COORDINATION_LEVELS = { initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria' };
 function assertCoordinationLevel(staffType, level) {
   if (staffType === 'coordinator' && !COORDINATION_LEVELS[level]) {
-    throw ApiError.badRequest('Indica la etapa que coordina (Inicial, Primaria o Secundaria).', [{ path: 'coordinationLevel', message: 'Requerida para un coordinador.' }]);
+    throw ApiError.badRequest('Indica el nivel de coordinación (Inicial, Primaria o Secundaria).', [{ path: 'coordinationLevel', message: 'Obligatorio para un coordinador.' }]);
   }
 }
 

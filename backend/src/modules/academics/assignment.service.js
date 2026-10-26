@@ -593,7 +593,7 @@ async function applySubjectTeachers(trx, tenantId, section, list) {
  *                 null       SIN profesor (vacante)
  * Filtros opcionales: gradeId, sectionId, teacherId. Orden de la jerarquía escolar.
  */
-async function listAssignmentMatrix(trx, tenantId, { schoolPeriodId, gradeId = null, sectionId = null, teacherId = null }) {
+async function listAssignmentMatrix(trx, tenantId, { schoolPeriodId, gradeId = null, sectionId = null, teacherId = null, levelCode = null }) {
   const rows = await trx('sections as sec')
     .join('grades as g', 'g.id', 'sec.grade_id')
     .join('education_levels as el', 'el.code', 'g.level_code')
@@ -611,6 +611,7 @@ async function listAssignmentMatrix(trx, tenantId, { schoolPeriodId, gradeId = n
     .whereNotExists(exclusionOf(trx, trx.ref('sec.id'), trx.ref('s.id')))
     .modify((q) => {
       if (gradeId) q.andWhere('g.id', gradeId);
+      if (levelCode) q.andWhere('g.level_code', levelCode); // coordinador: solo su nivel
       if (sectionId) q.andWhere('sec.id', sectionId);
       if (teacherId) q.andWhere(trx.raw('COALESCE(st.id, lead.id)'), teacherId);
     })

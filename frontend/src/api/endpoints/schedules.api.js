@@ -13,6 +13,8 @@ const schedulesApi = {
   listAssignments: (filters) => get('/schedules/assignments', filters),
   /** Secciones para elegir (administración). */
   listSections: (params) => get('/schedules/sections', params),
+  /** Años escolares (módulo Horarios: sirve también a quien no tiene acceso a Académico, p. ej. el coordinador). */
+  listPeriods: () => get('/schedules/periods'),
   /** Bloques horarios del año escolar. */
   getSlots: (periodId) => get(`/schedules/periods/${periodId}/slots`),
   /** Reemplaza los bloques del año: [{ id?, name, startTime, endTime, isBreak }]. */

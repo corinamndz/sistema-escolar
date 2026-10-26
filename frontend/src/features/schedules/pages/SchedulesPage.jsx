@@ -69,9 +69,9 @@ const VIEWS = [
  *   - Soltar una clase sobre el banco la quita del horario.
  */
 function SchedulesPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const toast = useToast();
-  const { data: periods } = useFetch(() => academicsApi.listSchoolPeriods(), []);
+  const { data: periods } = useFetch(() => schedulesApi.listPeriods(), []);
   const [periodId, setPeriodId] = useState('');
   // TODOS los grados del colegio (jerarquía escolar), cada uno con sus secciones
   // en el año elegido. Se vuelve a pedir al cambiar de año.
@@ -381,7 +381,8 @@ function SchedulesPage() {
         subtitle="Arma el horario semanal de cada sección. El sistema impide que un profesor tenga dos clases a la misma hora."
         actions={
           <>
-            {can('schedules', 'update') && period && !period.closed_at && (
+            {/* Los bloques son de todo el colegio: el coordinador no los cambia (el backend responde 403). */}
+            {can('schedules', 'update') && !user?.coordinator && period && !period.closed_at && (
               <Button variant="secondary" icon="clock" onClick={() => setEditingSlots(true)}>
                 Bloques horarios
               </Button>
@@ -561,7 +562,8 @@ function SchedulesPage() {
                   Define las horas de clase (por ejemplo 07:00–07:45) para todas las secciones del año; luego podrás arrastrar las materias
                   a la grilla.
                 </div>
-                {can('schedules', 'update') && !period.closed_at && (
+                {user?.coordinator && <div className="text-sm text-muted">Los bloques son de todo el colegio: pídele al Director que los configure.</div>}
+                {can('schedules', 'update') && !user?.coordinator && !period.closed_at && (
                   <div className="empty-state__actions">
                     {slotSource && (
                       <Button icon="layers" onClick={() => copySlotsFrom(slotSource)} loading={copyingSlots} loadingText="Copiando…">

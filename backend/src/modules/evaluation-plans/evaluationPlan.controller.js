@@ -13,7 +13,7 @@ const assignmentService = require('../academics/assignment.service');
 /** GET /evaluation-plans/options/school-periods — años escolares (docente: los de su carga). */
 const listPeriodOptions = asyncHandler(async (req, res) => {
   const periods = await academicService.listSchoolPeriods(req.db, req.tenantId);
-  const scope = await teacherScope.getTeacherScope(req);
+  const scope = await teacherScope.getAccessScope(req);
   if (!scope) return res.status(200).json(periods);
   const mine = await req.db('sections').whereIn('id', scope.sectionIds).distinct().pluck('school_period_id');
   return res.status(200).json(periods.filter((p) => mine.includes(p.id)));
@@ -22,7 +22,7 @@ const listPeriodOptions = asyncHandler(async (req, res) => {
 /** GET /evaluation-plans/options/sections — secciones (docente: solo las suyas). */
 const listSectionOptions = asyncHandler(async (req, res) => {
   const rows = await academicService.listSections(req.db, req.tenantId, {});
-  const scope = await teacherScope.getTeacherScope(req);
+  const scope = await teacherScope.getAccessScope(req);
   res.status(200).json(scope ? rows.filter((s) => teacherScope.coversSection(scope, s.id)) : rows);
 });
 
@@ -40,8 +40,9 @@ const getSectionAssignmentOptions = asyncHandler(async (req, res) => {
   //                    grado aún no tiene materias marcadas (Inicial / Primaria).
   const catalog = (await assignmentService.listSubjects(req.db, req.tenantId, { activeOnly: true })).map((s) => ({ id: s.id, name: s.name, code: s.code }));
   const data = { ...assignment, curriculum_size: (assignment.subjects || []).length, catalog };
-  const scope = await teacherScope.getTeacherScope(req);
-  if (!scope) return res.status(200).json(data);
+  const scope = await teacherScope.getAccessScope(req);
+  // Coordinador: ve la asignación completa de las secciones de su nivel.
+  if (!scope || scope.kind === 'coordinator') return res.status(200).json(data);
   const self = (t) => (t && t.id === scope.staffId ? t : null);
   return res.status(200).json({
     ...data,
@@ -71,7 +72,7 @@ const listPlans = asyncHandler(async (req, res) => {
   const termNumber = req.query.termNumber ? z.coerce.number().int().min(1).max(3).parse(req.query.termNumber) : undefined;
   const rows = await service.listPlans(req.db, req.tenantId, { sectionId, termId, termNumber, teacherId });
   // Docente: solo los planes de materias y secciones de su carga.
-  const scope = await teacherScope.getTeacherScope(req);
+  const scope = await teacherScope.getAccessScope(req);
   if (!scope || rows.length === 0) return res.status(200).json(rows);
   const links = await req.db('evaluation_plan_sections').whereIn('plan_id', rows.map((p) => p.id)).select('plan_id', 'section_id');
   const sectionsOf = (id) => links.filter((l) => l.plan_id === id).map((l) => l.section_id);
@@ -105,14 +106,17 @@ const createPlan = asyncHandler(async (req, res) => {
  * docente de aula de cada sección y el plan queda a su nombre.
  */
 async function assertCanCreatePlan(req, data) {
-  const scope = await teacherScope.getTeacherScope(req);
+  const scope = await teacherScope.getAccessScope(req);
   if (!scope) return;
   const sectionIds = data.sectionIds?.length ? data.sectionIds : [data.sectionId].filter(Boolean);
   const outside = sectionIds.find((id) => !teacherScope.coversSubject(scope, id, data.subjectId || null));
   if (outside) {
-    throw ApiError.forbidden('Solo puedes crear planes de las materias y secciones de tu carga docente.', [{ path: 'sectionIds', message: 'Fuera de tu carga.' }]);
+    throw ApiError.forbidden(
+      scope.kind === 'coordinator' ? 'Solo puedes crear planes de las secciones de tu nivel de coordinación.' : 'Solo puedes crear planes de las materias y secciones de tu carga docente.',
+      [{ path: 'sectionIds', message: 'Fuera de tu alcance.' }]
+    );
   }
-  if (!data.subjectId && data.teacherId && data.teacherId !== scope.staffId) {
+  if (scope.kind === 'teacher' && !data.subjectId && data.teacherId && data.teacherId !== scope.staffId) {
     throw ApiError.forbidden('Solo puedes crear planes a tu nombre.', [{ path: 'teacherId', message: 'Debe ser tu usuario.' }]);
   }
 }
@@ -129,12 +133,15 @@ const updatePlan = asyncHandler(async (req, res) => {
       moveToSectionId: z.string().uuid().optional(),
     })
     .parse(req.body);
-  const scope = await teacherScope.getTeacherScope(req);
+  const scope = await teacherScope.getAccessScope(req);
   const targets = [...(data.sectionIds || []), ...(data.moveToSectionId ? [data.moveToSectionId] : [])];
   if (scope && targets.length) {
     const plan = await req.db('evaluation_plans').where({ id: req.params.planId, tenant_id: req.tenantId }).select('subject_id').first();
     if (plan && targets.some((id) => !teacherScope.coversSubject(scope, id, plan.subject_id))) {
-      throw ApiError.forbidden('Solo puedes aplicar el plan a secciones de tu carga docente.', [{ path: 'sectionIds', message: 'Fuera de tu carga.' }]);
+      throw ApiError.forbidden(
+        scope.kind === 'coordinator' ? 'Solo puedes aplicar el plan a secciones de tu nivel de coordinación.' : 'Solo puedes aplicar el plan a secciones de tu carga docente.',
+        [{ path: 'sectionIds', message: 'Fuera de tu alcance.' }]
+      );
     }
   }
   res.status(200).json(await service.updatePlan(req.db, req.tenantId, req.params.planId, data));

@@ -66,14 +66,19 @@ const LOCK_TIMEOUT = process.env.MIGRATION_LOCK_TIMEOUT || '10s';
 
 // Colegios a los que aplica una migración de datos según el esquema en curso (ver arriba).
 // to_jsonb(t)->>'schema_name': funciona aunque la columna (migración 003 del admin) no exista.
+// plpgsql (no sql): la tabla tenants se resuelve al EJECUTARSE, así la función puede
+// crearse antes de la 001 en una base nueva y ya existe cuando una migración la usa.
 const HELPERS_SQL = `
 CREATE OR REPLACE FUNCTION public.migration_tenant_ids() RETURNS SETOF uuid
-LANGUAGE sql STABLE AS $fn$
+LANGUAGE plpgsql STABLE AS $fn$
+BEGIN
+  RETURN QUERY
   SELECT t.id FROM public.tenants t
   WHERE CASE
     WHEN nullif(current_setting('app.tenant_id', true), '') IS NULL THEN to_jsonb(t)->>'schema_name' IS NULL
     ELSE t.id = current_setting('app.tenant_id', true)::uuid
-  END
+  END;
+END
 $fn$;`;
 
 // Historial de cada corrida (global: no tiene tenant_id, el Tenant Manager no la copia a los esquemas).
@@ -348,11 +353,10 @@ async function main() {
 
     if (opts.baseline) await baselinePublic(client, migrations, opts.baseline, runId);
 
-    // 1) public (crea tenants en la 001, así que va antes que la función auxiliar)
-    const hasTenants = (await client.query("SELECT to_regclass('public.tenants') IS NOT NULL AS ok")).rows[0].ok;
-    if (hasTenants) await client.query(HELPERS_SQL);
+    // 1) public. La función auxiliar va ANTES: en una base nueva, la 053 ya la usa
+    //    en esta misma corrida (al ser plpgsql, no necesita que tenants exista aún).
+    await client.query(HELPERS_SQL);
     const publicResult = await migrateTarget(client, publicTarget, migrations, runId);
-    if (!hasTenants) await client.query(HELPERS_SQL);
 
     const results = [publicResult];
     if (publicResult.failed) {

@@ -63,7 +63,7 @@ async function getEffectivePermissions(db, tenantId, userId) {
 
 /** Invalida la caché de permisos de un usuario (o de todo el tenant si no se pasa userId). */
 function invalidatePermissionsCache(tenantId, userId) {
-  if (userId) cache.del(`perm:${tenantId}:${userId}`);
+  if (userId) cache.delByPrefix(`perm:${tenantId}:${userId}`); // permisos y marca de Administrador
   else cache.delByPrefix(`perm:${tenantId}:`);
 }
 

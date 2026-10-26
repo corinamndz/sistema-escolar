@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
+import { ReviewInbox, ReviewStatusBadge } from '../../reviews/components/ReviewWidgets';
+import ReviewDrawer from '../../reviews/components/ReviewDrawer';
 import DataTable from '../../../components/ui/DataTable';
 import Badge from '../../../components/ui/Badge';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
@@ -164,16 +166,30 @@ function EvaluationPlansPage() {
       sortValue: (p) => p.teacher_name,
     },
     { key: 'total_weight', header: 'Ponderación', render: (p) => <PlanWeight plan={p} />, sortValue: (p) => Number(p.total_weight) },
+    // Revisión y aprobación (coordinación del nivel o dirección).
+    { key: 'review_status', header: 'Revisión', render: (p) => <ReviewStatusBadge status={p.review_status} />, sortValue: (p) => ['observado', 'en_revision', 'borrador', 'aprobado'].indexOf(p.review_status) },
   ];
+  const [reviewing, setReviewing] = useState(null);
   const rowActions = [
+    { key: 'review', icon: 'inbox', label: 'Revisión y comentarios', tone: 'view', onClick: (p) => setReviewing(p) },
     { key: 'activities', icon: 'clipboard', label: 'Gestionar actividades y porcentajes', tone: 'edit', onClick: (p) => navigate(`/evaluation-plans/${p.id}`) },
-    { key: 'grades', icon: 'graduation', label: 'Ver calificaciones', tone: 'view', onClick: (p) => navigate(`/grading/plans/${p.id}`) },
+    ...(can('grading', 'read') ? [{ key: 'grades', icon: 'graduation', label: 'Ver calificaciones', tone: 'view', onClick: (p) => navigate(`/grading/plans/${p.id}`) }] : []),
   ];
   const canCreate = can('evaluation_plans', 'create');
 
   return (
     <div>
       <PageHeader title="Planes de evaluación" subtitle="Organizados por materia y, dentro de cada una, por lapso académico" />
+      {/* Coordinador / Director: planes que esperan su revisión. */}
+      <ReviewInbox type="plan" onChanged={refetchPlans} />
+      {reviewing && (
+        <ReviewDrawer
+          target={{ planId: reviewing.id }}
+          title={`${reviewing.subject_name} · ${reviewing.grade_name}`}
+          onClose={() => setReviewing(null)}
+          onChanged={refetchPlans}
+        />
+      )}
 
       <div className="card data-table student-groups__toolbar">
         <div className="data-table__header">

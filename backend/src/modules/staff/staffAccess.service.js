@@ -81,7 +81,7 @@ async function applyCoordinationLevel(trx, staff, roles, coordinationLevel) {
   const isCoordinator = roles.some((r) => r.name === COORDINATOR_ROLE);
   const level = coordinationLevel || staff.coordination_level || null;
   if (isCoordinator && !level) {
-    throw ApiError.badRequest('Indica la etapa que coordina (Inicial, Primaria o Secundaria).', [{ path: 'coordinationLevel', message: 'Requerida para el rol Coordinador.' }]);
+    throw ApiError.badRequest('Indica el nivel de coordinación (Inicial, Primaria o Secundaria).', [{ path: 'coordinationLevel', message: 'Obligatorio para el rol Coordinador.' }]);
   }
   const keep = isCoordinator || staff.staff_type === 'coordinator';
   await trx('staff').where({ id: staff.id }).update({ coordination_level: keep ? level : null });
@@ -199,7 +199,7 @@ async function updateStaffAccess(trx, tenantId, staffId, changes, actorUserId, a
     }
   } else if (changes.coordinationLevel !== undefined && (staff.staff_type === 'coordinator' || account.roles.some((r) => r.name === COORDINATOR_ROLE))) {
     // Cambio solo de etapa de un coordinador (sin tocar sus roles).
-    if (!changes.coordinationLevel) throw ApiError.badRequest('Indica la etapa que coordina.', [{ path: 'coordinationLevel', message: 'Requerida.' }]);
+    if (!changes.coordinationLevel) throw ApiError.badRequest('Indica el nivel de coordinación (Inicial, Primaria o Secundaria).', [{ path: 'coordinationLevel', message: 'Requerida.' }]);
     await trx('staff').where({ id: staffId }).update({ coordination_level: changes.coordinationLevel });
     rolesChanged = true; // su alcance cambió: se recalculan sus permisos
   }

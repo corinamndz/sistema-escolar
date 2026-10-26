@@ -26,6 +26,8 @@ router.use('/discipline', require('../modules/discipline/discipline.routes'));
 router.use('/clubs', require('../modules/clubs/club.routes'));
 router.use('/events', require('../modules/events/event.routes'));
 router.use('/dashboard', require('../modules/dashboard/dashboard.routes'));
+router.use('/audit', require('../modules/audit/audit.routes'));
+router.use('/reviews', require('../modules/reviews/review.routes'));
 router.use('/appointments', require('../modules/appointments/appointment.routes'));
 
 module.exports = router;

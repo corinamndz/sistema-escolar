@@ -1,5 +1,6 @@
 const { ApiError } = require('../../utils/ApiError');
 const assignmentService = require('../academics/assignment.service');
+const { restrictStaffToLevel } = require('../access/coordinatorScope');
 const { generateSchedulePdf } = require('../../services/pdf/scheduleGenerator');
 const { generateEvaluationCalendarPdf } = require('../../services/pdf/evaluationCalendarGenerator');
 const evaluationCalendar = require('./evaluationCalendar.service');
@@ -350,7 +351,7 @@ async function sectionOfEntry(trx, tenantId, entryId) {
  * docente activo y, además, cualquiera que ya tenga clases en el año (aunque
  * hoy esté inactivo, para poder auditarlo). `classes` = horas por semana.
  */
-async function listTeachers(trx, tenantId, periodId) {
+async function listTeachers(trx, tenantId, periodId, { levelCode = null } = {}) {
   await loadPeriod(trx, tenantId, periodId);
   const load = trx('class_schedules as cs')
     .join('sections as sec', 'sec.id', 'cs.section_id')
@@ -361,7 +362,11 @@ async function listTeachers(trx, tenantId, periodId) {
   const rows = await trx('staff as st')
     .leftJoin(load, 'c.staff_id', 'st.id')
     .where('st.tenant_id', tenantId)
-    .andWhere((q) => q.where({ 'st.staff_type': 'teaching', 'st.status': 'active' }).orWhereNotNull('c.staff_id'))
+    .modify((q) =>
+      levelCode
+        ? restrictStaffToLevel(q, trx, levelCode, 'st') // coordinador: docentes de su nivel
+        : q.andWhere((w) => w.where({ 'st.staff_type': 'teaching', 'st.status': 'active' }).orWhereNotNull('c.staff_id'))
+    )
     .select('st.id', 'st.first_name', 'st.last_name', 'st.status', 'c.classes', 'c.sections')
     .orderBy([{ column: 'st.first_name' }, { column: 'st.last_name' }]);
   return rows.map((r) => ({
@@ -380,11 +385,12 @@ async function listTeachers(trx, tenantId, periodId) {
  * elegido. Un grado sin secciones aparece igual (con `sections: []`) para que
  * se vea que existe y se le pueda crear una.
  */
-async function listGradesForSchedule(trx, tenantId, periodId) {
+async function listGradesForSchedule(trx, tenantId, periodId, { levelCode = null } = {}) {
   await loadPeriod(trx, tenantId, periodId);
   const grades = await trx('grades as g')
     .join('education_levels as el', 'el.code', 'g.level_code')
     .where('g.tenant_id', tenantId)
+    .modify((q) => levelCode && q.andWhere('g.level_code', levelCode))
     .select('g.id', 'g.name', 'g.level_code', 'g.sort_order', 'el.name as level_name')
     .orderBy([{ column: 'el.sort_order' }, { column: 'g.sort_order' }, { column: 'g.name' }]);
   const sections = await trx('sections')
@@ -459,7 +465,7 @@ function summarize(days, slots, entries) {
  * Devuelve la grilla (días, bloques, clases), el grado/sección/docente
  * filtrados y un resumen para auditar la carga (huecos, días libres, cruces).
  */
-async function querySchedule(trx, tenantId, { schoolPeriodId = null, gradeId = null, sectionId = null, teacherId = null }) {
+async function querySchedule(trx, tenantId, { schoolPeriodId = null, gradeId = null, sectionId = null, teacherId = null, levelCode = null }) {
   let periodId = schoolPeriodId;
   let section = null;
   if (sectionId) {
@@ -496,6 +502,7 @@ async function querySchedule(trx, tenantId, { schoolPeriodId = null, gradeId = n
         if (sectionId) q.andWhere('cs.section_id', sectionId);
         if (gradeId) q.andWhere('sec.grade_id', gradeId);
         if (teacherId) q.andWhere('cs.staff_id', teacherId);
+        if (levelCode) q.andWhere('g.level_code', levelCode);
       })
       .orderBy([{ column: 'cs.day_of_week' }, { column: 'ts.start_time' }, { column: 'g.name' }, { column: 'sec.name' }])
   ).map(formatEntry);

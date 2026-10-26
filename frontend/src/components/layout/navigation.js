@@ -67,6 +67,8 @@ const NAV_SECTIONS = [
       { moduleCode: 'tenant_settings', label: 'Configuración', icon: 'settings', path: '/tenant/settings' },
       // Historial de correos, avisos de la campana, credenciales y comprobantes, con reenvío.
       { moduleCode: 'tenant_settings', label: 'Log de notificaciones', icon: 'inbox', path: '/notifications/log', blockTeacher: true },
+      // Bitácora de actividad: exclusiva del Administrador (rol de sistema), no depende de permisos de módulo.
+      { moduleCode: 'audit', label: 'Auditoría', icon: 'eye', path: '/audit', adminOnly: true },
     ],
   },
 ];
@@ -112,6 +114,7 @@ function hasDashboard({ can, user }) {
 /** ¿Se muestra este ítem del menú al usuario? */
 function isNavItemVisible(item, { can, user }) {
   if (item.home) return hasDashboard({ can, user });
+  if (item.adminOnly) return Boolean(user?.isAdmin);
   if (item.blockTeacher && user?.isRestrictedTeacher) return false;
   if (item.guardianOnly) return Boolean(user?.guardianId);
   if (item.teacherOnly) return Boolean(user?.teachingStaffId);

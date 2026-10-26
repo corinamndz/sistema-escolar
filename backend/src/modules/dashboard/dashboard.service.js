@@ -3,6 +3,7 @@
  * SQL: el inicio no descarga listas completas. Cada bloque solo se arma si el
  * usuario puede leer ese módulo (`permissions`).
  */
+const { restrictStaffToLevel } = require('../access/coordinatorScope');
 
 const LEVEL_ORDER = ['initial', 'primary', 'secondary'];
 
@@ -81,7 +82,7 @@ async function guardianSolvency(trx, tenantId) {
   ];
 }
 
-async function getSummary(trx, tenantId, permissions) {
+async function getSummary(trx, tenantId, permissions, { levelCode = null, coordinator = false } = {}) {
   const summary = { generated_at: new Date().toISOString() };
 
   if (canRead(permissions, 'students')) {
@@ -99,10 +100,12 @@ async function getSummary(trx, tenantId, permissions) {
     summary.guardians = linked;
   }
   if (canRead(permissions, 'staff')) {
-    const rows = await trx('staff')
-      .where({ tenant_id: tenantId, status: 'active' })
-      .groupBy('staff_type')
-      .select('staff_type', trx.raw('count(*)::int AS n'));
+    const rows = await trx('staff as s')
+      .where({ 's.tenant_id': tenantId, 's.status': 'active' })
+      // Coordinador: solo los docentes de su nivel (sin nivel asignado: ninguno).
+      .modify((q) => coordinator && (levelCode ? restrictStaffToLevel(q, trx, levelCode, 's') : q.whereRaw('false')))
+      .groupBy('s.staff_type')
+      .select('s.staff_type', trx.raw('count(*)::int AS n'));
     const of = (type) => n(rows.find((r) => r.staff_type === type));
     summary.staff = { total: rows.reduce((s, r) => s + r.n, 0), teaching: of('teaching'), coordinator: of('coordinator'), administrative: of('administrative'), support: of('support') };
   }

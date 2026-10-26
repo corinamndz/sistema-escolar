@@ -8,10 +8,11 @@ import AccessDenied from './AccessDenied';
  * carga. `guardianOnly`: solo cuentas de representante; `teacherOnly`: solo
  * usuarios con ficha docente (ambos sin `module`).
  */
-function PermissionRoute({ module, blockTeacher = false, guardianOnly = false, teacherOnly = false }) {
+function PermissionRoute({ module, blockTeacher = false, guardianOnly = false, teacherOnly = false, adminOnly = false }) {
   const { can, user } = useAuth();
 
-  const ownOnly = guardianOnly ? Boolean(user?.guardianId) : teacherOnly ? Boolean(user?.teachingStaffId) : null;
+  // adminOnly: solo el rol de sistema Administrador (el backend responde 403 al resto).
+  const ownOnly = adminOnly ? Boolean(user?.isAdmin) : guardianOnly ? Boolean(user?.guardianId) : teacherOnly ? Boolean(user?.teachingStaffId) : null;
   const allowed = !(blockTeacher && user?.isRestrictedTeacher) && (ownOnly ?? can(module, 'read'));
   if (!allowed) return <AccessDenied />;
 

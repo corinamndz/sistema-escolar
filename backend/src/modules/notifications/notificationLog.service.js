@@ -46,11 +46,17 @@ async function bellRows(trx, tenantId, since) {
   const names = new Map(
     ids.length ? (await trx('guardians').whereIn('id', ids).select('id', trx.raw("first_name || ' ' || last_name AS name"))).map((g) => [g.id, g.name]) : []
   );
+  // Avisos personales (migración 059): nombre de cada usuario destinatario.
+  const userIds = [...new Set(rows.flatMap((r) => r.target_user_ids || []))];
+  const userNames = new Map(
+    userIds.length ? (await trx('users').whereIn('id', userIds).select('id', trx.raw('COALESCE(full_name, username) AS name'))).map((u) => [u.id, u.name]) : []
+  );
   return rows.map((r) => {
-    const targets = r.target_guardian_ids || [];
+    const personal = r.target_user_ids || [];
+    const targets = personal.length ? personal : r.target_guardian_ids || [];
     let recipient;
     if (targets.length) {
-      const list = targets.map((id) => names.get(id) || 'Representante eliminado');
+      const list = targets.map((id) => (personal.length ? userNames.get(id) || 'Usuario eliminado' : names.get(id) || 'Representante eliminado'));
       recipient = list.length > 2 ? `${list.slice(0, 2).join(', ')} y ${list.length - 2} más` : list.join(', ');
     } else {
       recipient = [r.audience.includes('guardians') && 'Todas las familias', r.audience.includes('staff') && 'Administración'].filter(Boolean).join(' y ');
@@ -179,6 +185,7 @@ async function resendBell(trx, tenantId, id) {
       data: JSON.stringify({ ...(n.data || {}), resent: true }),
       audience: n.audience,
       ...(n.target_guardian_ids ? { target_guardian_ids: n.target_guardian_ids } : {}),
+      ...(n.target_user_ids ? { target_user_ids: n.target_user_ids } : {}),
       resend_of: n.id,
     })
     .returning('id');

@@ -23,7 +23,8 @@ router.use(authMiddleware, tenantMiddleware, requirePermission('evaluation_plans
 const uuid = z.string().uuid();
 const text = z.string().trim().max(4000, 'Máximo 4000 caracteres.');
 const submitBody = z.object({ comment: text.optional() });
-const reviewBody = z.object({ decision: z.enum(['approve', 'observe']), comment: text.optional() });
+// 'reopen': lo aprobado vuelve a borrador para que el docente lo cambie.
+const reviewBody = z.object({ decision: z.enum(['approve', 'observe', 'reopen']), comment: text.optional() });
 const commentBody = z.object({ body: text.min(1, 'Escribe el comentario.') });
 
 const targets = {

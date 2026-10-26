@@ -8403,3 +8403,71 @@ body.is-printing-boleta { overflow: hidden; }
   .review-actions .btn { flex: 1 1 100%; }
 }
 .review-thread .drawer-section__title { display: flex; align-items: center; gap: 6px; }
+
+/* =====================================================================
+   Revisión académica configurable (migración 059)
+   ===================================================================== */
+
+/* Insignia de pendientes de revisión en el menú lateral (coordinador / Director). */
+.sidebar__badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-accent-2);
+  color: var(--color-on-accent-2);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.sidebar__icon { position: relative; }
+.sidebar__dot { position: absolute; top: -3px; right: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent-2); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25); }
+
+/* Aviso de bloqueo en Contenido programático. */
+.pc-review-lock {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-info-border);
+  background: var(--color-info-soft);
+  color: var(--color-info-text);
+}
+.pc-review-lock > .icon { flex: none; margin-top: 2px; }
+.pc-review-lock div { display: flex; flex-direction: column; gap: 2px; }
+.pc-review-lock strong { color: var(--color-text); }
+.pc-review-lock span { font-size: 13px; color: var(--color-text-secondary); }
+.pc-review-lock.is-aprobado { border-color: var(--color-success-border); background: var(--color-success-soft); color: var(--color-success-text); }
+
+/* Configuración → Revisión académica. */
+.academic-review { display: flex; flex-direction: column; gap: 18px; }
+.academic-review__flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0; padding: 0; list-style: none; transition: opacity 200ms; }
+.academic-review__flow.is-off { opacity: 0.5; }
+.academic-review__flow li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+.academic-review__flow strong { color: var(--color-text); font-size: 14px; }
+.academic-review__step { width: 32px; height: 32px; display: grid; place-items: center; margin-bottom: 4px; border-radius: 50%; background: var(--color-primary-soft); color: var(--color-primary-text); }
+.academic-review__note { display: flex; align-items: flex-start; gap: 6px; margin: 0; }
+.academic-review__note .icon { flex: none; margin-top: 2px; }
+@media (max-width: 760px) {
+  .academic-review__flow { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .academic-review__flow { grid-template-columns: 1fr; }
+}

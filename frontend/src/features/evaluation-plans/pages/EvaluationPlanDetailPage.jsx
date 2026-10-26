@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
 import programmaticContentApi from '../../../api/endpoints/programmaticContent.api';
 import { useFetch } from '../../../hooks/useFetch';
@@ -51,6 +51,9 @@ function formatDay(value) {
 
 function EvaluationPlanDetailPage() {
   const { id } = useParams();
+  // Enlace de una notificación de revisión (?revision=1): abre el panel al entrar.
+  const [searchParams] = useSearchParams();
+  const openReview = searchParams.get('revision') === '1';
   const { data: plan, loading, error, refetch } = useFetch(() => evaluationPlansApi.getOne(id), [id]);
   const [activityModal, setActivityModal] = useState(null); // null | {} (crear) | {...} (editar)
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -184,7 +187,7 @@ function EvaluationPlanDetailPage() {
         actions={
           <>
             {/* Revisión y aprobación: el docente envía; coordinación del nivel o dirección revisan. */}
-            <ReviewButton target={{ planId: plan.id }} title={plan.subject || ''} status={plan.review_status} onChanged={refetch} />
+            <ReviewButton target={{ planId: plan.id }} title={plan.subject || ''} status={plan.review_status} onChanged={refetch} defaultOpen={openReview} />
             {plan.subject_id && (
               <Link to={`/programmatic-content?materia=${plan.subject_id}&grado=${plan.grade_id}&ano=${plan.school_period_id}`} className="btn btn--secondary">
                 Contenido programático

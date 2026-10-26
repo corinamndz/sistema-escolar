@@ -16,12 +16,14 @@ export function ReviewStatusBadge({ status }) {
 }
 
 /**
- * Estado + botón "Revisión" que abre el panel lateral. Si no se pasa `status`,
+ * Estado + botón que abre el panel lateral de revisión. Si no se pasa `status`,
  * lo consulta (p. ej. el contenido programático de una materia).
+ * `label` / `primary`: texto y énfasis del botón ("Enviar a revisión", "Revisar"…).
+ * `defaultOpen`: abre el panel al montar (enlace de la notificación, ?revision=1).
  */
-export function ReviewButton({ target, title, status: known, onChanged }) {
+export function ReviewButton({ target, title, status: known, onChanged, label = 'Revisión', primary = false, defaultOpen = false }) {
   const [status, setStatus] = useState(known || null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const key = target.planId || `${target.gradeId}|${target.subjectId}`;
 
   useEffect(() => {
@@ -40,8 +42,8 @@ export function ReviewButton({ target, title, status: known, onChanged }) {
   return (
     <>
       {status && <ReviewStatusBadge status={status} />}
-      <Button variant="secondary" icon="clipboard" onClick={() => setOpen(true)}>
-        Revisión
+      <Button variant={primary ? 'primary' : 'secondary'} icon={primary ? 'arrowRight' : 'clipboard'} onClick={() => setOpen(true)}>
+        {label}
       </Button>
       {open && (
         <ReviewDrawer

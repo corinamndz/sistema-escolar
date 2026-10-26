@@ -77,6 +77,7 @@ const ACTIONS = {
   'DELETE /tenant/mail-settings': ['ELIMINAR_CORREO', 'Quitó la configuración de correo'],
   'POST /tenant/mail-settings/test': ['PROBAR_CORREO', 'Envió un correo de prueba'],
   'PUT /tenant/notification-preferences': ['ACTUALIZAR_AVISOS', 'Actualizó las preferencias de avisos'],
+  'PUT /tenant/academic-settings': ['ACTUALIZAR_REVISION_ACADEMICA', 'Cambió si el contenido programático requiere revisión'],
 
   'POST /roles': ['CREAR_ROL', 'Creó el rol'],
   'PUT /roles/:id': ['ACTUALIZAR_ROL', 'Actualizó el rol'],
@@ -125,10 +126,10 @@ const ACTIONS = {
   'POST /evaluation-plans/:planId/close': ['CERRAR_PLAN', 'Cerró un plan de evaluación'],
 
   'POST /reviews/plans/:planId/submit': ['ENVIAR_PLAN_REVISION', 'Envió un plan de evaluación a revisión'],
-  'POST /reviews/plans/:planId/review': ['REVISAR_PLAN', 'Revisó un plan de evaluación (aprobó o devolvió con observaciones)'],
+  'POST /reviews/plans/:planId/review': ['REVISAR_PLAN', 'Revisó un plan de evaluación (aprobó, pidió ajustes o lo reabrió)'],
   'POST /reviews/plans/:planId/comments': ['COMENTAR_PLAN', 'Comentó la revisión de un plan de evaluación'],
   'POST /reviews/contents/:gradeId/:subjectId/submit': ['ENVIAR_CONTENIDO_REVISION', 'Envió un contenido programático a revisión'],
-  'POST /reviews/contents/:gradeId/:subjectId/review': ['REVISAR_CONTENIDO', 'Revisó un contenido programático (aprobó o devolvió con observaciones)'],
+  'POST /reviews/contents/:gradeId/:subjectId/review': ['REVISAR_CONTENIDO', 'Revisó un contenido programático (aprobó, pidió ajustes o lo reabrió)'],
   'POST /reviews/contents/:gradeId/:subjectId/comments': ['COMENTAR_CONTENIDO', 'Comentó la revisión de un contenido programático'],
   'POST /evaluation-plans/:planId/reopen': ['REABRIR_PLAN', 'Reabrió un plan de evaluación'],
   'POST /evaluation-plans/:planId/activities': ['CREAR_ACTIVIDAD', 'Creó la actividad'],

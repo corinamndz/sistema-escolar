@@ -69,7 +69,7 @@ function ReviewDrawer({ target, title, onClose, onChanged }) {
   const [review, setReview] = useState(null);
   const [error, setError] = useState(null);
   const [text, setText] = useState('');
-  const [busy, setBusy] = useState(null); // 'submit' | 'observe' | 'approve' | 'comment'
+  const [busy, setBusy] = useState(null); // 'submit' | 'observe' | 'approve' | 'reopen' | 'comment'
   const what = target.planId ? 'plan' : 'contenido';
 
   useEffect(() => {
@@ -112,6 +112,18 @@ function ReviewDrawer({ target, title, onClose, onChanged }) {
 
   const footer = review && (
     <div className="review-actions">
+      {can.reopen && (
+        <Button
+          variant="secondary"
+          icon="refresh"
+          loading={busy === 'reopen'}
+          disabled={Boolean(busy)}
+          title="Vuelve a borrador para que el docente pueda cambiarlo y reenviarlo"
+          onClick={() => run('reopen', () => reviewsApi.review(target, 'reopen', trimmed), 'Reabierto para cambios')}
+        >
+          Reabrir para cambios
+        </Button>
+      )}
       {can.review && (
         <>
           <Button
@@ -119,10 +131,10 @@ function ReviewDrawer({ target, title, onClose, onChanged }) {
             icon="alertTriangle"
             loading={busy === 'observe'}
             disabled={Boolean(busy) || !trimmed}
-            title={trimmed ? '' : 'Escribe las observaciones en el cuadro de comentarios'}
-            onClick={() => run('observe', () => reviewsApi.review(target, 'observe', trimmed), 'Devuelto con observaciones')}
+            title={trimmed ? '' : 'Escribe en el cuadro de comentarios qué debe ajustar el docente'}
+            onClick={() => run('observe', () => reviewsApi.review(target, 'observe', trimmed), 'Ajustes solicitados')}
           >
-            Devolver con observaciones
+            Solicitar ajustes
           </Button>
           <Button icon="checkCircle" loading={busy === 'approve'} disabled={Boolean(busy)} onClick={() => run('approve', () => reviewsApi.review(target, 'approve', trimmed), what === 'plan' ? 'Plan aprobado' : 'Contenido aprobado')}>
             {what === 'plan' ? 'Aprobar plan' : 'Aprobar contenido'}
@@ -134,7 +146,7 @@ function ReviewDrawer({ target, title, onClose, onChanged }) {
           {resend ? 'Reenviar a revisión' : 'Enviar a revisión'}
         </Button>
       )}
-      {!can.review && !can.submit && (
+      {!can.review && !can.submit && !can.reopen && (
         <Button variant="secondary" onClick={() => drawer.current?.close()}>
           Cerrar
         </Button>
@@ -145,6 +157,9 @@ function ReviewDrawer({ target, title, onClose, onChanged }) {
   return (
     <Drawer ref={drawer} title="Revisión" subtitle={review?.title || title} icon="clipboard" onClose={onClose} busy={Boolean(busy)} footer={footer}>
       <Alert>{error}</Alert>
+      {review && review.enabled === false && (
+        <Alert variant="info">La revisión académica está desactivada en este colegio: el contenido se publica al guardarlo. Se activa en Configuración → Revisión académica.</Alert>
+      )}
       {!review ? (
         !error && <Spinner label="Cargando revisión…" />
       ) : (
@@ -160,8 +175,12 @@ function ReviewDrawer({ target, title, onClose, onChanged }) {
                 {review.status === 'observado' && review.my_role === 'author'
                   ? 'Coordinación pidió ajustes. Corrige lo indicado abajo y reenvía.'
                   : review.status === 'en_revision' && review.my_role === 'reviewer'
-                    ? 'Espera tu revisión: apruébalo o devuélvelo con observaciones.'
-                    : status.hint}
+                    ? 'Espera tu revisión: apruébalo o solicita ajustes dejando tus comentarios.'
+                    : review.locked && review.status === 'en_revision'
+                      ? 'Coordinación lo está revisando: no se puede editar hasta su respuesta.'
+                      : review.locked && review.status === 'aprobado'
+                        ? 'Aprobado de forma definitiva. Si necesitas cambiarlo, pide a coordinación que lo reabra.'
+                        : status.hint}
               </p>
               <dl className="review-status__meta">
                 {review.teacher_name && (
@@ -215,7 +234,7 @@ function ReviewDrawer({ target, title, onClose, onChanged }) {
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   placeholder={
-                    can.review ? 'Observaciones para el docente (obligatorias al devolver)…' : can.submit ? 'Comentario para coordinación (opcional al enviar)…' : 'Escribe un comentario…'
+                    can.review ? 'Comentarios para el docente (obligatorios al solicitar ajustes)…' : can.submit ? 'Comentario para coordinación (opcional al enviar)…' : 'Escribe un comentario…'
                   }
                   aria-label="Comentario"
                   disabled={Boolean(busy)}

@@ -7,6 +7,9 @@ const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 const { requirePermission } = require('../../middlewares/permission.middleware');
 const { logoUpload } = require('../../middlewares/upload.middleware');
+const { z } = require('zod');
+const { asyncHandler } = require('../../utils/asyncHandler');
+const reviewSettings = require('../reviews/reviewSettings.service');
 
 router.use(authMiddleware, tenantMiddleware);
 
@@ -40,5 +43,20 @@ router.post('/mail-settings/google/test', requirePermission('tenant_settings', '
 // Qué avisos salen por la campana y cuáles por correo (Configuración → Notificaciones).
 router.get('/notification-preferences', requirePermission('tenant_settings', 'read'), notificationPrefs.get);
 router.put('/notification-preferences', requirePermission('tenant_settings', 'update'), notificationPrefs.save);
+
+// Revisión académica del contenido programático (migración 059): activar o desactivar.
+router.get(
+  '/academic-settings',
+  requirePermission('tenant_settings', 'read'),
+  asyncHandler(async (req, res) => res.status(200).json(await reviewSettings.getAcademicSettings(req.db, req.tenantId)))
+);
+router.put(
+  '/academic-settings',
+  requirePermission('tenant_settings', 'update'),
+  asyncHandler(async (req, res) => {
+    const data = z.object({ requiresAcademicReview: z.boolean({ required_error: 'Indica si se requiere revisión.' }) }).parse(req.body);
+    res.status(200).json(await reviewSettings.updateAcademicSettings(req.db, req.tenantId, data));
+  })
+);
 
 module.exports = router;

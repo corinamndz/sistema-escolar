@@ -37,6 +37,9 @@ const tenantApi = {
   disconnectGoogleMail: () => axiosClient.delete('/tenant/mail-settings/google').then((r) => r.data),
   testGoogleMail: (to) => axiosClient.post('/tenant/mail-settings/google/test', { to }).then((r) => r.data),
   /** Matriz de avisos: { events: [{ key, label, description, recipients, bell, email }], email: { ready, source } } */
+  /** Revisión académica del contenido programático: { requiresAcademicReview, pendingContentReviews } */
+  getAcademicSettings: () => axiosClient.get('/tenant/academic-settings').then((r) => r.data),
+  updateAcademicSettings: (requiresAcademicReview) => axiosClient.put('/tenant/academic-settings', { requiresAcademicReview }).then((r) => r.data),
   getNotificationPreferences: () => axiosClient.get('/tenant/notification-preferences').then((r) => r.data),
   /** { preferences: [{ event, channel: 'bell' | 'email', enabled }] } → la matriz actualizada */
   saveNotificationPreferences: (preferences) => axiosClient.put('/tenant/notification-preferences', { preferences }).then((r) => r.data),

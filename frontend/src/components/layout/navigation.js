@@ -41,8 +41,9 @@ const NAV_SECTIONS = [
       // Materias: en qué grados y secciones se dicta cada una y qué docente la imparte.
       { moduleCode: 'academics', label: 'Materias', icon: 'book', path: '/academics/subjects', blockTeacher: true },
       // Contenido programático: unidades y temas de cada materia con sus evaluaciones (docentes: sus materias).
-      { moduleCode: 'evaluation_plans', label: 'Contenido programático', icon: 'layers', path: '/programmatic-content' },
-      { moduleCode: 'evaluation_plans', label: 'Planes de evaluación', icon: 'clipboard', path: '/evaluation-plans' },
+      // `reviewBadge`: insignia con lo que espera revisión del coordinador o el Director.
+      { moduleCode: 'evaluation_plans', label: 'Contenido programático', icon: 'layers', path: '/programmatic-content', reviewBadge: 'content' },
+      { moduleCode: 'evaluation_plans', label: 'Planes de evaluación', icon: 'clipboard', path: '/evaluation-plans', reviewBadge: 'plan' },
       // Resumen de calificaciones del colegio: acumulado por lapso de cada alumno (administración).
       { moduleCode: 'grading', label: 'Resumen de calificaciones', icon: 'trendingUp', path: '/grading/summary', blockTeacher: true },
       { moduleCode: 'schedules', label: 'Horarios', icon: 'calendar', path: '/schedules', blockTeacher: true },

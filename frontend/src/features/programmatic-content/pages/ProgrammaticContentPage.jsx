@@ -123,6 +123,21 @@ function ProgrammaticContentPage() {
 
   const setParam = (patch) => setParams((p) => ({ ...Object.fromEntries(p), ...patch }), { replace: true });
 
+  // Enlace de una notificación (?revision=1): abre el panel de revisión una vez y limpia la URL.
+  const [openReview, setOpenReview] = useState(() => params.get('revision') === '1');
+  useEffect(() => {
+    if (!params.has('revision')) return;
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        next.delete('revision');
+        return next;
+      },
+      { replace: true }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Por defecto: la primera materia/grado disponible y el año activo más reciente.
   useEffect(() => {
     if (!options?.length) return;
@@ -146,6 +161,12 @@ function ProgrammaticContentPage() {
     [selected?.subject_id, selected?.grade_id, periodId, version]
   );
   const reload = () => setVersion((v) => v + 1);
+  // El panel ya se abrió con el contenido cargado: las recargas siguientes no lo vuelven a abrir.
+  useEffect(() => {
+    if (!content || !openReview) return undefined;
+    const id = setTimeout(() => setOpenReview(false), 0);
+    return () => clearTimeout(id);
+  }, [content, openReview]);
   const handleImported = (report) => {
     if (report.summary.invalid > 0) toast.warning('Importación con observaciones', report.message);
     else toast.success(plural(report.summary.imported, 'tema importado', 'temas importados'), report.message);
@@ -167,7 +188,17 @@ function ProgrammaticContentPage() {
   const units = content ? content.units.map((u) => u.unit) : [];
   const periodClosed = Boolean(content?.school_period?.closed);
   const pair = content && { gradeId, subjectId, gradeName: content.grade_name, subjectName: content.subject_name };
-  const canCreate = can('evaluation_plans', 'create') && Boolean(content);
+  // Revisión académica (059): con la revisión activa, el docente no edita lo que está en revisión o aprobado.
+  const review = content?.review || null;
+  const locked = Boolean(review?.locked);
+  const canEditContent = (action) => can('evaluation_plans', action) && !locked;
+  const canCreate = canEditContent('create') && Boolean(content);
+  const reviewLabel =
+    review?.my_role === 'author'
+      ? { borrador: 'Enviar a revisión', observado: 'Ver ajustes y reenviar' }[review.status]
+      : review?.my_role === 'reviewer' && review.status === 'en_revision'
+        ? 'Revisar contenido'
+        : null;
 
   const toggle = (setter, key) =>
     setter((s) => {
@@ -295,10 +326,19 @@ function ProgrammaticContentPage() {
                     : 'Elige la materia y el grado para ver su temario.'}
                 </p>
               </div>
-              {content && (
+              {content && review?.enabled && (
                 <div className="data-table__header-actions">
-                  {/* Revisión del programa completo de esta materia en este grado. */}
-                  <ReviewButton target={{ gradeId, subjectId }} title={`${content.subject_name} · ${content.grade_name}`} key={`${gradeId}|${subjectId}|${version}`} />
+                  {/* Revisión del programa completo de esta materia en este grado (solo si el colegio la exige). */}
+                  <ReviewButton
+                    target={{ gradeId, subjectId }}
+                    title={`${content.subject_name} · ${content.grade_name}`}
+                    key={`${gradeId}|${subjectId}|${version}`}
+                    status={review.status}
+                    label={reviewLabel || 'Revisión'}
+                    primary={Boolean(reviewLabel)}
+                    defaultOpen={openReview}
+                    onChanged={reload}
+                  />
                 </div>
               )}
               {canCreate && (
@@ -317,6 +357,20 @@ function ProgrammaticContentPage() {
                 </div>
               )}
             </div>
+
+            {locked && (
+              <div className={`pc-review-lock is-${review.status}`} role="status">
+                <Icon name={review.status === 'aprobado' ? 'checkCircle' : 'lock'} size={18} />
+                <div>
+                  <strong>{review.status === 'aprobado' ? 'Contenido aprobado' : 'En revisión de coordinación'}</strong>
+                  <span>
+                    {review.status === 'aprobado'
+                      ? 'Quedó fijo de forma definitiva. Si necesitas cambiar algo, pide a coordinación que lo reabra desde «Revisión».'
+                      : 'No se puede editar hasta que coordinación lo apruebe o te solicite ajustes. Te avisaremos por la campana.'}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="pc-toolbar">
               <Field label="Materia">
@@ -443,12 +497,12 @@ function ProgrammaticContentPage() {
                                             Incluir evaluación
                                           </Button>
                                         )}
-                                        {can('evaluation_plans', 'update') && (
+                                        {canEditContent('update') && (
                                           <button type="button" className="pc-icon-btn" onClick={() => setEditing(item)} aria-label={`Editar ${item.topic}`} title="Editar tema">
                                             <Icon name="pencil" size={15} />
                                           </button>
                                         )}
-                                        {can('evaluation_plans', 'delete') && (
+                                        {canEditContent('delete') && (
                                           <button type="button" className="pc-icon-btn pc-icon-btn--danger" onClick={() => removeItem(item)} aria-label={`Eliminar ${item.topic}`} title="Eliminar tema">
                                             <Icon name="trash" size={15} />
                                           </button>
@@ -477,7 +531,7 @@ function ProgrammaticContentPage() {
                                   </DroppableTopic>
                                 );
                               })}
-                              {can('evaluation_plans', 'create') && (
+                              {canEditContent('create') && (
                                 <button type="button" className="pc-add-topic" onClick={() => setEditing({ unit: u.unit })}>
                                   <Icon name="plus" size={14} /> Agregar tema a {u.unit}
                                 </button>

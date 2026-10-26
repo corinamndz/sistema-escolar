@@ -9,7 +9,7 @@ export const REVIEW_STATUSES = {
 /** Texto de cada entrada de estado en el hilo. */
 export const ENTRY_LABELS = {
   submitted: 'Envió a revisión',
-  observed: 'Devolvió con observaciones',
+  observed: 'Solicitó ajustes',
   approved: 'Aprobó',
   reset: 'Volvió a borrador',
 };

@@ -11,7 +11,16 @@ import { isEffective } from '../../features/payments/useRateAutoRefresh';
 
 const POLL_MS = 60 * 1000; // la tasa cambia pocas veces al día: un minuto de demora es suficiente
 // Ícono por tipo de aviso (también lo usa el aviso al iniciar sesión).
-export const NOTIFICATION_ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star', parent_meeting: 'users' };
+export const NOTIFICATION_ICONS = {
+  bcv_rate: 'trendingUp',
+  payment_confirmed: 'receipt',
+  school_event: 'calendar',
+  sanction: 'shield',
+  club_enrollment: 'star',
+  parent_meeting: 'users',
+  review_request: 'clipboard',
+  review_result: 'checkCircle',
+};
 
 /**
  * Campana de notificaciones del Topbar. Consulta las del usuario al cargar,

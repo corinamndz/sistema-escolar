@@ -3,6 +3,8 @@ const teacherScope = require('../access/teacherScope');
 const coordinatorScope = require('../access/coordinatorScope');
 const { isAdmin } = require('../../middlewares/admin.middleware');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
+const { isContentReviewRequired } = require('./reviewSettings.service');
+const notifications = require('../notifications/notification.service');
 
 /**
  * Revisión y aprobación (migración 058) de Planes de evaluación y Contenido
@@ -18,6 +20,16 @@ const { getEffectivePermissions } = require('../../middlewares/permission.middle
  *   Docente   quien tiene el plan o la materia en su carga (alcance del docente).
  *   Lectura   cualquier otro con acceso a Planes (sin restricción de carga ni nivel).
  * Un coordinador de otro nivel o un docente sin esa carga reciben 404.
+ *
+ * Contenido programático (migración 059): la revisión es un ajuste del colegio
+ * (tenant_settings.requires_academic_review). Desactivada, el docente publica
+ * sin revisión. Activada, mientras el programa está en revisión o aprobado el
+ * docente no lo puede editar (`locked`); para cambiar algo aprobado, quien
+ * revisa lo reabre. Los planes de evaluación siguen su flujo de siempre.
+ *
+ * Avisos (campana, personales): al enviar → los coordinadores del nivel (o el
+ * Director si el nivel no tiene coordinador); al aprobar, pedir ajustes o
+ * reabrir → el docente que lo envió.
  */
 
 const STATUS_LABELS = { borrador: 'Borrador', en_revision: 'En revisión', observado: 'Con observaciones', aprobado: 'Aprobado' };
@@ -60,6 +72,7 @@ async function loadPlanTarget(trx, tenantId, planId) {
   return {
     type: 'plan',
     key: { planId },
+    enabled: true,
     ...plan,
     sectionIds: sectionIds.length ? sectionIds : [],
     title: `${plan.subject_name} · ${plan.grade_name} ${plan.section_name} · ${plan.term_name}`,
@@ -79,6 +92,7 @@ async function loadContentTarget(trx, tenantId, gradeId, subjectId) {
   return {
     type: 'content',
     key: { gradeId, subjectId },
+    enabled: await isContentReviewRequired(trx, tenantId),
     id: review?.id || null,
     status: review?.status || 'borrador',
     submitted_at: review?.submitted_at || null,
@@ -121,11 +135,17 @@ async function roleFor(req, target) {
   return { role: 'viewer', as: null };
 }
 
-const canDo = (role, status) => ({
-  submit: role === 'author' && ['borrador', 'observado'].includes(status),
-  review: role === 'reviewer' && status === 'en_revision',
+const LOCKED_STATUSES = ['en_revision', 'aprobado'];
+
+const canDo = (role, status, enabled = true) => ({
+  submit: enabled && role === 'author' && ['borrador', 'observado'].includes(status),
+  review: enabled && role === 'reviewer' && status === 'en_revision',
+  reopen: enabled && role === 'reviewer' && status === 'aprobado',
   comment: role === 'author' || role === 'reviewer',
 });
+
+/** El docente no edita un programa en revisión o aprobado (solo con la revisión activada). */
+const isLockedFor = (role, target) => target.type === 'content' && target.enabled && role === 'author' && LOCKED_STATUSES.includes(target.status);
 
 // ---------------------------------------------------------------------------
 // Lectura
@@ -147,10 +167,12 @@ async function nameOf(trx, userId) {
 }
 
 async function present(req, target, role) {
-  const can = canDo(role.role, target.status);
+  const can = canDo(role.role, target.status, target.enabled);
   return {
     type: target.type,
     ...target.key,
+    enabled: target.enabled,
+    locked: isLockedFor(role.role, target),
     title: target.title,
     level_code: target.level_code,
     level_name: LEVEL_NAMES[target.level_code] || null,
@@ -216,11 +238,79 @@ async function setStatus(req, target, status, extra) {
 
 const whatOf = (target) => (target.type === 'plan' ? 'el plan' : 'el contenido');
 
+// ---------------------------------------------------------------------------
+// Avisos de la campana (personales, migración 059)
+// ---------------------------------------------------------------------------
+
+/** Usuarios activos con un rol de sistema (ej. 'Administrador'), opcionalmente filtrados. */
+const usersWithRole = (trx, tenantId, roleName) =>
+  trx('users as u')
+    .join('user_roles as ur', 'ur.user_id', 'u.id')
+    .join('roles as r', 'r.id', 'ur.role_id')
+    .where({ 'u.tenant_id': tenantId, 'u.status': 'active', 'r.tenant_id': tenantId, 'r.name': roleName });
+
+/** Quien recibe lo enviado: los coordinadores del nivel; si el nivel no tiene, el Director. */
+async function reviewersOf(trx, tenantId, level) {
+  const coordinators = await usersWithRole(trx, tenantId, 'Coordinador')
+    .join('staff as st', function onStaff() {
+      this.on('st.user_id', 'u.id').andOn('st.tenant_id', 'u.tenant_id');
+    })
+    .where('st.coordination_level', level)
+    .distinct('u.id')
+    .pluck('u.id');
+  if (coordinators.length) return coordinators;
+  return usersWithRole(trx, tenantId, 'Administrador').where('r.is_system', true).distinct('u.id').pluck('u.id');
+}
+
+const linkOf = (target) =>
+  target.type === 'plan'
+    ? `/evaluation-plans/${target.key.planId}?revision=1`
+    : `/programmatic-content?materia=${target.key.subjectId}&grado=${target.key.gradeId}&revision=1`;
+
+const clip = (text, max) => (text && text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+async function notify(req, target, userIds, { type, title, body }) {
+  const to = [...new Set(userIds.filter((id) => id && id !== req.user.id))];
+  if (!to.length) return;
+  await notifications.createNotification(req.db, req.tenantId, {
+    type,
+    title: clip(title, 150),
+    body: clip(body, 500),
+    targetUserIds: to,
+    data: { links: { users: linkOf(target) }, link_label: type === 'review_request' ? 'Revisar' : 'Ver revisión', review: { type: target.type, ...target.key } },
+  });
+}
+
+/** Avisa a los coordinadores del nivel (o al Director) que algo espera su revisión. */
+async function notifyReviewers(req, target, { resend, comment }) {
+  const who = await nameOf(req.db, req.user.id);
+  const what = target.type === 'plan' ? 'el plan de evaluación' : 'el contenido programático';
+  await notify(req, target, await reviewersOf(req.db, req.tenantId, target.level_code), {
+    type: 'review_request',
+    title: target.type === 'plan' ? 'Plan de evaluación por revisar' : 'Contenido programático por revisar',
+    body: `${who || 'Un docente'} ${resend ? 'reenvió, tras ajustarlo,' : 'envió a revisión'} ${what} de ${target.title} (${LEVEL_NAMES[target.level_code] || 'nivel'}).${comment ? ` Nota: «${clip(comment, 160)}»` : ''}`,
+  });
+}
+
+/** Avisa al docente que lo envió el resultado de la revisión. */
+async function notifyAuthor(req, target, submittedBy, { decision, comment }) {
+  const who = await nameOf(req.db, req.user.id);
+  const subject = target.type === 'plan' ? 'Plan de evaluación' : 'Contenido programático';
+  const texts = {
+    approve: [`${subject} aprobado`, `${who || 'Coordinación'} aprobó ${whatOf(target)} de ${target.title}.`],
+    observe: [`Ajustes solicitados: ${subject.toLowerCase()}`, `${who || 'Coordinación'} pidió ajustes en ${whatOf(target)} de ${target.title}.`],
+    reopen: [`${subject} reabierto`, `${who || 'Coordinación'} reabrió ${whatOf(target)} de ${target.title}: ya puedes editarlo y reenviarlo.`],
+  };
+  const [title, body] = texts[decision];
+  await notify(req, target, [submittedBy], { type: 'review_result', title, body: `${body}${comment ? ` «${clip(comment, 200)}»` : ''}` });
+}
+
 /** Docente: borrador u observado → en_revision. */
 async function submit(req, type, key, { comment } = {}) {
   const target = await loadTarget(req, type, key);
   const role = await roleFor(req, target);
   if (role.role !== 'author') throw ApiError.forbidden('Solo el docente a cargo envía a revisión.');
+  if (!target.enabled) throw ApiError.conflict('El colegio no tiene activada la revisión académica: el contenido se publica al guardarlo.');
   if (!canDo(role.role, target.status).submit) throw ApiError.conflict(`No se puede enviar: ${whatOf(target)} está ${STATUS_LABELS[target.status].toLowerCase()}.`);
   if (target.type === 'plan') {
     if (!target.activity_count) throw ApiError.unprocessable('Agrega al menos una actividad antes de enviar el plan a revisión.');
@@ -233,22 +323,61 @@ async function submit(req, type, key, { comment } = {}) {
   const resend = target.status === 'observado';
   await setStatus(req, target, 'en_revision', { submitted_at: req.db.fn.now(), submitted_by: req.user.id });
   await addEntry(req, target, role, { kind: 'submitted', body: comment || (resend ? 'Reenviado tras ajustar las observaciones.' : null) });
+  await notifyReviewers(req, target, { resend, comment });
   return getReview(req, type, key);
 }
 
-/** Revisor: en_revision → observado (con observaciones obligatorias) o → aprobado. */
+/**
+ * Revisor: en_revision → observado (ajustes, con comentario obligatorio) o →
+ * aprobado; aprobado → borrador con 'reopen' (para que el docente lo cambie).
+ */
 async function review(req, type, key, { decision, comment }) {
   const target = await loadTarget(req, type, key);
   const role = await roleFor(req, target);
   if (role.role !== 'reviewer') throw ApiError.forbidden('Solo el coordinador del nivel o el Director revisan.');
+  if (!target.enabled) throw ApiError.conflict('El colegio no tiene activada la revisión académica del contenido programático.');
+  const submittedBy = target.submitted_by;
+
+  if (decision === 'reopen') {
+    if (target.status !== 'aprobado') throw ApiError.conflict(`Solo se reabre lo aprobado (${whatOf(target)} está ${STATUS_LABELS[target.status].toLowerCase()}).`);
+    await setStatus(req, target, 'borrador', {});
+    await addEntry(req, target, role, { kind: 'reset', body: comment?.trim() || `Reabierto por ${role.as === 'direccion' ? 'la Dirección' : 'coordinación'} para hacer ajustes.` });
+    await notifyAuthor(req, target, submittedBy, { decision, comment });
+    return getReview(req, type, key);
+  }
+
   if (target.status !== 'en_revision') throw ApiError.conflict(`${whatOf(target).replace(/^el /, 'El ')} no está en revisión (está ${STATUS_LABELS[target.status].toLowerCase()}).`);
   if (decision === 'observe' && !comment?.trim()) {
-    throw ApiError.badRequest('Escribe las observaciones para el docente.', [{ path: 'comment', message: 'Obligatorio al devolver.' }]);
+    throw ApiError.badRequest('Escribe los ajustes que pides al docente.', [{ path: 'comment', message: 'Obligatorio al pedir ajustes.' }]);
   }
   const status = decision === 'approve' ? 'aprobado' : 'observado';
   await setStatus(req, target, status, { reviewed_at: req.db.fn.now(), reviewed_by: req.user.id });
   await addEntry(req, target, role, { kind: decision === 'approve' ? 'approved' : 'observed', body: comment });
+  await notifyAuthor(req, target, submittedBy, { decision, comment });
   return getReview(req, type, key);
+}
+
+/**
+ * Programa de una materia en un grado: ¿lo puede editar este usuario ahora?
+ * Lanza 409 si es el docente y está en revisión o aprobado (revisión activada).
+ */
+async function assertContentEditable(req, gradeId, subjectId) {
+  const target = await loadContentTarget(req.db, req.tenantId, gradeId, subjectId);
+  if (!target.enabled || !LOCKED_STATUSES.includes(target.status)) return;
+  const role = await roleFor(req, target);
+  if (!isLockedFor(role.role, target)) return;
+  throw ApiError.conflict(
+    target.status === 'en_revision'
+      ? `El contenido de ${target.title} está en revisión: no se puede editar hasta que coordinación responda.`
+      : `El contenido de ${target.title} está aprobado: para cambiarlo, pide a coordinación que lo reabra.`
+  );
+}
+
+/** Estado de revisión del programa para la página de Contenido programático. */
+async function contentReviewState(req, gradeId, subjectId) {
+  const target = await loadContentTarget(req.db, req.tenantId, gradeId, subjectId);
+  const role = await roleFor(req, target);
+  return { enabled: target.enabled, status: target.status, status_label: STATUS_LABELS[target.status], my_role: role.role, locked: isLockedFor(role.role, target) };
 }
 
 /** Docente o revisor: comentario en el hilo (sin cambiar el estado). */
@@ -291,7 +420,9 @@ async function inbox(req) {
       req.db.raw('COALESCE(u.full_name, u.username) AS submitted_by_name')
     )
     .orderBy('ep.submitted_at');
-  const contents = await req
+  // Con la revisión del contenido desactivada, los programas no esperan a nadie.
+  const contentEnabled = await isContentReviewRequired(req.db, req.tenantId);
+  const contents = !contentEnabled ? [] : await req
     .db('programmatic_content_reviews as r')
     .join('grades as g', 'g.id', 'r.grade_id')
     .join('subjects as s', 's.id', 'r.subject_id')
@@ -308,4 +439,4 @@ async function inbox(req) {
   return { reviewer: true, level: level ? { code: level, name: LEVEL_NAMES[level] } : null, items };
 }
 
-module.exports = { STATUS_LABELS, getReview, submit, review, comment, inbox };
+module.exports = { STATUS_LABELS, getReview, submit, review, comment, inbox, assertContentEditable, contentReviewState };

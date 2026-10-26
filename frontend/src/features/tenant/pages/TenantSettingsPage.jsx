@@ -23,6 +23,7 @@ import AdvancedSettings from '../components/AdvancedSettings';
 import PaymentAccountsSettings from '../components/PaymentAccountsSettings';
 import MailSettingsCard from '../components/MailSettingsCard';
 import NotificationPreferencesCard from '../components/NotificationPreferencesCard';
+import AcademicReviewCard from '../components/AcademicReviewCard';
 import BcvRateCard from '../../payments/components/BcvRateCard';
 import SchoolPeriodsTab from '../../academics/components/SchoolPeriodsTab';
 
@@ -44,6 +45,12 @@ const TABS = [
     can: (can) => can('academics', 'read'),
   },
   { key: 'escalas', label: 'Escalas de calificación', icon: 'star', hint: 'Escala cuantitativa (0–20) o cualitativa (A–E) de cada grado.' },
+  {
+    key: 'revision',
+    label: 'Revisión académica',
+    icon: 'clipboard',
+    hint: 'Si el contenido programático de los docentes pasa por la aprobación del coordinador de cada nivel.',
+  },
   {
     key: 'pagos',
     label: 'Datos de pago',
@@ -379,6 +386,8 @@ function TenantSettingsPage() {
         {tab === 'correo' && <MailSettingsCard canEdit={canEdit} schoolName={settings.name} />}
 
         {tab === 'notificaciones' && <NotificationPreferencesCard canEdit={canEdit} />}
+
+        {tab === 'revision' && <AcademicReviewCard canEdit={canEdit} />}
 
         {tab === 'avanzado' && <AdvancedSettings settings={settings} />}
       </div>

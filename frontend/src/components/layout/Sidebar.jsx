@@ -7,6 +7,7 @@ import SchoolLogo from '../ui/SchoolLogo';
 import { NAV_SECTIONS, isNavItemVisible, navItemLabel } from './navigation';
 import { initials } from './initials';
 import { useExpandedSet } from '../../hooks/useExpandedSet';
+import { useReviewCounts } from '../../features/reviews/useReviewCounts';
 
 // Rutas que solo se marcan activas si coinciden exactamente (igual que `end` en NavLink).
 const EXACT_PATHS = new Set(['/', '/payments', '/schedules']);
@@ -15,6 +16,8 @@ const isActivePath = (path, pathname) => (EXACT_PATHS.has(path) ? pathname === p
 function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
   const { can, user } = useAuth();
   const { settings } = useTenant();
+  // Coordinador / Director: cuántos planes y contenidos esperan su revisión.
+  const reviewCounts = useReviewCounts({ can, user });
 
   // En el drawer móvil siempre se muestran las etiquetas, aunque en desktop esté colapsado.
   const compact = collapsed && !mobileOpen;
@@ -107,8 +110,14 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
                     >
                       <span className="sidebar__icon">
                         <Icon name={item.icon} size={19} />
+                        {compact && item.reviewBadge && reviewCounts[item.reviewBadge] > 0 && <span className="sidebar__dot" aria-hidden="true" />}
                       </span>
                       {!compact && <span className="sidebar__label">{item.label}</span>}
+                      {!compact && item.reviewBadge && reviewCounts[item.reviewBadge] > 0 && (
+                        <span className="sidebar__badge" title={`${reviewCounts[item.reviewBadge]} por revisar`} aria-label={`${reviewCounts[item.reviewBadge]} por revisar`}>
+                          {reviewCounts[item.reviewBadge]}
+                        </span>
+                      )}
                     </NavLink>
                   ))}
                 </div>

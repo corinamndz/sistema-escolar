@@ -5,6 +5,7 @@ const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 const { requirePermission } = require('../../middlewares/permission.middleware');
 const scope = require('../access/teacherScope');
+const reviews = require('../reviews/review.service');
 
 /** Calificaciones: el plan (planId en la URL o en el formulario) debe ser de la carga del docente. */
 async function requireOwnPlan(req, res, next) {
@@ -12,6 +13,15 @@ async function requireOwnPlan(req, res, next) {
     if (req.params.type === 'scores') {
       const planId = req.query.planId || req.body?.planId;
       if (planId) await scope.assertPlanAccess(req, planId);
+    }
+    // Contenido programático: solo materias de su carga y que no estén bloqueadas por la revisión.
+    if (req.params.type === 'programmatic_content') {
+      const gradeId = req.query.gradeId || req.body?.gradeId;
+      const subjectId = req.query.subjectId || req.body?.subjectId;
+      if (gradeId && subjectId) {
+        await scope.assertGradeSubjectAccess(req, gradeId, subjectId);
+        if (req.method !== 'GET') await reviews.assertContentEditable(req, gradeId, subjectId);
+      }
     }
     next();
   } catch (err) {

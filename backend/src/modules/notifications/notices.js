@@ -41,9 +41,13 @@ async function paymentConfirmed(trx, tenantId, paymentId) {
 /**
  * Evento de la cartelera publicado (o cambiado de fecha/hora) → las familias
  * del público del evento. Solo eventos por venir.
+ *
+ * `reminderDaysLeft`: recordatorio automático (tarea diaria) a N días del evento.
+ * Mismo público y canales; se envía una vez por fecha y hora del evento.
  */
-async function schoolEvent(trx, tenantId, ev) {
+async function schoolEvent(trx, tenantId, ev, { reminderDaysLeft = null } = {}) {
   if (!ev.is_published || ev.event_date < (await today(trx))) return null;
+  const reminder = reminderDaysLeft !== null;
   let guardianIds = [];
   const all = ev.audience === 'school';
   if (ev.audience === 'section') guardianIds = await guardiansOfSections(trx, tenantId, [ev.section_id]);
@@ -59,12 +63,12 @@ async function schoolEvent(trx, tenantId, ev) {
     event: 'school_event',
     allGuardians: all,
     guardianIds,
-    title: ev.title,
-    body: `${dayLabel(ev.event_date)} ${time}${ev.location ? `, en ${ev.location}` : ''}. Dirigido a: ${ev.audience_label}.`,
-    data: { event_id: ev.id, event_date: ev.event_date },
+    title: reminder ? `Recordatorio: ${ev.title}` : ev.title,
+    body: `${reminder ? (reminderDaysLeft === 1 ? 'Es mañana: ' : `Faltan ${reminderDaysLeft} días: `) : ''}${dayLabel(ev.event_date)} ${time}${ev.location ? `, en ${ev.location}` : ''}. Dirigido a: ${ev.audience_label}.`,
+    data: { event_id: ev.id, event_date: ev.event_date, ...(reminder ? { reminder: true, days_left: reminderDaysLeft } : {}) },
     links: { guardians: '/portal/events' },
     linkLabel: 'Ver cartelera',
-    dedupeKey: `school_event:${ev.id}:${ev.event_date}:${ev.start_time}`,
+    dedupeKey: `school_event${reminder ? '_reminder' : ''}:${ev.id}:${ev.event_date}:${ev.start_time}`,
   });
 }
 

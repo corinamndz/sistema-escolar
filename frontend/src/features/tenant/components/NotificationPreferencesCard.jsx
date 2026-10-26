@@ -10,7 +10,7 @@ import Icon from '../../../components/ui/Icon';
 import Switch from '../../../components/ui/Switch';
 import { useToast } from '../../../components/ui/Toast';
 
-const ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star', parent_meeting: 'users', evaluation_plan: 'clipboard' };
+const ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star', parent_meeting: 'users', evaluation_plan: 'clipboard', evaluation_reminder: 'clock', payment_overdue: 'alertCircle' };
 const CHANNELS = [
   { key: 'bell', label: 'Campana', icon: 'bell' },
   { key: 'email', label: 'Correo', icon: 'mail' },
@@ -84,6 +84,7 @@ function NotificationPreferencesCard({ canEdit }) {
                 <span className="np-event__to">
                   <Icon name="users" size={12} /> {r.recipients}
                 </span>
+                <RowSettings eventKey={r.key} settings={data?.settings} ranges={data?.settingsRanges} disabled={!canEdit} inactive={!r.bell && !r.email} />
               </span>
             </span>
             {CHANNELS.map((c) => (
@@ -104,6 +105,109 @@ function NotificationPreferencesCard({ canEdit }) {
         sección de sus hijos. La tasa BCV llega a todas las familias (y a la administración, por la campana).
       </p>
     </Card>
+  );
+}
+
+/**
+ * Ajustes de tiempo de los recordatorios automáticos, en la fila de su aviso.
+ * Cada uno: { key (ajuste), before, after(n) } → "Recordar [− n +] días antes".
+ * Con min 0, el 0 significa "sin recordatorio".
+ */
+const ROW_SETTINGS = {
+  evaluation_reminder: [{ key: 'evaluationReminderDays', before: 'Enviar', after: (n) => `${n === 1 ? 'día antes (la víspera)' : 'días antes'} de cada evaluación` }],
+  school_event: [{ key: 'eventReminderDays', before: 'Recordatorio automático', after: (n) => (n === 0 ? 'sin recordatorio' : `${n === 1 ? 'día antes' : 'días antes'} de cada evento`) }],
+  parent_meeting: [
+    {
+      key: 'meetingReminderDays',
+      before: 'Recordatorio automático',
+      after: (n) => (n === 0 ? 'sin recordatorio' : `${n === 1 ? 'día antes' : 'días antes'} de cada cita (por los canales de la cita)`),
+      // Las citas usan sus propios canales: el recordatorio no depende de los interruptores de esta fila.
+      ignoresChannels: true,
+    },
+  ],
+  payment_overdue: [
+    { key: 'overdueIntervalDays', before: 'Repetir cada', after: (n) => `${n === 1 ? 'día' : 'días'} mientras la cuota siga impaga` },
+    { key: 'overdueMaxReminders', before: 'Hasta', after: (n) => `${n === 1 ? 'recordatorio' : 'recordatorios'} por cuota` },
+  ],
+};
+
+function RowSettings({ eventKey, settings, ranges, disabled, inactive }) {
+  const items = ROW_SETTINGS[eventKey];
+  if (!items || !settings || !ranges) return null;
+  return (
+    <span className="np-settings">
+      {items.map((it, i) => (
+        <SettingStepper
+          key={it.key}
+          item={it}
+          value={settings[it.key]}
+          range={ranges[it.key]}
+          disabled={disabled}
+          inactive={inactive && !it.ignoresChannels}
+          hint={i === items.length - 1}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Selector − n + (o se escribe el número); se guarda al instante. */
+function SettingStepper({ item, value, range, disabled, inactive, hint = true }) {
+  const toast = useToast();
+  const [current, setCurrent] = useState(value);
+  const [draft, setDraft] = useState(String(value));
+  const [saving, setSaving] = useState(false);
+  const clamp = (n) => Math.min(range.max, Math.max(range.min, n));
+
+  const commit = async (next) => {
+    const parsed = Number.parseInt(next, 10);
+    const n = Number.isNaN(parsed) ? current : clamp(parsed);
+    setDraft(String(n));
+    if (n === current) return;
+    const previous = current;
+    setCurrent(n);
+    setSaving(true);
+    try {
+      await tenantApi.saveNotificationSettings({ [item.key]: n });
+      toast.success('Ajuste guardado', `${item.before} ${n} ${item.after(n)}.`);
+    } catch (err) {
+      setCurrent(previous);
+      setDraft(String(previous));
+      toast.error('No se pudo guardar', getErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const off = disabled || saving;
+  return (
+    <span className={`np-days ${inactive ? 'is-inactive' : ''}`}>
+      <span className="np-days__label">{item.before}</span>
+      <span className="np-days__stepper">
+        <button type="button" onClick={() => commit(current - 1)} disabled={off || current <= range.min} aria-label="Menos">
+          −
+        </button>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={range.min}
+          max={range.max}
+          value={draft}
+          disabled={off}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => commit(draft)}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+          aria-label={`${item.before} … ${item.after(current)}`}
+        />
+        <button type="button" onClick={() => commit(current + 1)} disabled={off || current >= range.max} aria-label="Más">
+          +
+        </button>
+      </span>
+      <span className="np-days__label">
+        {item.after(current)}
+        {inactive && hint && ' · actívalo por campana o correo'}
+      </span>
+    </span>
   );
 }
 

@@ -20,6 +20,8 @@ export const NOTIFICATION_ICONS = {
   club_enrollment: 'star',
   parent_meeting: 'users',
   evaluation_plan: 'clipboard',
+  evaluation_reminder: 'clock',
+  payment_overdue: 'alertCircle',
   review_request: 'clipboard',
   review_result: 'checkCircle',
 };
@@ -32,6 +34,8 @@ export const NOTIFICATION_TYPE_LABELS = {
   club_enrollment: 'Clubes',
   parent_meeting: 'Citas con padres',
   evaluation_plan: 'Plan de evaluación',
+  evaluation_reminder: 'Recordatorio de evaluación',
+  payment_overdue: 'Pagos vencidos',
   review_request: 'Revisión académica',
   review_result: 'Revisión académica',
 };

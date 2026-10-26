@@ -43,6 +43,8 @@ const tenantApi = {
   getNotificationPreferences: () => axiosClient.get('/tenant/notification-preferences').then((r) => r.data),
   /** { preferences: [{ event, channel: 'bell' | 'email', enabled }] } → la matriz actualizada */
   saveNotificationPreferences: (preferences) => axiosClient.put('/tenant/notification-preferences', { preferences }).then((r) => r.data),
+  /** Ajustes de tiempo de los recordatorios: { evaluationReminderDays?, eventReminderDays?, meetingReminderDays?, overdueIntervalDays?, overdueMaxReminders? } → la matriz actualizada */
+  saveNotificationSettings: (settings) => axiosClient.put('/tenant/notification-preferences', { settings }).then((r) => r.data),
 };
 
 export default tenantApi;

@@ -22,9 +22,17 @@ const CATALOG = [
     defaults: { bell: true, email: true },
   },
   {
+    key: 'payment_overdue',
+    label: 'Pagos vencidos / deudas pendientes',
+    description: 'Recordatorio automático (tarea diaria) a la familia con cuotas vencidas sin pagar ni reportar: uno por familia con todas sus cuotas. Se repite cada cierto número de días hasta un máximo por cuota.',
+    recipients: 'El representante responsable de cada cuota',
+    // Desactivado hasta que el colegio lo active: al encenderlo avisa a todas las familias con deuda.
+    defaults: { bell: false, email: false },
+  },
+  {
     key: 'school_event',
     label: 'Eventos y cartelera',
-    description: 'Al publicar un evento (asambleas, actos culturales…) o cambiarle la fecha u hora.',
+    description: 'Al publicar un evento (asambleas, actos culturales…) o cambiarle la fecha u hora. Opcional: un recordatorio automático unos días antes.',
     recipients: 'Las familias a las que va dirigido el evento',
     defaults: { bell: true, email: false },
   },
@@ -38,7 +46,7 @@ const CATALOG = [
   {
     key: 'parent_meeting',
     label: 'Citas con padres',
-    description: 'Al agendar una cita, o cambiarle la fecha, la hora o el estado. Son los canales que vienen marcados en cada cita (se pueden cambiar al crearla).',
+    description: 'Al agendar una cita, o cambiarle la fecha, la hora o el estado. Son los canales que vienen marcados en cada cita (se pueden cambiar al crearla). Opcional: un recordatorio automático unos días antes, por los canales de la cita.',
     recipients: 'El representante citado',
     defaults: { bell: true, email: true },
   },
@@ -47,6 +55,13 @@ const CATALOG = [
     label: 'Plan de evaluación publicado',
     description: 'Cuando coordinación aprueba el plan de evaluación de una materia: ya se ve en el portal con sus evaluaciones y fechas.',
     recipients: 'Los representantes de los alumnos de las secciones del plan',
+    defaults: { bell: true, email: false },
+  },
+  {
+    key: 'evaluation_reminder',
+    label: 'Recordatorio de evaluación próxima',
+    description: 'Aviso automático (tarea diaria) unos días antes de cada evaluación de los planes publicados. Elige con cuánta anticipación.',
+    recipients: 'Los representantes de cada alumno de la sección',
     defaults: { bell: true, email: false },
   },
   {
@@ -92,14 +107,56 @@ async function emailStatus(trx, tenantId) {
   }
 }
 
-/** GET: la matriz completa con el estado del correo. */
+/**
+ * Ajustes de tiempo de los recordatorios automáticos (tenant_settings,
+ * migraciones 062 y 063), cada uno ligado a su fila de la matriz. 0 = sin
+ * recordatorio (solo donde `min` es 0). Los usa la tarea diaria (dailyRemindersJob).
+ */
+const REMINDER_SETTINGS = {
+  evaluationReminderDays: { column: 'evaluation_reminder_days', event: 'evaluation_reminder', min: 1, max: 7, default: 1 },
+  eventReminderDays: { column: 'event_reminder_days', event: 'school_event', min: 0, max: 14, default: 0 },
+  meetingReminderDays: { column: 'meeting_reminder_days', event: 'parent_meeting', min: 0, max: 7, default: 0 },
+  overdueIntervalDays: { column: 'overdue_interval_days', event: 'payment_overdue', min: 1, max: 30, default: 7 },
+  overdueMaxReminders: { column: 'overdue_max_reminders', event: 'payment_overdue', min: 1, max: 10, default: 3 },
+};
+const SETTING_KEYS = Object.keys(REMINDER_SETTINGS);
+
+/** { evaluationReminderDays, eventReminderDays, … } del colegio (predeterminados si no hay fila). */
+async function reminderSettings(trx, tenantId) {
+  const row = (await trx('tenant_settings').where({ tenant_id: tenantId }).first(SETTING_KEYS.map((k) => REMINDER_SETTINGS[k].column))) || {};
+  return Object.fromEntries(
+    SETTING_KEYS.map((k) => {
+      const v = row[REMINDER_SETTINGS[k].column];
+      return [k, v === null || v === undefined ? REMINDER_SETTINGS[k].default : Number(v)];
+    })
+  );
+}
+
+/** Con cuántos días de anticipación se recuerda cada evaluación (1 = el día anterior). */
+async function evaluationReminderDays(trx, tenantId) {
+  return (await reminderSettings(trx, tenantId)).evaluationReminderDays;
+}
+
+/** GET: la matriz completa con el estado del correo y los ajustes de tiempo (con sus rangos). */
 async function getMatrix(trx, tenantId) {
   const stored = await storedMap(trx, tenantId);
   const value = (e, ch) => (stored.has(`${e.key}:${ch}`) ? stored.get(`${e.key}:${ch}`) : e.defaults[ch]);
   return {
     events: CATALOG.map((e) => ({ key: e.key, label: e.label, description: e.description, recipients: e.recipients, bell: value(e, 'bell'), email: value(e, 'email') })),
     email: await emailStatus(trx, tenantId),
+    settings: await reminderSettings(trx, tenantId),
+    settingsRanges: Object.fromEntries(SETTING_KEYS.map((k) => [k, { min: REMINDER_SETTINGS[k].min, max: REMINDER_SETTINGS[k].max }])),
   };
+}
+
+/** PUT: guarda uno o varios ajustes de tiempo ({ eventReminderDays: 2, … }), ya validados. */
+async function saveReminderSettings(trx, tenantId, values) {
+  const patch = Object.fromEntries(Object.entries(values).map(([k, v]) => [REMINDER_SETTINGS[k].column, v]));
+  if (!Object.keys(patch).length) return;
+  await trx('tenant_settings')
+    .insert({ tenant_id: tenantId, ...patch, updated_at: trx.fn.now() })
+    .onConflict('tenant_id')
+    .merge({ ...patch, updated_at: trx.fn.now() });
 }
 
 /** PUT: guarda una o varias celdas de la matriz. */
@@ -118,4 +175,4 @@ async function savePreferences(trx, tenantId, userId, preferences) {
   return getMatrix(trx, tenantId);
 }
 
-module.exports = { CATALOG, EVENT_KEYS, CHANNELS, isEnabled, getMatrix, savePreferences, emailStatus };
+module.exports = { CATALOG, EVENT_KEYS, CHANNELS, REMINDER_SETTINGS, SETTING_KEYS, isEnabled, getMatrix, savePreferences, reminderSettings, saveReminderSettings, evaluationReminderDays, emailStatus };

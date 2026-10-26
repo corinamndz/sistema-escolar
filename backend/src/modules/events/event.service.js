@@ -256,7 +256,27 @@ async function portalEvents(trx, tenantId, userId, { from } = {}) {
     .sort(chronological);
 }
 
+/**
+ * Recordatorio automático (tarea diaria, Configuración → Notificaciones →
+ * Eventos y cartelera): los eventos publicados de los próximos `days` días, a
+ * su público y por los canales de la matriz. Una vez por fecha y hora del evento.
+ */
+async function sendEventReminders(trx, tenantId, days) {
+  if (!days) return { sent: 0, due: 0 };
+  const { rows } = await trx.raw("SELECT (now() AT TIME ZONE 'America/Caracas')::date::text AS today, ((now() AT TIME ZONE 'America/Caracas')::date + ?::int)::text AS until", [days]);
+  const { today: from, until } = rows[0];
+  const due = (await listEvents(trx, tenantId, { from, to: until, publishedOnly: true })).filter((ev) => ev.event_date > from);
+  let sent = 0;
+  for (const ev of due) {
+    const left = Math.round((new Date(`${ev.event_date}T12:00:00Z`) - new Date(`${from}T12:00:00Z`)) / 86400000);
+    const result = await notices.schoolEvent(trx, tenantId, ev, { reminderDaysLeft: left });
+    if (result?.bell || result?.emails) sent += 1;
+  }
+  return { sent, due: due.length };
+}
+
 module.exports = {
+  sendEventReminders,
   CATEGORIES,
   AUDIENCES,
   chronological,

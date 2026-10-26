@@ -155,7 +155,7 @@ async function assertGuardianStudent(trx, tenantId, guardianId, studentId) {
  * crearla y cuando cambian su fecha, hora o estado (no al concluirla); el
  * mismo aviso no se repite. Devuelve qué se envió.
  */
-async function notifyGuardian(trx, tenantId, appt, { reason, dedupeKey = null }) {
+async function notifyGuardian(trx, tenantId, appt, { reason, dedupeKey = null, lead = '' }) {
   if (!appt.notify_bell && !appt.notify_email) return { bell: false, emails: 0, reason: 'disabled' };
   if (appt.status === 'completed' || appt.is_past) return { bell: false, emails: 0, reason: 'skipped' };
   const when = `${dayLabel(appt.meeting_date)} ${appt.end_time ? `de ${appt.start_time} a ${appt.end_time}` : `a las ${appt.start_time}`}${appt.location ? `, en ${appt.location}` : ''}`;
@@ -171,7 +171,7 @@ async function notifyGuardian(trx, tenantId, appt, { reason, dedupeKey = null })
     channels: { bell: appt.notify_bell, email: appt.notify_email },
     guardianIds: [appt.guardian_id],
     title: titles[appt.status === 'cancelled' ? 'cancelled' : reason] || titles.created,
-    body,
+    body: `${lead}${body}`,
     data: { appointment_id: appt.id, meeting_date: appt.meeting_date },
     // Pendiente: al inicio del portal, donde está el botón "Confirmar".
     links: { guardians: pending ? '/' : '/portal/events', staff: '/appointments' },
@@ -282,6 +282,32 @@ async function resendNotice(trx, tenantId, id) {
   }
   await trx('citas_padres').where({ id }).update({ reminder_count: trx.raw('reminder_count + 1') });
   return { ...(await getAppointment(trx, tenantId, id)), notified: sent };
+}
+
+/**
+ * Recordatorio automático (tarea diaria, Configuración → Notificaciones →
+ * Citas con padres): las citas pendientes o confirmadas cuya fecha cae dentro
+ * de los próximos `days` días. Usa los canales de CADA cita; una sola vez por
+ * fecha y hora (si se reprograma, se recuerda la nueva). Devuelve cuántas se avisaron.
+ */
+async function sendMeetingReminders(trx, tenantId, days) {
+  if (!days) return { sent: 0, due: 0 };
+  const { rows } = await trx.raw("SELECT (now() AT TIME ZONE 'America/Caracas')::date::text AS today, ((now() AT TIME ZONE 'America/Caracas')::date + ?::int)::text AS until", [days]);
+  const { today, until } = rows[0];
+  const due = (
+    await baseQuery(trx, tenantId).whereIn('c.status', ['pending', 'confirmed']).andWhere('c.meeting_date', '>', today).andWhere('c.meeting_date', '<=', until)
+  ).map(shape);
+  let sent = 0;
+  for (const appt of due) {
+    const left = Math.round((new Date(`${appt.meeting_date}T12:00:00Z`) - new Date(`${today}T12:00:00Z`)) / 86400000);
+    const result = await notifyGuardian(trx, tenantId, appt, {
+      reason: 'reminder',
+      lead: left === 1 ? 'Es mañana. ' : `Faltan ${left} días. `,
+      dedupeKey: `${EVENT}:${appt.id}:auto_reminder:${appt.meeting_date}:${appt.start_time}`,
+    });
+    if (result.bell || result.emails) sent += 1;
+  }
+  return { sent, due: due.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +428,7 @@ async function portalCalendarEvents(trx, tenantId, userId, { from } = {}) {
 }
 
 module.exports = {
+  sendMeetingReminders,
   resendNotice,
   listMyAppointments,
   confirmMyAppointment,

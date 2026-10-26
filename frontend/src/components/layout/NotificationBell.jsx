@@ -8,6 +8,7 @@ import { formatDate } from '../../features/payments/paymentStatus';
 import { SOURCE_LABELS, timeAgo } from '../../features/payments/components/BcvRateCard';
 import { NOTIFICATIONS_OPEN, NOTIFICATIONS_REFRESH, notifyRatesChanged } from '../../lib/notificationEvents';
 import { isEffective } from '../../features/payments/useRateAutoRefresh';
+import RateTuitionImpact from '../../features/payments/components/RateTuitionImpact';
 
 const POLL_MS = 60 * 1000; // la tasa cambia pocas veces al día: un minuto de demora es suficiente
 // Ícono por tipo de aviso (también lo usa el aviso al iniciar sesión).
@@ -249,7 +250,8 @@ function NotificationDetail({ notification: n, onClose }) {
             <dd>{new Date(n.created_at).toLocaleString('es-VE', { dateStyle: 'medium', timeStyle: 'short' })}</dd>
           </div>
         </dl>
-        <p className="text-sm text-muted">Los montos en bolívares de las cuotas pendientes se calculan con la tasa vigente del día.</p>
+        <RateTuitionImpact data={n.data} />
+        {!n.data?.tuition && <p className="text-sm text-muted">Los montos en bolívares de las cuotas pendientes se calculan con la tasa vigente del día.</p>}
       </div>
       <div className="form-actions">
         <button type="button" className="btn btn--secondary" onClick={onClose}>

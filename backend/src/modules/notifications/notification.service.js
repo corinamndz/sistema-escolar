@@ -186,7 +186,7 @@ async function history(trx, tenantId, userId, { status = 'all', from = null, to 
     all().distinct('n.type').pluck('n.type'),
   ]);
   return {
-    items: rows.map((n) => toItem(n, who.audiences)),
+    items: await withFamilyTuition(trx, tenantId, who, rows.map((n) => toItem(n, who.audiences))),
     // Página fuera de rango: no hay filas de donde leer el total; se cuenta aparte.
     total: rows.length ? Number(rows[0].total) : page > 1 ? Number((await filtered().count('* as n').first()).n) : 0,
     page,

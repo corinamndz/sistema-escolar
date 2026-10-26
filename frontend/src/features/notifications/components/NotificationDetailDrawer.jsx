@@ -9,6 +9,7 @@ import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { NOTIFICATION_ICONS, NOTIFICATION_TYPE_LABELS } from '../../../components/layout/NotificationBell';
+import RateTuitionImpact from '../../payments/components/RateTuitionImpact';
 
 const fullDate = (v) => new Date(v).toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const shortDate = (v) => new Date(v).toLocaleString('es-VE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -52,6 +53,7 @@ function NotificationDetailDrawer({ notification: n, canAudit, onClose, onOpenLi
             </span>
           </div>
           <p className="nd__body">{n.body}</p>
+          {n.type === 'bcv_rate' && <RateTuitionImpact data={n.data} />}
           {n.link && (
             <Button size="sm" variant="secondary" onClick={() => onOpenLink(n)}>
               {n.data?.link_label || 'Ver detalle'} <Icon name="arrowRight" size={14} />

@@ -19,7 +19,7 @@ import Badge from '../../../components/ui/Badge';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
-import StaffAccessModal, { StaffAccessBadge, COORDINATION_LEVELS } from '../components/StaffAccessModal';
+import StaffAccessModal, { StaffAccessBadge, COORDINATION_LEVELS, NEW_ACCESS_INITIAL, NewAccessSection, resolveNewAccess } from '../components/StaffAccessModal';
 import { CredentialsModal, formatDateTime } from '../../students/components/PortalAccessFields';
 
 const VIEW_KEY = 'staff.view.v2';
@@ -576,7 +576,17 @@ function StaffPage() {
       )}
 
       {editing !== null && (
-        <StaffFormModal initial={editing} coordinatorLevel={coordinator?.level || null} onClose={() => setEditing(null)} onSaved={refetch} />
+        <StaffFormModal
+          initial={editing}
+          coordinatorLevel={coordinator?.level || null}
+          canManageAccess={canManageAccess}
+          onClose={() => setEditing(null)}
+          onSaved={(saved) => {
+            refetch();
+            // Alta con usuario y contraseña temporal: se muestra una sola vez.
+            if (saved?.temporaryPassword) setCredentials({ name: fullName(saved), username: saved.access.username, password: saved.temporaryPassword });
+          }}
+        />
       )}
 
       {managingAccess && (
@@ -598,8 +608,14 @@ function StaffPage() {
 }
 
 /** `coordinatorLevel`: el coordinador solo registra DOCENTES disponibles para su etapa (o para todas). */
-function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) {
+function StaffFormModal({ initial, coordinatorLevel = null, canManageAccess = false, onClose, onSaved }) {
   const isEdit = Boolean(initial.id);
+  // Solo en el alta: crear también su usuario de acceso (en la misma transacción, ver POST /staff).
+  const offerAccess = !isEdit && canManageAccess;
+  const [access, setAccess] = useState(NEW_ACCESS_INITIAL);
+  const [submitted, setSubmitted] = useState(false);
+  const needRoles = offerAccess && access.enabled;
+  const { data: roles, loading: rolesLoading, error: rolesError } = useFetch(() => (needRoles ? staffApi.assignableRoles() : Promise.resolve(null)), [needRoles]);
   // Coordinador: solo SU nivel (al editar, también la disponibilidad que el docente ya tenía).
   const availabilityOptions = coordinatorLevel
     ? Object.entries(AVAILABILITY_LABELS).filter(([value]) => value === coordinatorLevel || (isEdit && value === initial.level_availability))
@@ -619,6 +635,9 @@ function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) 
   const isTeacher = form.staffType === 'teaching';
   const isCoordinator = form.staffType === 'coordinator';
   const coordinationError = isCoordinator && !form.coordinationLevel ? 'Indica el nivel de coordinación.' : null;
+  const withAccess = needRoles && Boolean(roles);
+  const resolvedAccess = withAccess ? resolveNewAccess(access, roles, form) : null;
+  const accessInvalid = needRoles && (!resolvedAccess || Object.keys(resolvedAccess.errors).length > 0);
   const { run, loading, error, fieldErrors } = useMutation(
     isEdit ? (data) => staffApi.update(initial.id, data) : staffApi.create
   );
@@ -628,13 +647,21 @@ function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (coordinationError) return;
+    setSubmitted(true);
+    if (coordinationError || accessInvalid) return;
     try {
       // La disponibilidad por nivel solo va para el personal docente; la etapa, para el coordinador.
       const { levelAvailability, coordinationLevel, ...rest } = form;
-      await run({ ...rest, ...(isTeacher ? { levelAvailability } : {}), ...(isCoordinator ? { coordinationLevel } : {}) });
-      toast.success(isEdit ? 'Cambios guardados' : 'Personal registrado', `${form.firstName} ${form.lastName}`);
-      onSaved();
+      const saved = await run({
+        ...rest,
+        ...(isTeacher ? { levelAvailability } : {}),
+        ...(isCoordinator ? { coordinationLevel } : {}),
+        ...(withAccess ? { access: resolvedAccess.body } : {}),
+      });
+      const name = `${form.firstName} ${form.lastName}`;
+      if (saved?.access) toast.success('Personal y usuario creados', `${name} · ${saved.access.username}`);
+      else toast.success(isEdit ? 'Cambios guardados' : 'Personal registrado', name);
+      onSaved(saved);
       onClose();
     } catch {
       // el error queda visible en el modal
@@ -665,7 +692,11 @@ function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) 
             <Field
               label="Nivel de coordinación"
               error={fieldErrors.coordinationLevel || coordinationError}
-              hint="Gestionará a los docentes de esta etapa. Dale acceso con el rol Coordinador desde «Gestionar acceso al sistema»."
+              hint={
+                offerAccess
+                  ? 'Gestionará a los docentes de esta etapa. Dale acceso con el rol Coordinador abajo o luego desde «Gestionar acceso al sistema».'
+                  : 'Gestionará a los docentes de esta etapa. Dale acceso con el rol Coordinador desde «Gestionar acceso al sistema».'
+              }
               required
             >
               <Select name="coordinationLevel" value={form.coordinationLevel} onChange={handleChange}>
@@ -718,12 +749,25 @@ function StaffFormModal({ initial, coordinatorLevel = null, onClose, onSaved }) 
             </Field>
           )}
         </div>
+        {offerAccess && (
+          <NewAccessSection
+            access={access}
+            setAccess={setAccess}
+            roles={roles || []}
+            rolesLoading={rolesLoading || (needRoles && !roles && !rolesError)}
+            rolesError={rolesError}
+            resolved={resolvedAccess || { errors: {}, roleIds: [] }}
+            staffEmail={form.email.trim()}
+            showErrors={submitted}
+            fieldErrors={fieldErrors}
+          />
+        )}
         <div className="form-actions">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" loading={loading} disabled={Boolean(coordinationError)}>
-            Guardar
+          <Button type="submit" icon={withAccess ? 'lock' : undefined} loading={loading} disabled={Boolean(coordinationError) || (needRoles && !withAccess)}>
+            {withAccess ? 'Guardar y crear usuario' : 'Guardar'}
           </Button>
         </div>
       </form>

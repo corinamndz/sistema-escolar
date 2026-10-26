@@ -2916,6 +2916,31 @@ a.cell-person__name:hover {
 .role-option.is-selected .icon { color: var(--color-primary-text); }
 .role-option.is-disabled { cursor: not-allowed; opacity: 0.7; }
 
+/* "Nuevo personal" → Crear usuario de acceso al sistema (sección colapsable). */
+.new-access {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.new-access.is-open {
+  border-color: var(--color-border-active);
+  background: var(--color-surface);
+}
+.new-access__body {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+.new-access__note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 0;
+}
+
 .detail-section__title .badge { margin-left: auto; }
 
 .billing-issues ul {

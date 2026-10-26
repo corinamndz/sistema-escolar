@@ -22,6 +22,33 @@ const staffSchema = z.object({
 });
 const coordinationLevel = z.enum(['initial', 'primary', 'secondary']).nullable().optional();
 
+// Contraseña elegida por el admin (si se omite, se genera una temporal). Máx. 72: límite de bcrypt.
+const passwordSchema = z
+  .string()
+  .min(8, 'Mínimo 8 caracteres.')
+  .max(72, 'Máximo 72 caracteres.')
+  .regex(/[A-Za-z]/, 'Debe incluir al menos una letra.')
+  .regex(/\d/, 'Debe incluir al menos un número.');
+const emptyToUndefined = (schema) => z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), schema.optional());
+
+// Usuario de acceso creado junto con la ficha (alta de personal). Sin correo propio, se usa el de la ficha.
+const newAccessSchema = z.object({
+  email: emptyToUndefined(z.string().trim().email('Correo inválido.').max(150)),
+  password: emptyToUndefined(passwordSchema),
+  roleIds: z.array(z.string().uuid()).min(1, 'Selecciona al menos un rol.'),
+  coordinationLevel,
+});
+
+/** Los errores del acceso apuntan a sus campos del formulario (`access.email`, `access.roleIds`…). */
+async function withAccessFieldErrors(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (Array.isArray(err.details)) err.details = err.details.map((d) => (d.path && d.path !== 'mail' ? { ...d, path: `access.${d.path}` } : d));
+    throw err;
+  }
+}
+
 /**
  * Coordinador restringido: solo DOCENTES de su etapa. Lo que pida otro tipo de
  * personal o una disponibilidad fuera de su etapa se rechaza (no se corrige en
@@ -60,12 +87,25 @@ const getOne = asyncHandler(async (req, res) => {
   res.status(200).json(row);
 });
 
+/**
+ * POST /staff — alta de personal y, si viene `access`, su usuario de acceso.
+ * Todo corre en la transacción de la petición (req.db, ver tenant.middleware):
+ * si falla el usuario (correo repetido, rol no permitido, correo del colegio
+ * sin configurar…), se revierte también la ficha; no quedan altas a medias.
+ */
 const create = asyncHandler(async (req, res) => {
   const scope = await coordinator.getCoordinatorScope(req);
-  const data = assertCoordinatorData(scope, staffSchema.extend({ staffType: staffSchema.shape.staffType.optional() }).parse(req.body), { creating: true });
+  const schema = staffSchema.extend({ staffType: staffSchema.shape.staffType.optional(), access: newAccessSchema.optional() });
+  const { access, ...data } = assertCoordinatorData(scope, schema.parse(req.body), { creating: true });
   if (!data.staffType) throw ApiError.badRequest('Indica el tipo de personal.', [{ path: 'staffType', message: 'Requerido.' }]);
   const row = await staffService.create(req.db, req.tenantId, data);
-  res.status(201).json(row);
+  if (!access) return res.status(201).json(row);
+
+  const email = access.email || data.email;
+  if (!email) throw ApiError.badRequest('Indica el correo con el que iniciará sesión.', [{ path: 'access.email', message: 'Requerido.' }]);
+  const result = await withAccessFieldErrors(() => staffAccess.createStaffAccess(req.db, req.tenantId, row.id, { ...access, email }, scope ? { coordinator: scope } : null));
+  const staff = await staffService.getById(req.db, req.tenantId, row.id); // con user_id y etapa ya aplicados
+  return res.status(201).json({ ...staff, access: result.access, temporaryPassword: result.temporaryPassword });
 });
 
 const update = asyncHandler(async (req, res) => {
@@ -83,14 +123,6 @@ const remove = asyncHandler(async (req, res) => {
 });
 
 // ---- Usuario de acceso del empleado ----
-// Contraseña elegida por el admin (si se omite, se genera una temporal). Máx. 72: límite de bcrypt.
-const passwordSchema = z
-  .string()
-  .min(8, 'Mínimo 8 caracteres.')
-  .max(72, 'Máximo 72 caracteres.')
-  .regex(/[A-Za-z]/, 'Debe incluir al menos una letra.')
-  .regex(/\d/, 'Debe incluir al menos un número.');
-const emptyToUndefined = (schema) => z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), schema.optional());
 
 const getAccess = asyncHandler(async (req, res) => {
   res.status(200).json(await staffAccess.getStaffAccess(req.db, req.tenantId, req.params.id));

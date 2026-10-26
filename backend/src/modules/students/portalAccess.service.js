@@ -73,10 +73,12 @@ async function applyPortalAccess(trx, tenantId, guardian, portal) {
   // ---- Crear ----
   if (!guardian.user_id) {
     if (!portal.enabled) return { access: null, temporaryPassword: null };
-    if (!portal.email) {
+    // Sin correo de acceso explícito, se usa el registrado en la ficha del representante.
+    const email = portal.email || guardian.email;
+    if (!email) {
       throw ApiError.badRequest('Indica el correo de acceso al portal.', [{ path: 'portal.email', message: 'Requerido.' }]);
     }
-    const username = normalizeEmail(portal.email);
+    const username = normalizeEmail(email);
     await assertUsernameAvailable(trx, tenantId, username);
     const roleId = await getGuardianRoleId(trx, tenantId);
     // La contraseña temporal solo llega por correo: sin correo utilizable no se activa.
@@ -129,9 +131,19 @@ async function applyPortalAccess(trx, tenantId, guardian, portal) {
   if (portal.status && portal.status !== current.status) {
     payload.status = portal.status;
   }
+  // Al activar, la cuenta debe tener el rol Representante (p. ej. si se lo quitaron en Roles y permisos).
+  let roleAdded = false;
+  if ((payload.status || current.status) === 'active') {
+    const inserted = await trx('user_roles')
+      .insert({ user_id: current.id, role_id: await getGuardianRoleId(trx, tenantId) })
+      .onConflict(['user_id', 'role_id'])
+      .ignore()
+      .returning('user_id');
+    roleAdded = inserted.length > 0;
+  }
 
   await trx('users').where({ id: current.id }).update({ ...payload, updated_at: trx.fn.now() });
-  if (payload.status || payload.password_hash) invalidatePermissionsCache(tenantId, current.id);
+  if (payload.status || payload.password_hash || roleAdded) invalidatePermissionsCache(tenantId, current.id);
 
   if (temporaryPassword !== null) {
     const tenant = await trx('tenants').where('id', tenantId).select('name').first();

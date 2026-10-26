@@ -15,6 +15,8 @@ const studentsApi = {
   getGuardian: (id) => axiosClient.get(`/guardians/${id}`).then((r) => r.data),
   createGuardian: (data) => axiosClient.post('/guardians', data).then((r) => r.data),
   updateGuardian: (id, data) => axiosClient.put(`/guardians/${id}`, data).then((r) => r.data),
+  /** Solo el acceso al portal: crear { email?, password? } o gestionar { email?, resetPassword?, password?, status? } → { portal, temporaryPassword } */
+  updateGuardianPortal: (id, data) => axiosClient.put(`/guardians/${id}/portal`, data).then((r) => r.data),
   deleteGuardian: (id) => axiosClient.delete(`/guardians/${id}`).then((r) => r.data),
 };
 

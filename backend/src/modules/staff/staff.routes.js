@@ -30,8 +30,11 @@ async function canGrantRoles(req, res, next) {
   }
 }
 
+// Alta con su usuario de acceso incluido (`access` en el cuerpo): mismas reglas que gestionar acceso.
+const canGrantRolesIfAccess = (req, res, next) => (req.body?.access ? canGrantRoles(req, res, next) : next());
+
 router.get('/', requirePermission('staff', 'read'), controller.list);
-router.post('/', requirePermission('staff', 'create'), controller.create);
+router.post('/', requirePermission('staff', 'create'), canGrantRolesIfAccess, controller.create);
 router.get('/access/roles', requirePermission('staff', 'update'), canGrantRoles, controller.assignableRoles);
 router.get('/:id', requirePermission('staff', 'read'), ownStaff, controller.getOne);
 router.put('/:id', requirePermission('staff', 'update'), ownStaff, controller.update);

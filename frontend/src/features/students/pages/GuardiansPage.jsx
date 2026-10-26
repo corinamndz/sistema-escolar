@@ -33,6 +33,7 @@ import {
   portalOf,
   formatDateTime,
 } from '../components/PortalAccessFields';
+import GuardianPortalDrawer from '../components/GuardianPortalDrawer';
 
 const VIEW_KEY = 'guardians.view.v2';
 const EXPAND_KEY = 'guardians.expandedGroups';
@@ -132,7 +133,7 @@ function groupGuardians(rows, gradeIdFilter, sectionFilter) {
   );
 }
 
-function GuardianGroups({ rows, columns, searching, gradeId, section, onView, onEdit, canEdit, collapseSignal }) {
+function GuardianGroups({ rows, columns, searching, gradeId, section, onView, onEdit, canEdit, rowActions, collapseSignal }) {
   const groups = useMemo(() => groupGuardians(rows, gradeId, section), [rows, gradeId, section]);
   const { isOpen, toggle, expandAll, collapseAll } = useExpandedSet(EXPAND_KEY);
 
@@ -200,6 +201,7 @@ function GuardianGroups({ rows, columns, searching, gradeId, section, onView, on
                     onView={onView}
                     onEdit={onEdit}
                     canEdit={canEdit}
+                    rowActions={rowActions}
                     emptyMessage="Sin representantes."
                   />
                 </div>
@@ -222,6 +224,7 @@ function GuardiansPage() {
   const [editing, setEditing] = useState(null);
   const [viewingId, setViewingId] = useState(null);
   const [credentials, setCredentials] = useState(null);
+  const [managingPortal, setManagingPortal] = useState(null);
   const [view, setView] = useState(readView);
   const [query, setQuery] = useState('');
   const [collapseSignal, setCollapseSignal] = useState(null);
@@ -397,6 +400,10 @@ function GuardiansPage() {
     />
   );
   const canEdit = can('guardians', 'update');
+  // Acceso al portal (como "Gestionar acceso al sistema" en Personal): crear si no tiene, gestionar si ya tiene.
+  const rowActions = canEdit
+    ? [{ key: 'portal', icon: 'lock', label: (g) => (g.portal_username ? 'Gestionar acceso al portal' : 'Crear acceso al portal'), onClick: setManagingPortal }]
+    : [];
 
   const exportColumns = [
     { header: 'Nombre',           value: (g) => g.first_name,              width: 18 },
@@ -494,6 +501,7 @@ function GuardiansPage() {
           headerActions={<>{importButton}{exportButton}</>}
           onView={(g) => setViewingId(g.id)}
           onEdit={setEditing}
+          rowActions={rowActions}
           canEdit={canEdit}
           onDelete={(g) => studentsApi.deleteGuardian(g.id)}
           canDelete={can('guardians', 'delete')}
@@ -597,6 +605,7 @@ function GuardiansPage() {
               onView={(g) => setViewingId(g.id)}
               onEdit={setEditing}
               canEdit={canEdit}
+              rowActions={rowActions}
               collapseSignal={collapseSignal}
             />
           )}
@@ -627,6 +636,17 @@ function GuardiansPage() {
             if (saved.temporaryPassword) {
               setCredentials({ name: fullName(saved), username: saved.portal.username, password: saved.temporaryPassword });
             }
+          }}
+        />
+      )}
+
+      {managingPortal && (
+        <GuardianPortalDrawer
+          guardian={managingPortal}
+          onClose={() => setManagingPortal(null)}
+          onSaved={({ portal, temporaryPassword }) => {
+            refetch();
+            if (temporaryPassword) setCredentials({ name: fullName(managingPortal), username: portal.username, password: temporaryPassword });
           }}
         />
       )}

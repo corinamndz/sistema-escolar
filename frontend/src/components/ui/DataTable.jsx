@@ -354,18 +354,22 @@ function DataTable({
                       <div className="row-actions">
                         {rowActions
                           .filter((a) => !a.show || a.show(row))
-                          .map((a) => (
-                            <button
-                              key={a.key}
-                              type="button"
-                              className={`row-action row-action--${a.tone || 'accent'}`}
-                              onClick={() => a.onClick(row)}
-                              title={a.label}
-                              aria-label={a.label}
-                            >
-                              <Icon name={a.icon} size={16} />
-                            </button>
-                          ))}
+                          .map((a) => {
+                            // `label` puede depender de la fila (ej. "Crear acceso" / "Gestionar acceso").
+                            const label = typeof a.label === 'function' ? a.label(row) : a.label;
+                            return (
+                              <button
+                                key={a.key}
+                                type="button"
+                                className={`row-action row-action--${a.tone || 'accent'}`}
+                                onClick={() => a.onClick(row)}
+                                title={label}
+                                aria-label={label}
+                              >
+                                <Icon name={a.icon} size={16} />
+                              </button>
+                            );
+                          })}
                         {onView && allowed(canView, row) && (
                           <button type="button" className="row-action row-action--view" onClick={() => onView(row)} title="Ver detalle" aria-label="Ver detalle">
                             <Icon name="eye" size={16} />

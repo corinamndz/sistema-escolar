@@ -165,6 +165,13 @@ const updateGuardian = asyncHandler(async (req, res) => {
   res.status(200).json(row);
 });
 
+/** PUT /guardians/:id/portal — crear o gestionar solo el acceso al portal: { portal, temporaryPassword }. */
+const updateGuardianPortal = asyncHandler(async (req, res) => {
+  // Errores con la misma ruta que en el formulario del representante ("portal.email", "portal.password").
+  const { portal } = z.object({ portal: portalSchema.unwrap() }).parse({ portal: req.body });
+  res.status(200).json(await service.updateGuardianPortal(req.db, req.tenantId, req.params.id, portal));
+});
+
 const deleteGuardian = asyncHandler(async (req, res) => {
   await service.deleteGuardian(req.db, req.tenantId, req.params.id);
   res.status(204).send();
@@ -193,6 +200,7 @@ module.exports = {
   getGuardian,
   createGuardian,
   updateGuardian,
+  updateGuardianPortal,
   deleteGuardian,
   linkGuardian,
   unlinkGuardian,

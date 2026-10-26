@@ -246,6 +246,17 @@ async function updateGuardian(trx, tenantId, id, data) {
 }
 
 /**
+ * Solo el acceso al portal (botón de la columna Acciones): crea el usuario si
+ * no tiene (con el correo de la ficha si no se indica otro) o gestiona el que ya tiene.
+ */
+async function updateGuardianPortal(trx, tenantId, id, portal) {
+  const guardian = await getGuardianById(trx, tenantId, id);
+  const changes = guardian.user_id ? portal : { ...portal, enabled: true };
+  const { access, temporaryPassword } = await applyPortalAccess(trx, tenantId, guardian, changes);
+  return { portal: access, temporaryPassword };
+}
+
+/**
  * Elimina un representante. Sus vínculos con alumnos se borran en cascada
  * (student_guardians). Si tiene pagos registrados no se permite: los pagos
  * son historial contable y la FK `payments.guardian_id` es RESTRICT.
@@ -387,6 +398,7 @@ module.exports = {
   listGuardianStudents,
   createGuardian,
   updateGuardian,
+  updateGuardianPortal,
   deleteGuardian,
   linkGuardian,
   unlinkGuardian,

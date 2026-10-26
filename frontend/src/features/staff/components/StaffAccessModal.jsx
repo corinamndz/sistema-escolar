@@ -59,9 +59,7 @@ function AccessForm({ staff, access, roles, onClose, onSaved }) {
   const defaultRoles = useMemo(() => {
     if (access) return access.roles.map((r) => r.id);
     // Docentes: rol "Docente" preseleccionado; coordinadores: rol "Coordinador" (con la etapa de su ficha).
-    const byName = (name) => roles.find((r) => r.name.trim().toLowerCase() === name);
-    const preset = (staff.staff_type === 'teaching' && byName('docente')) || (staff.staff_type === 'coordinator' && byName('coordinador'));
-    return preset ? [preset.id] : [];
+    return presetRoleIds(roles, staff.staff_type);
   }, [access, roles, staff.staff_type]);
 
   const [state, setState] = useState({
@@ -224,6 +222,124 @@ function AccessForm({ staff, access, roles, onClose, onSaved }) {
         </Button>
       </div>
     </form>
+  );
+}
+
+// ---- Usuario de acceso dentro del alta de personal ("Nuevo personal") ----
+
+export const NEW_ACCESS_INITIAL = { enabled: false, email: '', roleIds: null, coordinationLevel: '', passwordMode: 'auto', password: '' };
+
+/** Rol sugerido por el tipo de personal: Docente → "Docente"; Coordinador → "Coordinador". */
+function presetRoleIds(roles, staffType) {
+  const byName = (name) => roles.find((r) => r.name.trim().toLowerCase() === name);
+  const preset = (staffType === 'teaching' && byName('docente')) || (staffType === 'coordinator' && byName('coordinador'));
+  return preset ? [preset.id] : [];
+}
+
+/**
+ * Lo que se enviará como `access` en POST /staff, con su validación en vivo
+ * (mismas reglas que el backend). `roleIds: null` = aún sin tocar: sigue al tipo de personal.
+ * La etapa de un coordinador sale de su ficha si es de tipo Coordinador; si no, de esta sección.
+ */
+export function resolveNewAccess(access, roles, staff) {
+  const roleIds = access.roleIds ?? presetRoleIds(roles, staff.staffType);
+  const email = access.email.trim() || staff.email.trim();
+  const coordinatorRole = roles.find((r) => r.name === COORDINATOR_ROLE);
+  const isCoordinatorRole = Boolean(coordinatorRole && roleIds.includes(coordinatorRole.id));
+  const levelFromProfile = staff.staffType === 'coordinator';
+  const coordinationLevel = isCoordinatorRole ? (levelFromProfile ? staff.coordinationLevel : access.coordinationLevel) : '';
+
+  const errors = {};
+  if (!EMAIL_RE.test(email)) errors.email = email ? 'Correo inválido.' : 'Indica el correo de acceso.';
+  if (roleIds.length === 0) errors.roleIds = 'Selecciona al menos un rol.';
+  if (isCoordinatorRole && !levelFromProfile && !coordinationLevel) errors.coordinationLevel = 'Indica el nivel de coordinación.';
+  if (access.passwordMode === 'custom') {
+    const failed = PASSWORD_RULES.find((r) => !r.test(access.password));
+    if (failed) errors.password = `${failed.label}.`;
+  }
+  const body = {
+    email,
+    roleIds,
+    ...(access.passwordMode === 'custom' ? { password: access.password } : {}),
+    ...(isCoordinatorRole && coordinationLevel ? { coordinationLevel } : {}),
+  };
+  return { body, errors, roleIds, isCoordinatorRole, levelFromProfile };
+}
+
+/**
+ * Sección colapsable "Crear usuario de acceso al sistema" del formulario de
+ * alta: correo (por defecto, el de la ficha), roles, nivel de coordinación si
+ * se elige Coordinador y contraseña. Se guarda junto con la ficha, en una sola
+ * transacción (si falla el usuario, tampoco se registra al empleado).
+ */
+export function NewAccessSection({ access, setAccess, roles, rolesLoading, rolesError, resolved, staffEmail, showErrors, fieldErrors }) {
+  const set = (patch) => setAccess((a) => ({ ...a, ...patch }));
+  const err = (key) => (showErrors ? resolved.errors[key] : null) || fieldErrors[`access.${key}`];
+  const toggleRole = (id) => {
+    const current = resolved.roleIds;
+    set({ roleIds: current.includes(id) ? current.filter((r) => r !== id) : [...current, id] });
+  };
+
+  return (
+    <section className={`new-access ${access.enabled ? 'is-open' : ''}`}>
+      <Switch
+        checked={access.enabled}
+        onChange={(enabled) => set({ enabled })}
+        label="Crear usuario de acceso al sistema"
+        description={access.enabled ? 'Se crea junto con la ficha: si algo falla, no se guarda ninguno de los dos.' : 'Podrás crearlo después desde «Gestionar acceso al sistema».'}
+      />
+      {access.enabled && (
+        <div className="access-form new-access__body">
+          <Alert>{rolesError}</Alert>
+          {rolesLoading ? (
+            <Spinner />
+          ) : (
+            <>
+              <Field
+                label="Correo electrónico de acceso"
+                error={err('email')}
+                hint={access.email.trim() ? 'Será su usuario para iniciar sesión.' : 'Si lo dejas vacío se usa el correo de la ficha.'}
+                required
+              >
+                <Input icon="inbox" type="email" value={access.email} onChange={(e) => set({ email: e.target.value })} placeholder={staffEmail || 'nombre@colegio.edu'} />
+              </Field>
+
+              <Field label="Rol de usuario" error={err('roleIds')} hint="Define a qué módulos puede entrar (se configuran en Roles y permisos)." required>
+                <div className="role-options" role="group" aria-label="Rol de usuario">
+                  {roles.map((role) => (
+                    <label key={role.id} className={`role-option ${resolved.roleIds.includes(role.id) ? 'is-selected' : ''}`}>
+                      <input type="checkbox" checked={resolved.roleIds.includes(role.id)} onChange={() => toggleRole(role.id)} />
+                      <Icon name="shield" size={15} />
+                      {role.name}
+                    </label>
+                  ))}
+                </div>
+              </Field>
+
+              {resolved.isCoordinatorRole &&
+                (resolved.levelFromProfile ? (
+                  <p className="form-hint new-access__note">
+                    <Icon name="info" size={14} /> Coordinará el nivel elegido arriba en «Nivel de coordinación».
+                  </p>
+                ) : (
+                  <Field label="Nivel" error={err('coordinationLevel')} hint="Delimita sus permisos y vistas: solo gestionará a los docentes de ese nivel." required>
+                    <Select value={access.coordinationLevel} onChange={(e) => set({ coordinationLevel: e.target.value })}>
+                      <option value="">Selecciona el nivel…</option>
+                      {Object.entries(COORDINATION_LEVELS).map(([code, label]) => (
+                        <option key={code} value={code}>
+                          {label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                ))}
+
+              <PasswordChooser state={access} setState={setAccess} errors={showErrors ? resolved.errors : {}} serverError={fieldErrors['access.password']} />
+            </>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

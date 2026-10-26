@@ -26,7 +26,7 @@ function renderEmail({ schoolName, schoolSlug, title, body, link, linkLabel }) {
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e2e8f0">
     <p style="margin:0 0 4px;font-size:13px;color:#64748b">${escapeHtml(schoolName)}</p>
     <h2 style="margin:0 0 12px;font-size:20px">${escapeHtml(title)}</h2>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.5">${escapeHtml(body)}</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.5;white-space:pre-line">${escapeHtml(body)}</p>
     ${url ? `<a href="${escapeHtml(url)}" style="display:inline-block;padding:10px 18px;background:#2563eb;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold">${escapeHtml(linkLabel || 'Ver en el portal')}</a>` : ''}
     <p style="margin:24px 0 0;font-size:12px;color:#94a3b8">Recibes este correo porque eres representante en ${escapeHtml(schoolName)}.</p>
   </div></body></html>`;
@@ -71,6 +71,8 @@ async function guardiansOfSections(trx, tenantId, sectionIds) {
  *   dedupeKey     el mismo aviso no se repite (por canal y destinatario)
  *   skipEmail     no encolar correo (p. ej. el comprobante de pago va aparte, con su PDF)
  *   channels      { bell, email } elegidos para ESTE aviso (p. ej. en una cita): reemplazan a la matriz
+ *   emailExtra    Map guardianId → texto que se agrega al correo de ESA familia (p. ej. la
+ *                 mensualidad de sus alumnos con la tasa nueva); la campana lleva el texto común
  * Devuelve { bell: notificación|null, emails: n }.
  */
 async function notify(trx, tenantId, opts) {
@@ -82,7 +84,7 @@ async function notify(trx, tenantId, opts) {
   }
 }
 
-async function emit(trx, tenantId, { event, guardianIds = [], allGuardians = false, alsoStaff = false, staffOnly = false, title, body, data = {}, links = {}, linkLabel, dedupeKey = null, skipEmail = false, channels = null }) {
+async function emit(trx, tenantId, { event, guardianIds = [], allGuardians = false, alsoStaff = false, staffOnly = false, title, body, data = {}, links = {}, linkLabel, dedupeKey = null, skipEmail = false, channels = null, emailExtra = null }) {
   const ids = [...new Set(guardianIds)];
   if (!allGuardians && !ids.length && !alsoStaff && !staffOnly) return { bell: null, emails: 0 };
   const result = { bell: null, emails: 0 };
@@ -108,20 +110,24 @@ async function emit(trx, tenantId, { event, guardianIds = [], allGuardians = fal
       .modify((q) => !allGuardians && q.whereIn('id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']))
       .select('id', 'email');
     const tenant = await trx('tenants').where({ id: tenantId }).first('name', 'slug');
-    const { html, text } = renderEmail({
-      schoolName: tenant?.name || 'El colegio',
-      schoolSlug: tenant?.slug,
-      title,
-      body,
-      link: links.guardians,
-      linkLabel,
-    });
+    const render = (fullBody) =>
+      renderEmail({
+        schoolName: tenant?.name || 'El colegio',
+        schoolSlug: tenant?.slug,
+        title,
+        body: fullBody,
+        link: links.guardians,
+        linkLabel,
+      });
+    const common = render(body);
     const seen = new Set();
     const messages = [];
     for (const g of guardians) {
       const to = g.email.trim().toLowerCase();
       if (seen.has(to)) continue; // un correo compartido recibe un solo aviso
       seen.add(to);
+      const extra = emailExtra?.get(g.id);
+      const { html, text } = extra ? render(`${body}\n\n${extra}`) : common;
       messages.push({ guardianId: g.id, to, subject: `${title} · ${tenant?.name || 'Colegio'}`, html, text, eventType: event, dedupeKey: dedupeKey ? `${dedupeKey}:${to}` : null });
     }
     result.emails = await outbox.enqueue(trx, tenantId, messages);

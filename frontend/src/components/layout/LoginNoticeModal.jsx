@@ -6,24 +6,12 @@ import { openNotifications } from '../../lib/notificationEvents';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Icon from '../ui/Icon';
-import { NOTIFICATION_ICONS } from './NotificationBell';
+import { NOTIFICATION_ICONS, NOTIFICATION_TYPE_LABELS as TYPE_LABELS } from './NotificationBell';
 import { timeAgo } from '../../features/payments/components/BcvRateCard';
 
 const PREFIX = 'modo.loginNotice.';
 const shownInMemory = new Set(); // respaldo si el navegador no deja guardar
 
-/** Categoría visible de cada tipo de aviso (línea secundaria de la tarjeta). */
-const TYPE_LABELS = {
-  bcv_rate: 'Tasa BCV',
-  payment_confirmed: 'Pagos',
-  school_event: 'Evento',
-  sanction: 'Convivencia',
-  club_enrollment: 'Clubes',
-  parent_meeting: 'Citas con padres',
-  evaluation_plan: 'Plan de evaluación',
-  review_request: 'Revisión académica',
-  review_result: 'Revisión académica',
-};
 const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /**

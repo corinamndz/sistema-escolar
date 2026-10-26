@@ -24,6 +24,7 @@ import ClubsPage from '../features/clubs/pages/ClubsPage';
 import EventsPage from '../features/events/pages/EventsPage';
 import AppointmentsPage from '../features/appointments/pages/AppointmentsPage';
 import NotificationLogPage from '../features/notifications/pages/NotificationLogPage';
+import NotificationCenterPage from '../features/notifications/pages/NotificationCenterPage';
 import AuditPage from '../features/audit/pages/AuditPage';
 import GradeSummaryPage from '../features/grading/pages/GradeSummaryPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
@@ -48,6 +49,8 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
             <Route index element={<HomeRoute />} />
+            {/* Centro de notificaciones: cada usuario ve las suyas (el backend filtra por su público). */}
+            <Route path="notifications" element={<NotificationCenterPage />} />
 
             <Route element={<PermissionRoute module="tenant_settings" />}>
               <Route path="tenant/settings" element={<TenantSettingsPage />} />

@@ -12,6 +12,7 @@ import Icon from '../../../components/ui/Icon';
 import Button from '../../../components/ui/Button';
 import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import NotificationDetailDrawer from '../components/NotificationDetailDrawer';
 
 const STATUS_BADGE = { sent: 'success', delivered: 'success', pending: 'warning', retrying: 'warning', failed: 'danger' };
 const CHANNELS = { email: { label: 'Correo', icon: 'mail' }, bell: { label: 'Campana', icon: 'bell' } };
@@ -48,6 +49,7 @@ function NotificationLogPage() {
   const { data, loading, error, refetch } = useFetch(() => notificationLogApi.list(days), [days]);
   const canResend = can('tenant_settings', 'update');
   const [resendingId, setResendingId] = useState(null);
+  const [auditing, setAuditing] = useState(null);
 
   const rows = useMemo(() => data || [], [data]);
   const counts = useMemo(() => Object.fromEntries(TABS.map((t) => [t.key, rows.filter(t.match).length])), [rows]);
@@ -128,7 +130,12 @@ function NotificationLogPage() {
       render: (r) => (
         <div className="nlog-status">
           <Badge variant={STATUS_BADGE[r.status]}>{r.status_label}</Badge>
-          {r.channel === 'bell' && <div className="cell-person__sub">{r.reads ? `Leída por ${r.reads}` : 'Sin leer'}</div>}
+          {r.channel === 'bell' && (
+            <button type="button" className="nlog-reads" onClick={() => setAuditing(r)} title="Ver trazabilidad de lectura">
+              <Icon name="eye" size={13} />
+              {r.recipients_count ? `Leída por ${r.reads} de ${r.recipients_count}` : r.reads ? `Leída por ${r.reads}` : 'Sin leer'}
+            </button>
+          )}
           {r.status === 'retrying' && <div className="cell-person__sub">Intento {r.attempts} de 3</div>}
           {r.error && (
             <div className="cell-person__sub nlog-error" title={r.error}>
@@ -206,12 +213,20 @@ function NotificationLogPage() {
         }
         emptyMessage={tab === 'all' ? 'No hay envíos en este período.' : 'No hay envíos en esta pestaña.'}
         canCreate={false}
-        rowActions={
-          canResend
-            ? [{ key: 'resend', icon: 'refresh', label: 'Reenviar', tone: 'accent', show: (r) => r.resendable, onClick: resend }]
-            : []
-        }
+        rowActions={[
+          // Avisos de la campana: a quién se envió, quién lo leyó y cuándo.
+          { key: 'audit', icon: 'eye', label: 'Ver trazabilidad de lectura', show: (r) => r.channel === 'bell', onClick: setAuditing },
+          ...(canResend ? [{ key: 'resend', icon: 'refresh', label: 'Reenviar', tone: 'accent', show: (r) => r.resendable, onClick: resend }] : []),
+        ]}
       />
+
+      {auditing && (
+        <NotificationDetailDrawer
+          notification={{ id: auditing.row_id, type: auditing.type, title: auditing.subject, body: auditing.body, created_at: auditing.created_at, data: {} }}
+          canAudit
+          onClose={() => setAuditing(null)}
+        />
+      )}
     </div>
   );
 }

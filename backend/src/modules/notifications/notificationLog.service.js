@@ -23,6 +23,9 @@ const TYPE_LABELS = {
   ...Object.fromEntries(CATALOG.map((e) => [e.key, e.label])),
   credentials: 'Credenciales de acceso',
   payment_receipt: 'Comprobante de pago',
+  // Avisos personales de la revisión académica (migración 059): solo campana, fuera del catálogo de preferencias.
+  review_request: 'Revisión académica · solicitud',
+  review_result: 'Revisión académica · resultado',
 };
 const STATUS_LABELS = { sent: 'Enviado', delivered: 'Publicado', pending: 'Pendiente', retrying: 'Reintentando', failed: 'Fallido' };
 
@@ -39,7 +42,12 @@ async function bellRows(trx, tenantId, since) {
   const rows = await trx('notifications as n')
     .where('n.tenant_id', tenantId)
     .modify((q) => since && q.andWhere('n.created_at', '>=', since))
-    .select('n.*', trx.raw('(SELECT count(*)::int FROM notification_reads r WHERE r.notification_id = n.id) AS reads'))
+    .select(
+      'n.*',
+      trx.raw('(SELECT count(*)::int FROM notification_reads r WHERE r.notification_id = n.id) AS reads'),
+      // Destinatarios (migración 061): la foto del envío más quien lo leyó con un acceso posterior.
+      trx.raw('(SELECT count(*)::int FROM (SELECT user_id FROM notification_recipients x WHERE x.notification_id = n.id UNION SELECT user_id FROM notification_reads r WHERE r.notification_id = n.id) d) AS recipients_count')
+    )
     .orderBy('n.created_at', 'desc')
     .limit(PER_SOURCE);
   const ids = [...new Set(rows.flatMap((r) => r.target_guardian_ids || []))];
@@ -76,6 +84,7 @@ async function bellRows(trx, tenantId, since) {
       error: null,
       attempts: null,
       reads: r.reads,
+      recipients_count: r.recipients_count,
       created_at: r.created_at,
       sent_at: r.created_at,
       resend_of: r.resend_of || null,

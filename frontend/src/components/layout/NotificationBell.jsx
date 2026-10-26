@@ -22,6 +22,18 @@ export const NOTIFICATION_ICONS = {
   review_request: 'clipboard',
   review_result: 'checkCircle',
 };
+/** Categoría visible de cada tipo de aviso (aviso al iniciar sesión, Centro de notificaciones). */
+export const NOTIFICATION_TYPE_LABELS = {
+  bcv_rate: 'Tasa BCV',
+  payment_confirmed: 'Pagos',
+  school_event: 'Evento',
+  sanction: 'Convivencia',
+  club_enrollment: 'Clubes',
+  parent_meeting: 'Citas con padres',
+  evaluation_plan: 'Plan de evaluación',
+  review_request: 'Revisión académica',
+  review_result: 'Revisión académica',
+};
 
 /**
  * Campana de notificaciones del Topbar. Consulta las del usuario al cargar,
@@ -152,6 +164,11 @@ function NotificationBell({ dropdown }) {
                 ))}
               </ul>
             )}
+            <div className="notif-panel__footer">
+              <Link to="/notifications" className="notif-panel__center" onClick={() => dropdown.setOpen(false)}>
+                Abrir centro de notificaciones <Icon name="arrowRight" size={14} />
+              </Link>
+            </div>
           </div>
         )}
       </div>

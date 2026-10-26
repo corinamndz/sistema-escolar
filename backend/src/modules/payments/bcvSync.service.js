@@ -5,6 +5,7 @@ const bcvClient = require('../../services/bcv/bcvClient');
 const notifications = require('../notifications/notification.service');
 const { notify } = require('../notifications/notify');
 const notificationPrefs = require('../notifications/notificationPreferences.service');
+const tuitionImpact = require('./tuitionImpact.service');
 
 /**
  * Sincronización automática de la tasa oficial del BCV (bolívar por 1 USD).
@@ -233,10 +234,29 @@ function effectiveText(rateDate, today, currentRate, at = null) {
 /**
  * Aviso en la campana para la administración (quien gestiona pagos) y para
  * los representantes: "Nueva tasa BCV: 881,8769 Bs/USD, vigente desde hoy
- * 20/10/2026 a las 15:42 (antes: 881,0664 Bs/USD)". Al abrirlo, la
- * administración va a Pagos y la familia a Mis pagos.
+ * 20/10/2026 a las 15:42 (antes: 881,0664 Bs/USD). Mensualidad 2026-2027:
+ * $120,00 = Bs 105.825,23.". Al abrirlo, la administración va a Pagos y la
+ * familia a Mis pagos.
+ *
+ * Impacto en la mensualidad (tuitionImpact.service): las tarifas del año en
+ * curso convertidas con la tasa nueva viajan en `data.tuition`; la campana
+ * muestra a cada representante el monto de SUS alumnos (se arma al leer el
+ * aviso) y su correo lleva ese mismo desglose.
  */
 async function notifyNewRate(trx, tenantId, fetched, { previousRate, today, simulated = false, audience = ['staff', 'guardians'] }) {
+  // El impacto es informativo: si falla, el aviso sale igual (sin desglose) y la tasa se registra.
+  let tuition = null;
+  let emailExtra = null;
+  try {
+    tuition = await tuitionImpact.feeTable(trx, tenantId, fetched.rate);
+    if (!simulated && tuition && audience.includes('guardians')) emailExtra = await familyEmailTexts(trx, tenantId, tuition);
+  } catch (err) {
+    console.error(`[bcv] No se pudo calcular el impacto en la mensualidad del colegio ${tenantId}:`, err.message);
+  }
+  const rateText = `${simulated ? '[Prueba] ' : ''}Nueva tasa BCV: ${formatVes(fetched.rate)} Bs/USD, ${effectiveText(fetched.rateDate, today, previousRate, fetched.at)}${
+    fetched.rateDate <= today && previousRate ? ` (antes: ${formatVes(previousRate)} Bs/USD)` : ''
+  }.`;
+  const withTuition = tuition ? `${rateText} ${tuitionImpact.summaryText(tuition)}` : rateText;
   // Campana y/o correo según Configuración → Notificaciones (la simulación: solo campana).
   const { bell } = await notify(trx, tenantId, {
     event: 'bcv_rate',
@@ -245,9 +265,9 @@ async function notifyNewRate(trx, tenantId, fetched, { previousRate, today, simu
     staffOnly: !audience.includes('guardians'),
     skipEmail: simulated,
     title: simulated ? 'Nueva tasa BCV (prueba)' : 'Nueva tasa BCV',
-    body: `${simulated ? '[Prueba] ' : ''}Nueva tasa BCV: ${formatVes(fetched.rate)} Bs/USD, ${effectiveText(fetched.rateDate, today, previousRate, fetched.at)}${
-      fetched.rateDate <= today && previousRate ? ` (antes: ${formatVes(previousRate)} Bs/USD)` : ''
-    }.`,
+    // El aviso admite 500 caracteres: si el resumen por nivel no cabe, va solo en el detalle.
+    body: withTuition.length <= 500 ? withTuition : rateText,
+    emailExtra,
     // Las simulaciones no se deduplican: cada prueba genera su aviso.
     dedupeKey: simulated ? null : `bcv_rate:VES:${fetched.rateDate}:${fetched.rate}`,
     data: {
@@ -261,10 +281,20 @@ async function notifyNewRate(trx, tenantId, fetched, { previousRate, today, simu
       previous_rate: previousRate,
       source: fetched.source,
       effective_now: fetched.rateDate <= today,
+      // Mensualidad del año en curso con esta tasa (por nivel); null si el colegio no tiene tarifas.
+      tuition,
     },
     links: { staff: '/payments', guardians: '/payments/mine' },
   });
   return bell;
+}
+
+/** Correo de cada familia: la mensualidad de sus alumnos con la tasa nueva. */
+async function familyEmailTexts(trx, tenantId, tuition) {
+  const byGuardian = await tuitionImpact.tuitionByGuardian(trx, tenantId, tuition);
+  const out = new Map();
+  for (const [guardianId, items] of byGuardian) if (items.length) out.set(guardianId, tuitionImpact.familyText(items));
+  return out;
 }
 
 // ---------------------------------------------------------------------------

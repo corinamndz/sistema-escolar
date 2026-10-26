@@ -5,6 +5,7 @@ const { isAdmin } = require('../../middlewares/admin.middleware');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
 const { isContentReviewRequired } = require('./reviewSettings.service');
 const notifications = require('../notifications/notification.service');
+const familyNotify = require('../notifications/notify');
 
 /**
  * Revisión y aprobación (migración 058) de Planes de evaluación y Contenido
@@ -305,6 +306,41 @@ async function notifyAuthor(req, target, submittedBy, { decision, comment }) {
   await notify(req, target, [submittedBy], { type: 'review_result', title, body: `${body}${comment ? ` «${clip(comment, 200)}»` : ''}` });
 }
 
+/**
+ * Plan APROBADO → aviso a las familias (evento 'evaluation_plan' de la matriz
+ * de avisos: campana y, si el colegio lo activa, correo). Uno por alumno
+ * inscrito en las secciones del plan, dirigido a sus representantes, con el
+ * enlace a la materia en el portal de ESE alumno.
+ */
+async function notifyFamiliesPlanApproved(req, target) {
+  const sectionIds = target.sectionIds?.length ? target.sectionIds : [];
+  if (!sectionIds.length) return 0;
+  const students = await req
+    .db('enrollments as e')
+    .join('students as s', 's.id', 'e.student_id')
+    .join('sections as sec', 'sec.id', 'e.section_id')
+    .join('grades as g', 'g.id', 'sec.grade_id')
+    .where({ 'e.tenant_id': req.tenantId, 'e.status': 'active' })
+    .whereIn('e.section_id', sectionIds)
+    .select('s.id', 's.first_name', 's.last_name', 'g.name as grade_name', 'sec.name as section_name');
+  let sent = 0;
+  for (const s of students) {
+    const guardianIds = await familyNotify.guardiansOfStudents(req.db, req.tenantId, [s.id]);
+    if (!guardianIds.length) continue;
+    await familyNotify.notify(req.db, req.tenantId, {
+      event: 'evaluation_plan',
+      guardianIds,
+      title: 'Plan de evaluación publicado',
+      body: `Nuevo Plan de Evaluación aprobado y publicado para la cátedra ${target.subject_name} (${s.first_name} ${s.last_name}, ${s.grade_name} ${s.section_name}, ${target.term_name}).`,
+      data: { plan_id: target.id, student_id: s.id, subject_id: target.subject_id },
+      links: { guardians: `/portal/students/${s.id}?materia=${target.subject_id || ''}` },
+      linkLabel: 'Ver contenido y evaluaciones',
+    });
+    sent += 1;
+  }
+  return sent;
+}
+
 /** Docente: borrador u observado → en_revision. */
 async function submit(req, type, key, { comment } = {}) {
   const target = await loadTarget(req, type, key);
@@ -354,6 +390,8 @@ async function review(req, type, key, { decision, comment }) {
   await setStatus(req, target, status, { reviewed_at: req.db.fn.now(), reviewed_by: req.user.id });
   await addEntry(req, target, role, { kind: decision === 'approve' ? 'approved' : 'observed', body: comment });
   await notifyAuthor(req, target, submittedBy, { decision, comment });
+  // Aprobado = publicado en el portal: se avisa a las familias de sus secciones.
+  if (decision === 'approve' && target.type === 'plan') await notifyFamiliesPlanApproved(req, target);
   return getReview(req, type, key);
 }
 

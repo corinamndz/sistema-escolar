@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import portalApi from '../../../api/endpoints/portal.api';
+import Tabs from '../../../components/ui/Tabs';
+import PortalSubjectProgram from './PortalSubjectProgram';
 import { useFetch } from '../../../hooks/useFetch';
 import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
@@ -12,6 +15,8 @@ import { isQualitative, literalFor } from '../../grading/gradingScale';
 import LiteralBadge from '../../grading/components/LiteralBadge';
 
 const CATEGORY_LABELS = { formative: 'Formativa', exam: 'Examen', project: 'Proyecto', homework: 'Tarea', other: 'Otra' };
+/** La clave de una materia del plan de estudios es su id; la de un área de Inicial, su nombre. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 16.3 → "16,3" */
 const fmt = (n, digits = 1) =>
@@ -67,7 +72,26 @@ const PLAN_STATUS = {
 function StudentGrades({ studentId }) {
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
   const [pickedTermId, setPickedTermId] = useState(null); // null = lapso por defecto
-  const [openSubject, setOpenSubject] = useState(null);
+  // Aviso "Plan de evaluación publicado" (?materia=<id>): abre esa materia en "Contenido y evaluaciones".
+  const [params, setParams] = useSearchParams();
+  const [openSubject, setOpenSubject] = useState(() => params.get('materia') || null);
+  const [subjectTab, setSubjectTab] = useState(() => (params.get('materia') ? 'program' : 'grades'));
+  useEffect(() => {
+    if (!params.has('materia')) return;
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        next.delete('materia');
+        return next;
+      },
+      { replace: true }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const openSubjectDetail = (key) => {
+    setSubjectTab('grades');
+    setOpenSubject(key);
+  };
   const { data, loading, error } = useFetch(
     () => portalApi.getStudentGrades(studentId, schoolPeriodId ? { schoolPeriodId } : undefined),
     [studentId, schoolPeriodId]
@@ -182,7 +206,7 @@ function StudentGrades({ studentId }) {
                 scale={scale}
                 termName={termName}
                 allTerms={!termId}
-                onOpen={() => setOpenSubject(subject.key)}
+                onOpen={() => openSubjectDetail(subject.key)}
               />
             ))}
           </div>
@@ -190,8 +214,29 @@ function StudentGrades({ studentId }) {
       )}
 
       {selectedSubject && (
-        <Drawer title={termName ? `${selectedSubject.name} · ${termName}` : selectedSubject.name} size="lg" onClose={() => setOpenSubject(null)}>
-          <SubjectDetail subject={selectedSubject} scale={scale} passing={passing} showTerm={!termId} termName={termName} />
+        <Drawer
+          title={selectedSubject.name}
+          subtitle={subjectTab === 'grades' && termName ? `Calificaciones · ${termName}` : `${data.school_period?.name ? `Año escolar ${data.school_period.name}` : ''}`}
+          icon="book"
+          size="lg"
+          onClose={() => setOpenSubject(null)}
+        >
+          {/* Materias del plan de estudios (con id): también su contenido programático y evaluaciones publicadas. */}
+          {UUID.test(selectedSubject.key) && (
+            <Tabs
+              tabs={[
+                { key: 'grades', label: 'Calificaciones' },
+                { key: 'program', label: 'Contenido y evaluaciones' },
+              ]}
+              active={subjectTab}
+              onChange={setSubjectTab}
+            />
+          )}
+          {subjectTab === 'program' && UUID.test(selectedSubject.key) ? (
+            <PortalSubjectProgram studentId={studentId} subjectId={selectedSubject.key} schoolPeriodId={data.school_period?.id} />
+          ) : (
+            <SubjectDetail subject={selectedSubject} scale={scale} passing={passing} showTerm={!termId} termName={termName} />
+          )}
         </Drawer>
       )}
     </div>

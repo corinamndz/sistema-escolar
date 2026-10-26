@@ -10,7 +10,8 @@ const reviews = require('../reviews/review.service');
 /** Calificaciones: el plan (planId en la URL o en el formulario) debe ser de la carga del docente. */
 async function requireOwnPlan(req, res, next) {
   try {
-    if (req.params.type === 'scores') {
+    // Calificaciones y carga masiva del plan: el plan debe ser de la carga del docente.
+    if (req.params.type === 'scores' || req.params.type === 'plan_activities') {
       const planId = req.query.planId || req.body?.planId;
       if (planId) await scope.assertPlanAccess(req, planId);
     }

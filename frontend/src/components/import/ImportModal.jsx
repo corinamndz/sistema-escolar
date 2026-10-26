@@ -20,6 +20,7 @@ const STATUS = {
   valid: { label: 'Lista', tone: 'success' },
   imported: { label: 'Importada', tone: 'success' },
   skipped: { label: 'Sin cambios', tone: 'neutral' },
+  part: { label: 'Indicador', tone: 'neutral' },
   invalid: { label: 'Con errores', tone: 'danger' },
   failed: { label: 'Falló', tone: 'danger' },
 };
@@ -41,7 +42,8 @@ function downloadErrorReport(report) {
  *   <ImportModal type="students" title="Importar alumnos" onClose={…} onImported={refetch} />
  *   <ImportModal type="scores" params={{ planId }} title="Importar notas" … />
  */
-function ImportModal({ type, title, description, params, onClose, onImported }) {
+/** `skippedLabel`: cómo se llaman las filas omitidas (por defecto "sin cambios"; ej. "temas sin evaluación"). */
+function ImportModal({ type, title, description, params, onClose, onImported, skippedLabel = 'sin cambios' }) {
   const [file, setFile] = useState(null);
   const [phase, setPhase] = useState('idle'); // idle | validating | review | importing | done
   const [progress, setProgress] = useState(0);
@@ -173,7 +175,8 @@ function ImportModal({ type, title, description, params, onClose, onImported }) 
             </div>
             {s.skipped > 0 && (
               <div className="import-stat">
-                <span>{s.skipped}</span>sin cambios
+                <span>{s.skipped}</span>
+                {skippedLabel}
               </div>
             )}
             <div className="import-stat">

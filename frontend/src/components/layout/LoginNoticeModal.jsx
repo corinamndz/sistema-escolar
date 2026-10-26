@@ -20,6 +20,9 @@ const TYPE_LABELS = {
   sanction: 'Convivencia',
   club_enrollment: 'Clubes',
   parent_meeting: 'Citas con padres',
+  evaluation_plan: 'Plan de evaluación',
+  review_request: 'Revisión académica',
+  review_result: 'Revisión académica',
 };
 const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 

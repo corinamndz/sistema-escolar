@@ -13,6 +13,7 @@ const IMPORTERS = Object.fromEntries(
     require('./importers/classrooms.importer'),
     require('./importers/sections.importer'),
     require('./importers/programmaticContent.importer'),
+    require('./importers/planActivities.importer'),
   ].map((imp) => [imp.type, imp])
 );
 
@@ -85,17 +86,22 @@ async function runImport(trx, tenantId, type, { buffer, originalName, params = {
   const state = {};
   const results = rows.map(({ rowNumber, values }) => {
     state.row = rowNumber;
-    const { data, errors, label, skip, notes } = importer.validate(values, ctx, state);
+    const { data, errors, label, skip, part, notes } = importer.validate(values, ctx, state);
     return {
       row: rowNumber,
       label,
-      status: errors.length ? 'invalid' : skip ? 'skipped' : 'valid',
+      // 'part': fila que completa a otra (ej. un indicador más de la evaluación de arriba); no se importa sola.
+      status: errors.length ? 'invalid' : part ? 'part' : skip ? 'skipped' : 'valid',
       // Lo que hará la importación con esta fila (se ve en la vista previa).
       notes: errors.length ? [] : notes || [],
       errors: errors.map((e) => ({ ...e, columnLabel: headerOf[e.column] || null })),
       data,
     };
   });
+
+  // Validación del archivo COMPLETO (ej. que los porcentajes de un plan no pasen
+  // de 100%): puede marcar filas como inválidas y agregar una nota al resumen.
+  const fileCheck = importer.validateAll ? importer.validateAll(results, ctx) : null;
 
   let changes = 0;
   if (commit) {
@@ -136,9 +142,10 @@ async function runImport(trx, tenantId, type, { buffer, originalName, params = {
   } else {
     message = `${summary.valid} de ${summary.total} filas están listas para importar`;
     if (bad.length) message += `; ${bad.length} ${bad.length === 1 ? 'tiene' : 'tienen'} errores (${reasonsSummary(bad)})`;
-    if (summary.skipped) message += `; ${summary.skipped} sin cambios`;
+    if (summary.skipped) message += `; ${importer.skippedText ? importer.skippedText(summary.skipped) : `${summary.skipped} sin cambios`}`;
     message += '.';
   }
+  if (fileCheck?.note) message += ` ${fileCheck.note}`;
 
   return {
     type,

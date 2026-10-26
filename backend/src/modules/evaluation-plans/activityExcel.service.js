@@ -171,4 +171,4 @@ async function parseActivity(buffer, originalName, { sectionNames = [] } = {}) {
   };
 }
 
-module.exports = { generateTemplate, parseActivity };
+module.exports = { generateTemplate, parseActivity, CATEGORIES, INSTRUMENTS };

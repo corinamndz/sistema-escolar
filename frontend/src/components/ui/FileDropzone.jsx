@@ -3,6 +3,16 @@ import Icon from './Icon';
 
 const formatBytes = (bytes) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
 
+/** Tipo legible del archivo elegido (por mimetype o, si no viene, por extensión). */
+function fileKind(file) {
+  const name = (file.name || '').toLowerCase();
+  if (file.type === 'application/pdf' || name.endsWith('.pdf')) return 'PDF';
+  if (file.type.startsWith('image/')) return 'Imagen';
+  if (/spreadsheet|excel/.test(file.type) || /\.(xlsx|xls)$/.test(name)) return 'Excel';
+  if (file.type === 'text/csv' || name.endsWith('.csv')) return 'CSV';
+  return 'Archivo';
+}
+
 /**
  * Zona para arrastrar y soltar (o elegir) UN archivo, con vista previa:
  * miniatura si es imagen, ícono + nombre si es PDF.
@@ -82,7 +92,7 @@ function FileDropzone({ value, onChange, accept, maxBytes, label = 'Arrastra el 
               {value.name}
             </div>
             <div className="cell-person__sub">
-              {value.type === 'application/pdf' ? 'PDF' : 'Imagen'} · {formatBytes(value.size)}
+              {fileKind(value)} · {formatBytes(value.size)}
             </div>
           </div>
           <div className="row-actions">

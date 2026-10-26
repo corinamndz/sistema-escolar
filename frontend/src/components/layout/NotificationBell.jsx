@@ -18,6 +18,7 @@ export const NOTIFICATION_ICONS = {
   sanction: 'shield',
   club_enrollment: 'star',
   parent_meeting: 'users',
+  evaluation_plan: 'clipboard',
   review_request: 'clipboard',
   review_result: 'checkCircle',
 };

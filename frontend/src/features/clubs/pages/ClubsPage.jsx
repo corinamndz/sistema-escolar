@@ -14,6 +14,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { ClubFormModal, EnrollModal, MembersModal } from '../components/ClubModals';
 import { CLUB_CATEGORIES, sessionSummary } from '../clubCatalog';
+import { currentPeriod } from '../../../lib/schoolPeriods';
 
 /**
  * Clubes y actividades extracurriculares: catálogo del colegio (con la
@@ -29,7 +30,7 @@ function ClubsPage() {
   const [periodId, setPeriodId] = useState('');
   useEffect(() => {
     if (periodId || !periods?.length) return;
-    setPeriodId((periods.find((p) => p.is_active && !p.closed_at) || periods[0]).id);
+    setPeriodId(currentPeriod(periods).id);
   }, [periods, periodId]);
   const period = (periods || []).find((p) => p.id === periodId);
 

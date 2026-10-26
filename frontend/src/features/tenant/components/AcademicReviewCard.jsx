@@ -73,6 +73,12 @@ function AcademicReviewCard({ canEdit }) {
         <Icon name="info" size={14} /> El aviso llega por la campana al coordinador del nivel del grado (Inicial, Primaria o Secundaria); si el nivel no tiene
         coordinador, al Director.
       </p>
+      <p className="text-sm text-muted academic-review__note">
+        <Icon name="users" size={14} />
+        {on
+          ? 'Portal de las familias: solo ven el contenido programático y los planes de evaluación (con sus notas) que coordinación aprobó. Al aprobar un plan se les avisa.'
+          : 'Portal de las familias: ven el contenido programático y los planes de evaluación apenas el docente los guarda.'}
+      </p>
       {!on && data?.pendingContentReviews > 0 && (
         <Alert variant="warning">
           Hay {data.pendingContentReviews} contenido{data.pendingContentReviews === 1 ? '' : 's'} esperando revisión: mientras esté desactivada no aparecen en la bandeja

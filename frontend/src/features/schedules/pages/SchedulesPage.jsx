@@ -22,24 +22,9 @@ import QuickAssign from '../components/QuickAssign';
 import ScheduleGeneratorModal from '../components/ScheduleGeneratorModal';
 import TeacherAvailabilityModal from '../components/TeacherAvailabilityModal';
 import { blobErrorMessage, saveBlob } from '../../../utils/download';
+import { currentPeriod } from '../../../lib/schoolPeriods';
 
-/**
- * Año que se abre al entrar: el activo que contiene la fecha de hoy; si no
- * hay, el activo que empezó más recientemente (sin contar los que aún no
- * empiezan); si no, el más reciente.
- */
-function defaultPeriod(periods) {
-  const today = new Date().toISOString().slice(0, 10);
-  const day = (d) => String(d || '').slice(0, 10);
-  const open = periods.filter((p) => !p.closed_at).sort((a, b) => day(b.start_date).localeCompare(day(a.start_date)));
-  return (
-    open.find((p) => p.is_active && day(p.start_date) <= today && (!p.end_date || day(p.end_date) >= today)) ||
-    open.find((p) => p.is_active && day(p.start_date) <= today) ||
-    open.find((p) => p.is_active) ||
-    open[0] ||
-    periods[0]
-  );
-}
+const defaultPeriod = currentPeriod;
 
 const VIEWS = [
   { key: 'section', label: 'Por grado / sección', icon: 'layers' },

@@ -12,6 +12,7 @@ import Icon from '../../../components/ui/Icon';
 import ImportActions from '../../../components/import/ImportActions';
 import { LEVEL_CODES, LevelFilter } from '../levels';
 import SubjectFormModal from './SubjectFormModal';
+import { currentPeriod } from '../../../lib/schoolPeriods';
 
 const MAX_GRADES = 4;
 
@@ -59,11 +60,10 @@ function SubjectsPage() {
   const [editing, setEditing] = useState(null); // null | {} nueva | materia
   const gradeFilter = params.get('grado') || '';
 
-  // Año por defecto: el activo más reciente.
+  // Año por defecto: el que está en curso hoy (no el siguiente ya creado).
   useEffect(() => {
     if (periodId || !periods?.length) return;
-    const sorted = [...periods].sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')));
-    setPeriodId((sorted.find((p) => p.is_active && !p.closed_at) || sorted[0]).id);
+    setPeriodId(currentPeriod(periods).id);
   }, [periods, periodId]);
 
   const ready = Boolean(periods) && (periodId || periods.length === 0);

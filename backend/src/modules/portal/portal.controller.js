@@ -58,6 +58,19 @@ const getStudentPlanDetail = asyncHandler(async (req, res) => {
 });
 
 /**
+ * GET /portal/students/:studentId/subjects/:subjectId/program?schoolPeriodId= —
+ * contenido programático de la materia con las evaluaciones (publicadas) de la
+ * sección del alumno. SOLO de sus representados (404 si no).
+ */
+const getStudentSubjectProgram = asyncHandler(async (req, res) => {
+  const studentId = z.string().uuid().parse(req.params.studentId);
+  const subjectId = z.string().uuid().parse(req.params.subjectId);
+  const { schoolPeriodId } = z.object({ schoolPeriodId: z.string().uuid().optional() }).parse(req.query);
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
+  res.status(200).json(await grades.getStudentSubjectProgram(req.db, req.tenantId, studentId, subjectId, { schoolPeriodId }));
+});
+
+/**
  * GET /portal/students/:studentId/evaluations?term_number= — cronograma de
  * evaluaciones de la sección del alumno. SOLO de los alumnos vinculados a la
  * cuenta del representante (404 si no es su representado).
@@ -85,4 +98,5 @@ module.exports = {
   getStudentClubs,
   getStudentEvaluations,
   getStudentPlanDetail,
+  getStudentSubjectProgram,
   getStudentHistory, getStudentSchedule, getStudentSanctions, getMyPortal, getStudentGrades };

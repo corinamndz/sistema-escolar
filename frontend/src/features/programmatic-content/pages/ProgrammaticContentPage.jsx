@@ -21,7 +21,8 @@ import { termLabel } from '../../evaluation-plans/terms';
 import { CATEGORY_LABELS } from '../categories';
 import ContentItemModal from '../components/ContentItemModal';
 import IncludeEvaluationModal from '../components/IncludeEvaluationModal';
-import ImportButton from '../../../components/import/ImportButton';
+import BulkImportActions from '../../../components/import/BulkImportActions';
+import { currentPeriod } from '../../../lib/schoolPeriods';
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -151,7 +152,7 @@ function ProgrammaticContentPage() {
   useEffect(() => {
     if (periodId || !periods?.length) return;
     const sorted = [...periods].sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')));
-    setParam({ ano: (sorted.find((p) => p.is_active && !p.closed_at) || sorted[0]).id });
+    setParam({ ano: (currentPeriod(sorted) || sorted[0]).id });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periods, periodId]);
 
@@ -193,6 +194,15 @@ function ProgrammaticContentPage() {
   const locked = Boolean(review?.locked);
   const canEditContent = (action) => can('evaluation_plans', action) && !locked;
   const canCreate = canEditContent('create') && Boolean(content);
+  // Carga masiva del temario: plantilla base (unidades actuales como guía) y subida.
+  const bulkProps = content && {
+    type: 'programmatic_content',
+    params: { gradeId, subjectId },
+    downloadTitle: `Excel para cargar unidades y temas de ${content.subject_name} (${content.grade_name})`,
+    title: 'Carga masiva de contenido programático',
+    description: `Los temas del archivo se agregan a ${content.subject_name} de ${content.grade_name}, después de los que ya tiene.`,
+    onImported: handleImported,
+  };
   const reviewLabel =
     review?.my_role === 'author'
       ? { borrador: 'Enviar a revisión', observado: 'Ver ajustes y reenviar' }[review.status]
@@ -326,34 +336,30 @@ function ProgrammaticContentPage() {
                     : 'Elige la materia y el grado para ver su temario.'}
                 </p>
               </div>
-              {content && review?.enabled && (
+              {content && (review?.enabled || canCreate) && (
                 <div className="data-table__header-actions">
                   {/* Revisión del programa completo de esta materia en este grado (solo si el colegio la exige). */}
-                  <ReviewButton
-                    target={{ gradeId, subjectId }}
-                    title={`${content.subject_name} · ${content.grade_name}`}
-                    key={`${gradeId}|${subjectId}|${version}`}
-                    status={review.status}
-                    label={reviewLabel || 'Revisión'}
-                    primary={Boolean(reviewLabel)}
-                    defaultOpen={openReview}
-                    onChanged={reload}
-                  />
-                </div>
-              )}
-              {canCreate && (
-                <div className="data-table__header-actions">
-                  <ImportButton
-                    type="programmatic_content"
-                    label="Importar masivo"
-                    title="Importar contenido programático"
-                    description={`Los temas se agregan a ${content.subject_name} de ${content.grade_name}.`}
-                    params={{ gradeId, subjectId }}
-                    onImported={handleImported}
-                  />
-                  <Button icon="plus" onClick={() => setEditing({})}>
-                    Nuevo tema
-                  </Button>
+                  {review?.enabled && (
+                    <ReviewButton
+                      target={{ gradeId, subjectId }}
+                      title={`${content.subject_name} · ${content.grade_name}`}
+                      key={`${gradeId}|${subjectId}|${version}`}
+                      status={review.status}
+                      label={reviewLabel || 'Revisión'}
+                      primary={Boolean(reviewLabel)}
+                      defaultOpen={openReview}
+                      onChanged={reload}
+                    />
+                  )}
+                  {canCreate && (
+                    <>
+                      {/* Misma botonera que en Planes de evaluación (allí la plantilla viene con los temas). */}
+                      <BulkImportActions {...bulkProps} />
+                      <Button icon="plus" onClick={() => setEditing({})}>
+                        Nuevo tema
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -429,6 +435,7 @@ function ProgrammaticContentPage() {
                     </div>
                     {canCreate && (
                       <div className="empty-state__actions">
+                        <BulkImportActions {...bulkProps} />
                         <Button icon="plus" onClick={() => setEditing({})}>
                           Nuevo tema
                         </Button>

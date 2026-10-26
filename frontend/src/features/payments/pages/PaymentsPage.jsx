@@ -27,6 +27,7 @@ import { useViewCurrency } from '../useViewCurrency';
 import { PaymentFormModal } from '../components/PaymentForms';
 import { PaymentDetailModal } from '../components/PaymentDetailModal';
 import { Link } from 'react-router-dom';
+import { currentPeriod } from '../../../lib/schoolPeriods';
 
 const FILTERS = [
   { key: 'due', label: 'Por cobrar' },
@@ -403,7 +404,7 @@ function mergeAmounts(amounts) {
  * (el selector mostraba "2026-2027" pero no se cargaban ni guardaban tarifas).
  */
 function usePeriodChoice(periods) {
-  const pick = () => periods.find((p) => p.is_active)?.id || periods[0]?.id || '';
+  const pick = () => currentPeriod(periods)?.id || '';
   const [schoolPeriodId, setSchoolPeriodId] = useState(pick);
   useEffect(() => {
     if (!periods.some((p) => p.id === schoolPeriodId)) setSchoolPeriodId(pick());

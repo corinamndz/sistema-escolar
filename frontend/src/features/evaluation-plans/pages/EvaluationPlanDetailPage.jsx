@@ -22,6 +22,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
 import { ReviewButton } from '../../reviews/components/ReviewWidgets';
+import BulkImportActions from '../../../components/import/BulkImportActions';
 import { TermBadge, termLabel } from '../terms';
 import { INSTRUMENT_LABELS } from '../instruments';
 import {
@@ -61,7 +62,6 @@ function EvaluationPlanDetailPage() {
   const confirm = useConfirm();
   const toast = useToast();
   const { can } = useAuth();
-
   const handleClose = async () => {
     const ok = await confirm({
       title: '¿Cerrar el plan de evaluación?',
@@ -290,6 +290,21 @@ function EvaluationPlanDetailPage() {
                   >
                     Proyecto pedagógico
                   </Button>
+                )}
+                {/* Carga masiva desde el contenido programático de la materia (una fila por tema). */}
+                {plan.subject_id && remaining > 0 && (
+                  <BulkImportActions
+                    size="sm"
+                    type="plan_activities"
+                    params={{ planId: id }}
+                    downloadLabel="Descargar plantilla con contenido"
+                    downloadTitle="Excel con las unidades y temas del contenido programático, para completar la evaluación de cada tema"
+                    uploadLabel="Subir plan masivo"
+                    title="Subir plan de evaluación masivo"
+                    skippedLabel="temas sin evaluación"
+                    description={`Las evaluaciones del archivo se agregan a este plan y se asocian a su tema. Disponible: ${remaining} %.`}
+                    onImported={refetch}
+                  />
                 )}
                 <Button
                   size="sm"

@@ -16,6 +16,8 @@ router.get('/appointments', appointments.myAppointments);
 router.post('/appointments/:id/confirm', appointments.confirmMine);
 router.get('/students/:studentId/grades', controller.getStudentGrades);
 router.get('/students/:studentId/evaluation-plans/:planId', controller.getStudentPlanDetail);
+// Contenido programático de una materia con sus evaluaciones publicadas (sección del alumno).
+router.get('/students/:studentId/subjects/:subjectId/program', controller.getStudentSubjectProgram);
 router.get('/students/:studentId/history', controller.getStudentHistory);
 router.get('/students/:studentId/schedule', controller.getStudentSchedule);
 router.get('/students/:studentId/sanctions', controller.getStudentSanctions);

@@ -43,6 +43,13 @@ const CATALOG = [
     defaults: { bell: true, email: true },
   },
   {
+    key: 'evaluation_plan',
+    label: 'Plan de evaluación publicado',
+    description: 'Cuando coordinación aprueba el plan de evaluación de una materia: ya se ve en el portal con sus evaluaciones y fechas.',
+    recipients: 'Los representantes de los alumnos de las secciones del plan',
+    defaults: { bell: true, email: false },
+  },
+  {
     key: 'club_enrollment',
     label: 'Inscripción en clubes',
     description: 'Cuando se inscribe a un alumno en un club o actividad extracurricular.',

@@ -2,7 +2,8 @@ const { ApiError } = require('../../utils/ApiError');
 const { exclusionOf } = require('../academics/sectionSubjects');
 const { scaleDefinition } = require('../grading/gradingScale');
 const { loadActivityStructure } = require('../evaluation-plans/evaluationPlan.service');
-const { sortByProgram } = require('../programmatic-content/programmaticContent.service');
+const { sortByProgram, compareUnits } = require('../programmatic-content/programmaticContent.service');
+const { isContentReviewRequired: familiesSeeOnlyApproved } = require('../reviews/reviewSettings.service');
 
 /**
  * Calificaciones acumuladas de un alumno para el portal del representante.
@@ -125,6 +126,8 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
   // Planes de las secciones del alumno, incluidos los compartidos entre varias
   // secciones (migración 012). Si un alumno pasó por dos secciones del mismo
   // plan, el plan aparece una sola vez (con su sección vigente).
+  // Revisión académica activa (059): solo los planes aprobados por coordinación.
+  const onlyApproved = await familiesSeeOnlyApproved(trx, tenantId);
   const planRows = sections.length
     ? await trx('evaluation_plans as ep')
         .join('evaluation_plan_sections as eps', 'eps.plan_id', 'ep.id')
@@ -134,6 +137,7 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
         .leftJoin('subjects as sub', 'sub.id', 'ep.subject_id')
         .where('ep.tenant_id', tenantId)
         .whereIn('eps.section_id', sections.map((s) => s.id))
+        .modify((q) => onlyApproved && q.andWhere('ep.review_status', 'aprobado'))
         .select(
           'ep.id',
           'eps.section_id',
@@ -303,6 +307,7 @@ async function getStudentPlanDetail(trx, tenantId, studentId, planId) {
     .where({ 'ep.id': planId, 'ep.tenant_id': tenantId })
     .select(
       'ep.id',
+      'ep.review_status',
       'ep.format',
       trx.raw('COALESCE(sub.name, ep.subject) AS subject'),
       'sub.code as subject_code',
@@ -312,6 +317,9 @@ async function getStudentPlanDetail(trx, tenantId, studentId, planId) {
     )
     .first();
   if (!plan) throw ApiError.notFound('Plan de evaluación no encontrado.');
+  // Sin aprobar no se publica (revisión académica activa): igual que si no existiera.
+  if (plan.review_status !== 'aprobado' && (await familiesSeeOnlyApproved(trx, tenantId))) throw ApiError.notFound('Plan de evaluación no encontrado.');
+  delete plan.review_status;
 
   const rows = (
     await sortByProgram(
@@ -353,5 +361,93 @@ async function getStudentPlanDetail(trx, tenantId, studentId, planId) {
   };
 }
 
+/**
+ * Contenido programático de una materia con las evaluaciones de la sección del
+ * alumno, para el portal. Con la revisión académica activa solo se publica lo
+ * aprobado por coordinación: el contenido (si su programa está aprobado) y las
+ * evaluaciones de los planes aprobados. Cada evaluación trae estrategia,
+ * porcentaje y su fecha EN LA SECCIÓN del alumno (o la estimada del plan).
+ */
+async function getStudentSubjectProgram(trx, tenantId, studentId, subjectId, { schoolPeriodId } = {}) {
+  const section = await trx('enrollments as e')
+    .join('sections as sec', 'sec.id', 'e.section_id')
+    .join('grades as g', 'g.id', 'sec.grade_id')
+    .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
+    .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId })
+    .modify((q) => schoolPeriodId && q.andWhere('sec.school_period_id', schoolPeriodId))
+    .select('sec.id', 'sec.name', 'sec.grade_id', 'g.name as grade_name', 'sp.id as period_id', 'sp.name as period_name')
+    .orderByRaw("(e.status = 'active') DESC, sp.is_active DESC, sp.start_date DESC NULLS LAST")
+    .first();
+  if (!section) throw ApiError.notFound('El alumno no tiene inscripciones en ese año escolar.');
+  const subject = await trx('grade_subjects as gs')
+    .join('subjects as s', 's.id', 'gs.subject_id')
+    .where({ 'gs.grade_id': section.grade_id, 'gs.subject_id': subjectId, 's.tenant_id': tenantId })
+    .first('s.id', 's.name', 's.code');
+  if (!subject) throw ApiError.notFound('La materia no se dicta en el grado del alumno.');
+
+  const onlyApproved = await familiesSeeOnlyApproved(trx, tenantId);
+
+  // Evaluaciones de los planes (publicados) de la materia en la sección del alumno, en el año.
+  const activities = await trx('evaluation_activities as a')
+    .join('evaluation_plans as ep', 'ep.id', 'a.evaluation_plan_id')
+    .join('evaluation_plan_sections as eps', function onSection() {
+      this.on('eps.plan_id', 'ep.id').andOn('eps.section_id', trx.raw('?', [section.id]));
+    })
+    .join('terms as t', 't.id', 'ep.term_id')
+    .leftJoin('activity_section_dates as d', function onDate() {
+      this.on('d.activity_id', 'a.id').andOn('d.section_id', trx.raw('?', [section.id]));
+    })
+    .leftJoin('programmatic_content as pc', 'pc.id', 'a.programmatic_content_id')
+    .where({ 'a.tenant_id': tenantId, 'ep.subject_id': subjectId, 't.school_period_id': section.period_id })
+    .modify((q) => onlyApproved && q.andWhere('ep.review_status', 'aprobado'))
+    .select(
+      'a.id',
+      'a.title',
+      'a.category',
+      'a.strategy',
+      'a.instrument',
+      'a.weight_percent',
+      'a.programmatic_content_id',
+      'pc.unit',
+      'pc.topic',
+      't.term_number',
+      't.name as term_name',
+      trx.raw("to_char(COALESCE(d.applied_on, a.planned_date), 'YYYY-MM-DD') AS date")
+    )
+    .orderByRaw('t.term_number NULLS LAST, COALESCE(d.applied_on, a.planned_date) NULLS LAST, a.created_at');
+  const evaluation = ({ programmatic_content_id: _c, unit: _u, topic: _t, ...a }) => ({ ...a, weight_percent: Number(a.weight_percent) });
+
+  // Contenido: con la revisión activa, solo si el programa está aprobado.
+  const review = await trx('programmatic_content_reviews').where({ tenant_id: tenantId, grade_id: section.grade_id, subject_id: subjectId }).first('status');
+  const items = await trx('programmatic_content').where({ tenant_id: tenantId, grade_id: section.grade_id, subject_id: subjectId }).orderBy(['sort_order', 'created_at']);
+  const published = items.length > 0 && (!onlyApproved || review?.status === 'aprobado');
+  const units = published
+    ? [...new Set(items.map((i) => i.unit))].sort(compareUnits).map((unit) => ({
+        unit,
+        items: items
+          .filter((i) => i.unit === unit)
+          .map((i) => ({ id: i.id, topic: i.topic, description: i.description, evaluations: activities.filter((a) => a.programmatic_content_id === i.id).map(evaluation) })),
+      }))
+    : [];
+  const shown = new Set(published ? items.map((i) => i.id) : []);
+  const otherEvaluations = activities
+    .filter((a) => !shown.has(a.programmatic_content_id))
+    .map((a) => ({ ...evaluation(a), topic: a.topic || null, unit: a.unit || null }));
+
+  return {
+    subject: { id: subject.id, name: subject.name, code: subject.code },
+    grade_name: section.grade_name,
+    section_name: section.name,
+    school_period: { id: section.period_id, name: section.period_name },
+    content_status: !items.length ? 'empty' : published ? 'published' : 'pending',
+    units,
+    other_evaluations: otherEvaluations,
+    total_weight_by_term: [...new Map(activities.map((a) => [a.term_name, 0])).keys()].map((term) => ({
+      term_name: term,
+      total: round2(activities.filter((a) => a.term_name === term).reduce((s, a) => s + Number(a.weight_percent), 0)),
+    })),
+  };
+}
+
 module.exports = {
-  assertGuardianOfStudent, assertGradesUnlocked, overdueCount, GRADES_LOCKED_MESSAGE, getStudentGrades, getStudentPlanDetail, GRADE_SCALE, PASSING_GRADE };
+  assertGuardianOfStudent, assertGradesUnlocked, overdueCount, GRADES_LOCKED_MESSAGE, getStudentGrades, getStudentPlanDetail, getStudentSubjectProgram, GRADE_SCALE, PASSING_GRADE };

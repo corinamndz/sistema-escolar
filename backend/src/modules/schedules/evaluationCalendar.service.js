@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { isContentReviewRequired } = require('../reviews/reviewSettings.service');
 
 /**
  * Horario de EVALUACIONES de una sección, generado automáticamente (no se
@@ -32,7 +33,8 @@ const isoDay = (date) => {
   return d === 0 ? 7 : d;
 };
 
-async function getEvaluationCalendar(trx, tenantId, { sectionId, termNumber = null }) {
+/** `onlyApproved`: solo planes aprobados por coordinación (lo que ven las familias con la revisión académica activa). */
+async function getEvaluationCalendar(trx, tenantId, { sectionId, termNumber = null, onlyApproved = false }) {
   const section = await trx('sections as sec')
     .join('grades as g', 'g.id', 'sec.grade_id')
     .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
@@ -64,6 +66,7 @@ async function getEvaluationCalendar(trx, tenantId, { sectionId, termNumber = nu
     })
     .where('a.tenant_id', tenantId)
     .modify((q) => term && q.andWhere('ep.term_id', term.id))
+    .modify((q) => onlyApproved && q.andWhere('ep.review_status', 'aprobado'))
     .select(
       'a.id as activity_id',
       'a.title',
@@ -232,7 +235,9 @@ async function getStudentEvaluationCalendar(trx, tenantId, studentId, { termNumb
     .first();
   if (!enrollment) return { section: null, terms: [], term: null, slots: [], evaluations: [], undated: [], days: [], summary: null, audience: 'guardian' };
 
-  const cal = await getEvaluationCalendar(trx, tenantId, { sectionId: enrollment.section_id, termNumber });
+  // Revisión académica activa: la familia solo ve lo que coordinación aprobó.
+  const onlyApproved = await isContentReviewRequired(trx, tenantId);
+  const cal = await getEvaluationCalendar(trx, tenantId, { sectionId: enrollment.section_id, termNumber, onlyApproved });
   const ids = [...cal.evaluations, ...cal.undated].map((e) => e.activity_id);
   const mine = new Set(
     ids.length ? await trx('activity_scores').where({ student_id: studentId }).whereIn('evaluation_activity_id', ids).pluck('evaluation_activity_id') : []

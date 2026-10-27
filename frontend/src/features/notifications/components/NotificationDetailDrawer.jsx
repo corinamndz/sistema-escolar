@@ -10,6 +10,9 @@ import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { NOTIFICATION_ICONS, NOTIFICATION_TYPE_LABELS } from '../../../components/layout/NotificationBell';
 import RateTuitionImpact from '../../payments/components/RateTuitionImpact';
+import { RecognitionCelebration } from '../../recognitions/components/RecognitionCard';
+import { CertificateModal } from '../../recognitions/components/RecognitionCertificate';
+import portalApi from '../../../api/endpoints/portal.api';
 
 const fullDate = (v) => new Date(v).toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const shortDate = (v) => new Date(v).toLocaleString('es-VE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -42,6 +45,8 @@ const FILTERS = [
  * cuántos lo leyeron de cuántos se envió y quién, con su rol y la hora exacta.
  */
 function NotificationDetailDrawer({ notification: n, canAudit, onClose, onOpenLink }) {
+  const [certificate, setCertificate] = useState(false);
+  const isRecognition = n.type === 'recognition' && n.data?.title;
   return (
     <Drawer title={n.title || NOTIFICATION_TYPE_LABELS[n.type] || 'Notificación'} icon={NOTIFICATION_ICONS[n.type] || 'bell'} size={canAudit ? 'lg' : undefined} onClose={onClose}>
       <div className="nd">
@@ -52,8 +57,14 @@ function NotificationDetailDrawer({ notification: n, canAudit, onClose, onOpenLi
               <Icon name="clock" size={13} /> Emitida el {fullDate(n.created_at)}
             </span>
           </div>
-          <p className="nd__body">{n.body}</p>
+          {/* Reconocimiento: la tarjeta de celebración reemplaza al texto plano. */}
+          {n.type === 'recognition' && n.data?.title ? <RecognitionCelebration recognition={n.data} /> : <p className="nd__body">{n.body}</p>}
           {n.type === 'bcv_rate' && <RateTuitionImpact data={n.data} />}
+          {isRecognition && (
+            <Button size="sm" variant="secondary" icon="file" onClick={() => setCertificate(true)}>
+              Ver certificado · Descargar PDF
+            </Button>
+          )}
           {n.link && (
             <Button size="sm" variant="secondary" onClick={() => onOpenLink(n)}>
               {n.data?.link_label || 'Ver detalle'} <Icon name="arrowRight" size={14} />
@@ -62,6 +73,13 @@ function NotificationDetailDrawer({ notification: n, canAudit, onClose, onOpenLi
         </div>
         {canAudit && <ReadAudit id={n.id} />}
       </div>
+      {certificate && (
+        <CertificateModal
+          recognition={{ ...n.data, id: n.data.recognition_id }}
+          loadPdf={() => portalApi.getRecognitionCertificateBlob(n.data.student_id, n.data.recognition_id)}
+          onClose={() => setCertificate(false)}
+        />
+      )}
     </Drawer>
   );
 }

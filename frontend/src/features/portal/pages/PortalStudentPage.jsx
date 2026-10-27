@@ -17,6 +17,7 @@ import { SanctionCard, SeverityTotals } from '../../discipline/components/Sancti
 import PortalEvaluations from '../components/PortalEvaluations';
 import PortalEvaluationPlan from '../components/PortalEvaluationPlan';
 import PortalClubs from '../components/PortalClubs';
+import PortalRecognitions from '../components/PortalRecognitions';
 
 const TABS = [
   { key: 'grades', label: 'Calificaciones' },
@@ -24,6 +25,7 @@ const TABS = [
   { key: 'schedule', label: 'Horario' },
   { key: 'evaluations', label: 'Evaluaciones' },
   { key: 'history', label: 'Historial académico' },
+  { key: 'recognitions', label: 'Reconocimientos' },
   { key: 'discipline', label: 'Convivencia' },
   { key: 'clubs', label: 'Clubes' },
   { key: 'info', label: 'Información' },
@@ -92,6 +94,8 @@ function PortalStudentPage() {
       {!student.grades_locked && tab === 'history' && <PortalHistory studentId={studentId} />}
       {!student.grades_locked && tab === 'discipline' && <PortalSanctions studentId={studentId} />}
       {!student.grades_locked && tab === 'clubs' && <PortalClubs studentId={studentId} />}
+      {/* Los logros se celebran aunque haya cuotas vencidas: el enlace del aviso siempre muestra la tarjeta. */}
+      {tab === 'recognitions' && <PortalRecognitions studentId={studentId} />}
 
       {!student.grades_locked && tab === 'info' && (
         <div className="grid grid--2">

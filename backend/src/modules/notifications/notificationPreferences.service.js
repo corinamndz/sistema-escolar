@@ -44,6 +44,13 @@ const CATALOG = [
     defaults: { bell: true, email: false },
   },
   {
+    key: 'recognition',
+    label: 'Reconocimientos',
+    description: 'Cuando un docente o la dirección otorga un reconocimiento a un alumno (excelencia, esfuerzo, conducta…). Se muestra con un diseño de celebración.',
+    recipients: 'Los representantes del alumno',
+    defaults: { bell: true, email: true },
+  },
+  {
     key: 'parent_meeting',
     label: 'Citas con padres',
     description: 'Al agendar una cita, o cambiarle la fecha, la hora o el estado. Son los canales que vienen marcados en cada cita (se pueden cambiar al crearla). Opcional: un recordatorio automático unos días antes, por los canales de la cita.',

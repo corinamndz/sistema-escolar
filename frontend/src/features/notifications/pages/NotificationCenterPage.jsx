@@ -236,7 +236,7 @@ function NotificationCenterPage() {
                 <h3 className="nc__day-title">{g.label}</h3>
                 <ul>
                   {g.items.map((n) => (
-                    <li key={n.id} className={`nc-item ${n.read ? '' : 'is-unread'}`}>
+                    <li key={n.id} className={`nc-item ${n.read ? '' : 'is-unread'} ${n.type === 'recognition' ? 'nc-item--recognition' : ''}`}>
                       <span className="notif-item__icon">
                         <Icon name={NOTIFICATION_ICONS[n.type] || 'bell'} size={16} />
                       </span>

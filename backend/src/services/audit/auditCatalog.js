@@ -27,6 +27,7 @@ const MODULES = {
   clubs: { label: 'Clubes', noun: 'CLUB' },
   events: { label: 'Eventos', noun: 'EVENTO' },
   appointments: { label: 'Citas con padres', noun: 'CITA' },
+  recognitions: { label: 'Reconocimientos', noun: 'RECONOCIMIENTO' },
 };
 
 const SEGMENT_MODULE = {
@@ -52,6 +53,7 @@ const SEGMENT_MODULE = {
   clubs: 'clubs',
   events: 'events',
   appointments: 'appointments',
+  recognitions: 'recognitions',
 };
 
 /** No se registran: no cambian datos del colegio o son ruido (marcar leído, validar antes de importar…). */
@@ -169,6 +171,9 @@ const ACTIONS = {
   'POST /schedules/generations/:id/apply': ['APLICAR_HORARIO', 'Aplicó un horario generado'],
 
   'POST /discipline/students/:studentId/sanctions': ['REGISTRAR_SANCION', 'Registró una sanción'],
+  'POST /recognitions': ['OTORGAR_RECONOCIMIENTO', 'Otorgó un reconocimiento'],
+  'PUT /recognitions/:id': ['EDITAR_RECONOCIMIENTO', 'Editó el reconocimiento'],
+  'DELETE /recognitions/:id': ['ELIMINAR_RECONOCIMIENTO', 'Eliminó el reconocimiento'],
   'PUT /discipline/sanctions/:id': ['ACTUALIZAR_SANCION', 'Actualizó una sanción'],
   'DELETE /discipline/sanctions/:id': ['ELIMINAR_SANCION', 'Eliminó una sanción'],
 

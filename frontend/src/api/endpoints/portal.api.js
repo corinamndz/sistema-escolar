@@ -12,6 +12,11 @@ const portalApi = {
   /** Calificaciones acumuladas de un alumno del representante (404 si no es su representado). */
   /** Historial disciplinario (sanciones) del alumno: { student, items, totals }. */
   getStudentSanctions: (studentId) => axiosClient.get(`/portal/students/${studentId}/sanctions`).then((r) => r.data),
+  /** Reconocimientos del alumno (logros otorgados por el colegio). */
+  getStudentRecognitions: (studentId) => axiosClient.get(`/portal/students/${studentId}/recognitions`).then((r) => r.data),
+  /** Certificado en PDF de un reconocimiento del alumno (Blob). */
+  getRecognitionCertificateBlob: (studentId, id) =>
+    axiosClient.get(`/portal/students/${studentId}/recognitions/${id}/certificate`, { responseType: 'blob' }).then((r) => r.data),
   /** Horario semanal (solo lectura) de la sección del alumno. */
   getStudentSchedule: (studentId) => axiosClient.get(`/portal/students/${studentId}/schedule`).then((r) => r.data),
   /** Clubes y actividades extracurriculares del alumno (404 si no es su representado). */

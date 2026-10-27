@@ -9,6 +9,9 @@ import { SOURCE_LABELS, timeAgo } from '../../features/payments/components/BcvRa
 import { NOTIFICATIONS_OPEN, NOTIFICATIONS_REFRESH, notifyRatesChanged } from '../../lib/notificationEvents';
 import { isEffective } from '../../features/payments/useRateAutoRefresh';
 import RateTuitionImpact from '../../features/payments/components/RateTuitionImpact';
+import { RecognitionCelebration } from '../../features/recognitions/components/RecognitionCard';
+import { CertificateModal } from '../../features/recognitions/components/RecognitionCertificate';
+import portalApi from '../../api/endpoints/portal.api';
 
 const POLL_MS = 60 * 1000; // la tasa cambia pocas veces al día: un minuto de demora es suficiente
 // Ícono por tipo de aviso (también lo usa el aviso al iniciar sesión).
@@ -21,6 +24,7 @@ export const NOTIFICATION_ICONS = {
   parent_meeting: 'users',
   evaluation_plan: 'clipboard',
   evaluation_reminder: 'clock',
+  recognition: 'award',
   payment_overdue: 'alertCircle',
   review_request: 'clipboard',
   review_result: 'checkCircle',
@@ -35,6 +39,7 @@ export const NOTIFICATION_TYPE_LABELS = {
   parent_meeting: 'Citas con padres',
   evaluation_plan: 'Plan de evaluación',
   evaluation_reminder: 'Recordatorio de evaluación',
+  recognition: 'Reconocimiento',
   payment_overdue: 'Pagos vencidos',
   review_request: 'Revisión académica',
   review_result: 'Revisión académica',
@@ -153,7 +158,7 @@ function NotificationBell({ dropdown }) {
               <ul className="notif-list">
                 {data.items.map((n) => (
                   <li key={n.id}>
-                    <button type="button" className={`notif-item ${n.read ? '' : 'is-unread'}`} onClick={() => open(n)} role="menuitem">
+                    <button type="button" className={`notif-item ${n.read ? '' : 'is-unread'} ${n.type === 'recognition' ? 'notif-item--recognition' : ''}`} onClick={() => open(n)} role="menuitem">
                       <span className="notif-item__icon">
                         <Icon name={NOTIFICATION_ICONS[n.type] || 'bell'} size={16} />
                       </span>
@@ -184,6 +189,9 @@ function NotificationBell({ dropdown }) {
 
 /** Detalle de una notificación. La de tasa BCV muestra la tasa, su fecha valor y la variación. */
 function NotificationDetail({ notification: n, onClose }) {
+  // Reconocimiento a un alumno: tarjeta de celebración.
+  // Reconocimiento a un alumno: tarjeta de celebración y certificado.
+  if (n.type === 'recognition' && n.data?.title) return <RecognitionNotice notification={n} onClose={onClose} />;
   if (n.type !== 'bcv_rate') {
     return (
       <Drawer title={n.title} onClose={onClose}>
@@ -268,6 +276,39 @@ function NotificationDetail({ notification: n, onClose }) {
         )}
       </div>
     </Drawer>
+  );
+}
+
+/** Aviso de reconocimiento: tarjeta de celebración, con el certificado (ver, imprimir, PDF). */
+function RecognitionNotice({ notification: n, onClose }) {
+  const [certificate, setCertificate] = useState(false);
+  const recognition = { ...n.data, id: n.data.recognition_id };
+  return (
+    <>
+      <Drawer title="¡Un logro para celebrar!" icon="award" onClose={onClose}>
+        <RecognitionCelebration recognition={recognition} />
+        <div className="form-actions">
+          <button type="button" className="btn btn--secondary" onClick={onClose}>
+            Cerrar
+          </button>
+          <button type="button" className="btn btn--secondary" onClick={() => setCertificate(true)}>
+            <Icon name="file" size={16} /> Ver certificado
+          </button>
+          {n.link && (
+            <Link to={n.link} className="btn btn--primary" onClick={onClose}>
+              <Icon name="award" size={16} /> {n.data?.link_label || 'Ver sus reconocimientos'}
+            </Link>
+          )}
+        </div>
+      </Drawer>
+      {certificate && (
+        <CertificateModal
+          recognition={recognition}
+          loadPdf={() => portalApi.getRecognitionCertificateBlob(n.data.student_id, n.data.recognition_id)}
+          onClose={() => setCertificate(false)}
+        />
+      )}
+    </>
   );
 }
 

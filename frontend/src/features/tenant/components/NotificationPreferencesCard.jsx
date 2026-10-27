@@ -10,7 +10,7 @@ import Icon from '../../../components/ui/Icon';
 import Switch from '../../../components/ui/Switch';
 import { useToast } from '../../../components/ui/Toast';
 
-const ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star', parent_meeting: 'users', evaluation_plan: 'clipboard', evaluation_reminder: 'clock', payment_overdue: 'alertCircle' };
+const ICONS = { bcv_rate: 'trendingUp', payment_confirmed: 'receipt', school_event: 'calendar', sanction: 'shield', club_enrollment: 'star', parent_meeting: 'users', evaluation_plan: 'clipboard', evaluation_reminder: 'clock', payment_overdue: 'alertCircle', recognition: 'award' };
 const CHANNELS = [
   { key: 'bell', label: 'Campana', icon: 'bell' },
   { key: 'email', label: 'Correo', icon: 'mail' },

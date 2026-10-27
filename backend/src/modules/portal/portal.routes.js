@@ -21,6 +21,8 @@ router.get('/students/:studentId/subjects/:subjectId/program', controller.getStu
 router.get('/students/:studentId/history', controller.getStudentHistory);
 router.get('/students/:studentId/schedule', controller.getStudentSchedule);
 router.get('/students/:studentId/sanctions', controller.getStudentSanctions);
+router.get('/students/:studentId/recognitions', controller.getStudentRecognitions);
+router.get('/students/:studentId/recognitions/:id/certificate', controller.getRecognitionCertificate);
 // Cronograma de evaluaciones de la sección del alumno (solo de sus representados).
 router.get('/students/:studentId/evaluations', controller.getStudentEvaluations);
 // Clubes y actividades extracurriculares del alumno.

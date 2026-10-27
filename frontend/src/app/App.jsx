@@ -25,6 +25,7 @@ import EventsPage from '../features/events/pages/EventsPage';
 import AppointmentsPage from '../features/appointments/pages/AppointmentsPage';
 import NotificationLogPage from '../features/notifications/pages/NotificationLogPage';
 import NotificationCenterPage from '../features/notifications/pages/NotificationCenterPage';
+import RecognitionsPage from '../features/recognitions/pages/RecognitionsPage';
 import AuditPage from '../features/audit/pages/AuditPage';
 import GradeSummaryPage from '../features/grading/pages/GradeSummaryPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
@@ -88,6 +89,9 @@ function App() {
             {/* Clubes: administración gestiona; docentes consultan (el coordinador inscribe en su club). */}
             <Route element={<PermissionRoute module="clubs" />}>
               <Route path="clubs" element={<ClubsPage />} />
+            </Route>
+            <Route element={<PermissionRoute module="recognitions" />}>
+              <Route path="recognitions" element={<RecognitionsPage />} />
             </Route>
             <Route element={<PermissionRoute module="events" />}>
               <Route path="events" element={<EventsPage />} />

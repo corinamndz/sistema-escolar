@@ -6,6 +6,7 @@ const schedules = require('../schedules/schedule.service');
 const evaluationCalendar = require('../schedules/evaluationCalendar.service');
 const clubs = require('../clubs/club.service');
 const discipline = require('../discipline/discipline.service');
+const recognitions = require('../recognitions/recognition.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 
 /** GET /portal/me — panel del representante autenticado ({ guardian: null } si el usuario no es representante). */
@@ -37,6 +38,22 @@ const getStudentSanctions = asyncHandler(async (req, res) => {
   const studentId = z.string().uuid().parse(req.params.studentId);
   await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
   res.status(200).json(await discipline.getStudentSanctionsForGuardian(req.db, req.tenantId, studentId));
+});
+
+/** GET /portal/students/:studentId/recognitions — reconocimientos de un alumno del representante (404 si no es suyo). */
+const getStudentRecognitions = asyncHandler(async (req, res) => {
+  const studentId = z.string().uuid().parse(req.params.studentId);
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId);
+  res.status(200).json(await recognitions.getStudentRecognitionsForGuardian(req.db, req.tenantId, studentId));
+});
+
+/** GET /portal/students/:studentId/recognitions/:id/certificate — certificado en PDF (solo de sus representados). */
+const getRecognitionCertificate = asyncHandler(async (req, res) => {
+  const studentId = z.string().uuid().parse(req.params.studentId);
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId);
+  const { buffer, filename } = await recognitions.certificatePdf(req.db, req.tenantId, z.string().uuid().parse(req.params.id), { studentId });
+  res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${filename}"`, 'Cache-Control': 'private, no-store' });
+  res.send(buffer);
 });
 
 /** GET /portal/students/:studentId/grades?schoolPeriodId= — calificaciones acumuladas de un alumno del representante. */
@@ -95,6 +112,8 @@ const getStudentClubs = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  getStudentRecognitions,
+  getRecognitionCertificate,
   getStudentClubs,
   getStudentEvaluations,
   getStudentPlanDetail,

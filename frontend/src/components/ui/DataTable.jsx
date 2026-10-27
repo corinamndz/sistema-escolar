@@ -110,6 +110,8 @@ function DataTable({
   rowActions = [],
   // Clic (o Enter) en la fila: abre el detalle (ej. un Drawer).
   onRowClick,
+  // Clase extra por fila (ej. 'is-selected').
+  rowClassName,
   // Otros
   emptyMessage = 'No hay registros todavía.',
   stackOnMobile = true,
@@ -330,7 +332,7 @@ function DataTable({
               return (
                 <tr
                   key={key}
-                  className={[deleting && 'is-busy', onRowClick && 'is-clickable'].filter(Boolean).join(' ') || undefined}
+                  className={[deleting && 'is-busy', onRowClick && 'is-clickable', rowClassName?.(row)].filter(Boolean).join(' ') || undefined}
                   {...(onRowClick
                     ? {
                         tabIndex: 0,

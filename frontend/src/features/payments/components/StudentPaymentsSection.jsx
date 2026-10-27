@@ -2,7 +2,7 @@ import { useState } from 'react';
 import Button from '../../../components/ui/Button';
 import Table from '../../../components/ui/Table';
 import Icon from '../../../components/ui/Icon';
-import { ConversionBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatAmounts, formatDate, formatMoney } from '../paymentStatus';
+import { ConversionBreakdown, DueDate, PaymentStatusBadge, REPORT_METHODS, formatAmounts, formatDate, formatMoney, formatRate } from '../paymentStatus';
 import { ProofButton } from './ProofViewer';
 import ReceiptButton from './ReceiptButton';
 
@@ -75,37 +75,102 @@ const initials = (name) =>
     .join('');
 
 // ---------------------------------------------------------------------------
-// Tarjeta de una cuota por pagar
+// Tablas de cuotas por pagar / vencidas / próximas
 // ---------------------------------------------------------------------------
 
-function PayCard({ payment: p, onReport }) {
+/** Equivalente en la moneda de vista (≈ Bs …) y la tasa con que se calcula, en dos líneas compactas. */
+function Equivalent({ payment: p }) {
+  if (!p.conv_currency || p.conv_currency === p.currency) return <span className="text-muted">—</span>;
+  if (p.conv_amount === null) return <span className="cell-person__sub text-warning">Sin tasa {p.conv_currency}</span>;
   return (
-    <article className={`pay-card pay-card--${p.display_status}`}>
-      <div className="pay-card__head">
-        <div className="pay-card__concept">{p.period_label}</div>
-        <PaymentStatusBadge payment={p} />
-      </div>
-      <div className="pay-card__amount">{formatMoney(p.amount, p.currency)}</div>
-      <ConversionBreakdown payment={p} />
-      <div className="pay-card__due">
-        <span className="student-card__label">Fecha límite</span>
-        <DueDate payment={p} />
-      </div>
-      {p.display_status === 'reported' && (
-        <div className="pay-card__reported">
-          <Icon name="info" size={15} />
-          <span>
-            Reportado el {formatDate(p.reported_at)} ({REPORT_METHODS[p.report_method]}
-            {p.report_reference ? ` · ref. ${p.report_reference}` : ''}). En revisión por administración.
-          </span>
-        </div>
-      )}
-      {p.proof_path && <ProofButton payment={p} label="Ver mi comprobante" variant="ghost" />}
-      <Button variant={p.display_status === 'reported' ? 'secondary' : 'primary'} icon="receipt" className="btn--block" onClick={() => onReport(p)}>
-        {p.display_status === 'reported' ? 'Corregir reporte' : 'Reportar pago'}
-      </Button>
-    </article>
+    <div className="amount-cell">
+      <span>
+        {p.conv_estimated ? '≈ ' : ''}
+        {formatMoney(p.conv_amount, p.conv_currency)}
+      </span>
+      <span className="cell-person__sub">Tasa {formatRate(p.conv_rate, p.conv_currency)}</span>
+    </div>
   );
+}
+
+/**
+ * Columnas de las cuotas exigibles (vencidas / por pagar) y de las próximas.
+ * `selection`: casilla del pago agrupado (solo cuotas exigibles y sin reportar).
+ */
+function dueColumns({ list, selection, onReport, upcoming = false }) {
+  const pickable = upcoming || !selection ? [] : list.filter((p) => ['overdue', 'pending'].includes(p.display_status));
+  const allPicked = pickable.length > 0 && pickable.every((p) => selection.ids.has(p.id));
+  const togglePickAll = () => pickable.forEach((p) => (allPicked ? selection.ids.has(p.id) : !selection.ids.has(p.id)) && selection.toggle(p));
+
+  return [
+    ...(pickable.length
+      ? [
+          {
+            key: 'pick',
+            header: (
+              <input
+                type="checkbox"
+                className="pay-pick"
+                checked={allPicked}
+                onChange={togglePickAll}
+                aria-label="Seleccionar todas las cuotas de esta lista"
+                title="Seleccionar todas"
+              />
+            ),
+            render: (p) =>
+              ['overdue', 'pending'].includes(p.display_status) ? (
+                <input
+                  type="checkbox"
+                  className="pay-pick"
+                  checked={selection.ids.has(p.id)}
+                  onChange={() => selection.toggle(p)}
+                  aria-label={`Incluir ${p.period_label} en el pago agrupado`}
+                />
+              ) : null,
+          },
+        ]
+      : []),
+    {
+      key: 'period_label',
+      header: 'Concepto',
+      render: (p) => (
+        <div>
+          <div className="cell-person__name">{p.period_label}</div>
+          {p.display_status === 'reported' && (
+            <div className="cell-person__sub pay-row__reported">
+              <Icon name={p.batch_id ? 'layers' : 'info'} size={12} />
+              {p.batch_id ? 'En pago agrupado' : 'Reportado'} el {formatDate(p.reported_at, false)} · {REPORT_METHODS[p.report_method]}
+              {p.report_reference ? ` · ref. ${p.report_reference}` : ''}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    { key: 'due_date', header: upcoming ? 'Vence' : 'Fecha límite', render: (p) => (upcoming ? formatDate(p.due_date, false) : <DueDate payment={p} />) },
+    { key: 'amount', header: 'Monto', align: 'right', render: (p) => <strong className="pay-row__amount">{formatMoney(p.amount, p.currency)}</strong> },
+    { key: 'equivalent', header: 'Equivalente', align: 'right', render: (p) => <Equivalent payment={p} /> },
+    ...(upcoming ? [] : [{ key: 'status', header: 'Estado', render: (p) => <PaymentStatusBadge payment={p} /> }]),
+    ...(upcoming
+      ? []
+      : [
+          {
+            key: 'actions',
+            header: '',
+            align: 'right',
+            render: (p) => (
+              <div className="pay-row__actions">
+                {p.proof_path && <ProofButton payment={p} label="Comprobante" variant="ghost" />}
+                {/* Las cuotas de un pago agrupado se corrigen retirando el pago agrupado. */}
+                {!p.batch_id && (
+                  <Button size="sm" variant={p.display_status === 'reported' ? 'secondary' : 'primary'} icon="receipt" onClick={() => onReport(p)}>
+                    {p.display_status === 'reported' ? 'Corregir' : 'Reportar'}
+                  </Button>
+                )}
+              </div>
+            ),
+          },
+        ]),
+  ];
 }
 
 const paidColumns = [
@@ -151,7 +216,7 @@ const TABS = [
  * moneda elegida) + pestañas con sus cuotas. Las acciones (reportar, ver
  * comprobante) quedan dentro de la sección del alumno al que pertenecen.
  */
-export function StudentPaymentsSection({ group, onReport }) {
+export function StudentPaymentsSection({ group, onReport, selection = null }) {
   const { buckets } = group;
   // Se abre en lo más urgente: vencidos → por pagar → pagados → próximas.
   const firstTab = ['overdue', 'pending', 'paid', 'upcoming'].find((k) => buckets[k].length) || 'pending';
@@ -214,25 +279,18 @@ export function StudentPaymentsSection({ group, onReport }) {
             <Icon name="checkCircle" size={16} /> {current.empty}
           </p>
         ) : tab === 'paid' ? (
-          <Table columns={paidColumns} rows={list} />
+          <Table key="paid" columns={paidColumns} rows={list} />
         ) : tab === 'upcoming' ? (
-          <ul className="upcoming-list">
-            {list.map((p) => (
-              <li key={p.id}>
-                <span className="cell-person__name">{p.period_label}</span>
-                <span>
-                  {formatMoney(p.amount, p.currency)} <ConversionBreakdown payment={p} compact />
-                </span>
-                <span className="text-muted">Vence el {formatDate(p.due_date, false)}</span>
-              </li>
-            ))}
-          </ul>
+          <Table key="upcoming" columns={dueColumns({ list, upcoming: true })} rows={list} searchable={false} pageSize={6} />
         ) : (
-          <div className="pay-cards">
-            {list.map((p) => (
-              <PayCard key={p.id} payment={p} onReport={onReport} />
-            ))}
-          </div>
+          <Table
+            key={tab}
+            columns={dueColumns({ list, selection, onReport })}
+            rows={list}
+            searchable={false}
+            paginated={false}
+            rowClassName={(p) => (selection?.ids.has(p.id) ? 'is-selected' : p.display_status === 'overdue' ? 'is-overdue' : undefined)}
+          />
         )}
       </div>
     </section>

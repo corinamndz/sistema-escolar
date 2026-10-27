@@ -26,7 +26,8 @@ import { CurrencySelect, ViewCurrencySelect } from '../currency';
 import { useViewCurrency } from '../useViewCurrency';
 import { PaymentFormModal } from '../components/PaymentForms';
 import { PaymentDetailModal } from '../components/PaymentDetailModal';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { BatchReviewDrawer, PendingBatches } from '../components/BatchReview';
 import { currentPeriod } from '../../../lib/schoolPeriods';
 
 const FILTERS = [
@@ -58,10 +59,27 @@ function PaymentsPage() {
   );
   const [modal, setModal] = useState(null); // 'fees' | 'generate' | 'other'
 
+  // Pagos agrupados en revisión (varias cuotas, un comprobante) y el que se está revisando.
+  const { data: pendingBatches, refetch: refetchBatches } = useFetch(() => paymentsApi.listBatches('reported'), []);
+  const [params2, setParams2] = useSearchParams();
+  const [reviewingBatch, setReviewingBatch] = useState(() => params2.get('lote'));
+  useEffect(() => {
+    // Desde el aviso de la campana: /payments?lote=<id> abre ese pago agrupado.
+    const lote = params2.get('lote');
+    if (lote) {
+      setReviewingBatch(lote);
+      setParams2((p) => {
+        p.delete('lote');
+        return p;
+      }, { replace: true });
+    }
+  }, [params2, setParams2]);
+
   const reload = () => {
     refetch();
     refetchSummary();
     refetchRates();
+    refetchBatches();
   };
   // Tasa BCV nueva (aviso de la campana) o llegada de su fecha valor: tasas y equivalentes al día, sin recargar el navegador.
   useRateAutoRefresh(rates, reload);
@@ -137,6 +155,11 @@ function PaymentsPage() {
       render: (p) => (
         <div>
           <PaymentStatusBadge payment={p} />
+          {p.display_status === 'reported' && p.batch_id && (
+            <button type="button" className="link-button cell-person__sub batch-flag" onClick={() => setReviewingBatch(p.batch_id)}>
+              <Icon name="layers" size={12} /> En pago agrupado
+            </button>
+          )}
           {p.display_status === 'reported' && (
             <div className="cell-person__sub">
               {REPORT_METHODS[p.report_method]}
@@ -163,7 +186,8 @@ function PaymentsPage() {
       label: 'Registrar pago',
       tone: 'edit',
       show: (p) => canRegister && pendingStatuses.includes(p.display_status),
-      onClick: (p) => setPaying({ payment: p, mode: 'register' }),
+      // Cuota de un pago agrupado en revisión: se aprueba el pago agrupado completo.
+      onClick: (p) => (p.batch_id ? setReviewingBatch(p.batch_id) : setPaying({ payment: p, mode: 'register' })),
     },
     {
       key: 'report',
@@ -233,6 +257,8 @@ function PaymentsPage() {
           </>
         }
       />
+
+      <PendingBatches batches={pendingBatches} onReview={setReviewingBatch} />
 
       {summary?.billing_issues?.length > 0 && (
         <div className="alert alert--warning billing-issues">
@@ -366,7 +392,8 @@ function PaymentsPage() {
               <Button
                 icon={canRegister ? 'check' : 'wallet'}
                 onClick={() => {
-                  setPaying({ payment: viewing, mode: canRegister ? 'register' : 'report' });
+                  if (viewing.batch_id && canRegister) setReviewingBatch(viewing.batch_id);
+                  else setPaying({ payment: viewing, mode: canRegister ? 'register' : 'report' });
                   setViewing(null);
                 }}
               >
@@ -380,6 +407,7 @@ function PaymentsPage() {
       {paying && (
         <PaymentFormModal payment={paying.payment} mode={paying.mode} onClose={() => setPaying(null)} onDone={reload} />
       )}
+      {reviewingBatch && <BatchReviewDrawer batchId={reviewingBatch} canApprove={canRegister} onClose={() => setReviewingBatch(null)} onDone={reload} />}
     </div>
   );
 }

@@ -62,6 +62,7 @@ const IGNORED = new Set([
   'POST /evaluation-plans/activity-template/parse',
   'POST /notifications/read-all',
   'POST /notifications/:id/read',
+  'POST /payments/batches/quote', // solo cotiza
 ]);
 
 /** [acción, frase en pasado] — a la frase se le agrega «nombre del registro» si se conoce. */
@@ -140,6 +141,10 @@ const ACTIONS = {
 
   'POST /payments': ['CREAR_COBRO', 'Registró el cobro'],
   'POST /payments/:id/report': ['REPORTAR_PAGO', 'Reportó un pago'],
+  'POST /payments/batches': ['REPORTAR_PAGO_AGRUPADO', 'Reportó un pago agrupado'],
+  'POST /payments/batches/:id/withdraw': ['RETIRAR_PAGO_AGRUPADO', 'Retiró el pago agrupado'],
+  'POST /payments/batches/:id/approve': ['APROBAR_PAGO_AGRUPADO', 'Aprobó el pago agrupado'],
+  'POST /payments/batches/:id/reject': ['RECHAZAR_PAGO_AGRUPADO', 'Rechazó el pago agrupado'],
   'POST /payments/:id/mark-paid': ['CONFIRMAR_PAGO', 'Confirmó el pago'],
   'POST /payments/:id/cancel': ['ANULAR_PAGO', 'Anuló el cobro'],
   'POST /payments/:id/receipt': ['REGENERAR_RECIBO', 'Regeneró el recibo del pago'],

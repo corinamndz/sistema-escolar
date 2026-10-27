@@ -14,6 +14,8 @@ import { PaymentFormModal } from '../components/PaymentForms';
 import { StudentPaymentsSection, groupByStudent, refTotal, totalsOf } from '../components/StudentPaymentsSection';
 import { ViewCurrencySelect } from '../currency';
 import { useViewCurrency } from '../useViewCurrency';
+import Button from '../../../components/ui/Button';
+import { BatchCartBar, BatchPaymentDrawer, MyBatches, isBatchable } from '../components/BatchPayment';
 
 /**
  * Vista de padres: los pagos del representante agrupados por alumno. El
@@ -22,6 +24,10 @@ import { useViewCurrency } from '../useViewCurrency';
  *
  * Los montos en moneda local los calcula el backend con la tasa del día de la
  * moneda elegida en "Ver montos en…" (columnas conv_*).
+ *
+ * Pago agrupado: la familia marca varias cuotas (de uno o varios hijos), ve el
+ * total en la barra inferior y las paga en una sola operación con un
+ * comprobante (BatchPayment.jsx); administración lo aprueba completo.
  */
 function MyPaymentsPage() {
   const { data: rates, refetch: refetchRates } = useFetch(() => paymentsApi.currentRate(), []);
@@ -39,8 +45,36 @@ function MyPaymentsPage() {
   // Alumnos del representante con grado/sección (y avisos de facturación).
   const { data: portal, loading: loadingPortal } = useFetch(() => portalApi.getMine(), []);
   const [reporting, setReporting] = useState(null);
+  const { data: batches, refetch: refetchBatches } = useFetch(() => paymentsApi.myBatches(), []);
+  // Selección para el pago agrupado: id → cuota (de cualquier alumno).
+  const [picked, setPicked] = useState(() => new Map());
+  const [payingBatch, setPayingBatch] = useState(false);
 
   const groups = useMemo(() => groupByStudent(rows || [], portal?.students || []), [rows, portal]);
+  // Al recargar, la selección se queda solo con cuotas que siguen disponibles (con sus montos al día).
+  const selected = useMemo(() => {
+    const available = new Map((rows || []).filter(isBatchable).map((p) => [p.id, p]));
+    return [...picked.keys()].map((id) => available.get(id)).filter(Boolean);
+  }, [picked, rows]);
+  const selection = useMemo(
+    () => ({
+      ids: new Set(selected.map((p) => p.id)),
+      toggle: (p) =>
+        setPicked((m) => {
+          const next = new Map(m);
+          if (next.has(p.id)) next.delete(p.id);
+          else next.set(p.id, p);
+          return next;
+        }),
+    }),
+    [selected]
+  );
+  const batchable = (rows || []).filter(isBatchable);
+  const selectAllDue = () => setPicked(new Map(batchable.map((p) => [p.id, p])));
+  const refreshAll = () => {
+    refetch();
+    refetchBatches();
+  };
 
   if ((loading && !rows) || (loadingPortal && !portal)) return <Spinner label="Cargando tus pagos…" />;
 
@@ -85,7 +119,20 @@ function MyPaymentsPage() {
                 : '¡Gracias!'}
           </div>
         </div>
+        {batchable.length > 1 && (
+          <Button variant="secondary" icon="layers" className="pay-banner__action" onClick={selected.length === batchable.length ? () => setPicked(new Map()) : selectAllDue}>
+            {selected.length === batchable.length ? 'Quitar selección' : `Pagar todo junto (${batchable.length})`}
+          </Button>
+        )}
       </div>
+
+      {batchable.length > 1 && !selected.length && (
+        <p className="batch-hint">
+          <Icon name="info" size={14} /> Puedes marcar varias cuotas, de uno o varios de tus representados, y pagarlas en una sola operación con un solo comprobante.
+        </p>
+      )}
+
+      <MyBatches batches={batches} onChanged={refreshAll} />
 
       {/* Accesos rápidos a cada alumno (solo con más de uno) */}
       {groups.length > 1 && (
@@ -117,12 +164,24 @@ function MyPaymentsPage() {
       ) : (
         <div className="student-pay-list">
           {groups.map((g) => (
-            <StudentPaymentsSection key={g.id} group={g} onReport={setReporting} />
+            <StudentPaymentsSection key={g.id} group={g} onReport={setReporting} selection={selection} />
           ))}
         </div>
       )}
 
       {reporting && <PaymentFormModal payment={reporting} mode="report" onClose={() => setReporting(null)} onDone={refetch} />}
+
+      <BatchCartBar selected={selected} onClear={() => setPicked(new Map())} onPay={() => setPayingBatch(true)} />
+      {payingBatch && (
+        <BatchPaymentDrawer
+          payments={selected}
+          onClose={() => setPayingBatch(false)}
+          onDone={() => {
+            setPicked(new Map());
+            refreshAll();
+          }}
+        />
+      )}
     </div>
   );
 }

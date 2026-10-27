@@ -41,6 +41,21 @@ const paymentsApi = {
   regenerateReceipt: (id) => post(`/payments/${id}/receipt`),
   /** Representante: informa que ya pagó ({ method, reference, paidOn, note, currency }). */
   report: (id, data, proofFile) => postWithProof(`/payments/${id}/report`, data, proofFile),
+  // ---- Pagos agrupados (varias cuotas, un comprobante) ----
+  /** Familia: total de varias cuotas en una moneda y fecha: { paymentIds, currency, date } → { base_total, amount, rate, items, … } */
+  batchQuote: (data) => post('/payments/batches/quote', data),
+  /** Familia: reporta un pago por varias cuotas: { paymentIds, method, reference, paidOn, note, currency } + comprobante */
+  createBatch: (data, proofFile) => postWithProof('/payments/batches', { ...data, paymentIds: JSON.stringify(data.paymentIds) }, proofFile),
+  myBatches: () => get('/payments/batches/mine'),
+  withdrawBatch: (id) => post(`/payments/batches/${id}/withdraw`),
+  /** Administración: status 'reported' (por revisar) | 'approved' | 'rejected' | 'withdrawn' | 'all' */
+  listBatches: (status = 'reported') => get('/payments/batches', { status }),
+  getBatch: (id) => get(`/payments/batches/${id}`),
+  /** Aprueba todas sus cuotas. `details` opcional: { method, reference, paidOn, note, currency } → { batch, solvency, emailSent, … } */
+  approveBatch: (id, details = {}) => post(`/payments/batches/${id}/approve`, details),
+  rejectBatch: (id, reason) => post(`/payments/batches/${id}/reject`, { reason }),
+  getBatchProofBlob: (id) => axiosClient.get(`/payments/batches/${id}/proof`, { responseType: 'blob' }).then((r) => r.data),
+
   /** Comprobante adjunto (privado): se descarga con la sesión del usuario como Blob. */
   getProofBlob: (id) => axiosClient.get(`/payments/${id}/proof`, { responseType: 'blob' }).then((r) => r.data),
   /** Recibo PDF (privado): se descarga con la sesión del usuario como Blob. */

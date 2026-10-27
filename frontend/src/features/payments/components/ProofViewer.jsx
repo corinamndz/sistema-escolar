@@ -12,15 +12,15 @@ import { formatDate } from '../paymentStatus';
  * Visor del comprobante adjunto a un pago. El archivo es PRIVADO: no hay URL
  * pública, se descarga con la sesión (axios, blob) y se muestra desde memoria.
  * Imagen → <img>; PDF → visor del navegador (iframe).
+ * `load`: cómo obtener el archivo (por defecto, el del pago; el de un pago agrupado, otro).
  */
-export function ProofViewerModal({ payment, onClose }) {
+export function ProofViewerModal({ payment, onClose, load = null }) {
   const [state, setState] = useState({ loading: true, url: null, error: null });
 
   useEffect(() => {
     let url = null;
     let cancelled = false;
-    paymentsApi
-      .getProofBlob(payment.id)
+    (load ? load() : paymentsApi.getProofBlob(payment.id))
       .then((blob) => {
         url = URL.createObjectURL(blob);
         if (!cancelled) setState({ loading: false, url, error: null });

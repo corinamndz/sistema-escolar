@@ -388,6 +388,9 @@ async function reportPayment(trx, tenantId, userId, paymentId, { method, referen
   if (payment.status !== 'pending') {
     throw ApiError.conflict(payment.status === 'paid' ? 'Este pago ya fue confirmado.' : 'Este cobro no admite reportes.');
   }
+  if (payment.batch_id) {
+    throw ApiError.conflict('Esta cuota ya está en un pago agrupado en revisión. Si necesitas corregirlo, retira ese pago agrupado y vuelve a reportar.');
+  }
 
   const refCurrency = await resolveRefCurrency(trx, tenantId, payment, currency);
 
@@ -459,10 +462,19 @@ async function registerPayment(trx, tenantId, { studentId, guardianId, periodLab
  * La conversión se hace a `details.currency`, o a la moneda que reportó la
  * familia, o a la predeterminada del colegio, con la tasa de esa moneda
  * vigente en la fecha de pago (la indicada, la reportada o hoy).
+ *
+ * `options.batchId`: la confirma la aprobación de ESE pago agrupado
+ * (paymentBatch.service). Una cuota que está en un pago agrupado en revisión
+ * no se confirma suelta: se aprueba o rechaza el pago agrupado completo.
+ * `options.silent`: sin correo ni campana por cuota (el pago agrupado envía
+ * un solo aviso y un correo con todos los recibos); devuelve el PDF generado.
  */
-async function markAsPaid(trx, tenantId, paymentId, details = {}, proof = null) {
+async function markAsPaid(trx, tenantId, paymentId, details = {}, proof = null, { batchId = null, silent = false } = {}) {
   await assertNotFutureDate(trx, details.paidOn);
   const payment = await getById(trx, tenantId, paymentId);
+  if (payment.batch_id && payment.batch_id !== batchId) {
+    throw ApiError.conflict('Esta cuota está en un pago agrupado en revisión: apruébalo o recházalo completo desde «Pagos agrupados».');
+  }
   if (payment.status === 'paid') {
     throw ApiError.conflict('Este pago ya fue registrado como pagado.');
   }
@@ -511,6 +523,11 @@ async function markAsPaid(trx, tenantId, paymentId, details = {}, proof = null) 
   // El comprobante se arma leyendo el pago ya actualizado (conversión, método, referencia…).
   const { buffer: pdfBuffer, receiptUrl, receiptFilename } = await generateAndStoreReceipt(trx, tenantId, paymentId);
 
+  if (silent) {
+    const [finalPayment] = await trx('payments').where({ id: paymentId }).update({ receipt_url: receiptUrl, batch_id: null }).returning('*');
+    return { payment: finalPayment, emailSent: false, emailError: null, replacedProofPath, pdfBuffer, receiptFilename };
+  }
+
   let emailSent = false;
   let emailError = null;
   // Configuración → Notificaciones: «Pago confirmado» por correo = el comprobante en PDF.
@@ -537,7 +554,10 @@ async function markAsPaid(trx, tenantId, paymentId, details = {}, proof = null) 
  * 404 (no 403) cuando no corresponde, para no revelar que el pago existe.
  */
 async function getProof(trx, tenantId, userId, paymentId) {
-  const payment = await trx('payments').where({ id: paymentId, tenant_id: tenantId }).first();
+  const row = await trx('payments').where({ id: paymentId, tenant_id: tenantId }).first();
+  // Cuota de un pago agrupado sin comprobante propio: el del pago agrupado (uno para todas).
+  const batch = row && !row.proof_path && row.batch_id ? await trx('payment_batches').where({ id: row.batch_id }).first('proof_path', 'proof_mime', 'proof_original_name') : null;
+  const payment = batch ? { ...row, ...batch } : row;
   if (!payment || !payment.proof_path) throw ApiError.notFound('Comprobante no encontrado.');
 
   const perms = await getEffectivePermissions(trx, tenantId, userId);
@@ -574,6 +594,12 @@ async function getReceipt(trx, tenantId, userId, paymentId) {
 }
 
 module.exports = {
+  // Para los pagos agrupados (paymentBatch.service)
+  paymentsQuery,
+  resolveRefCurrency,
+  rateForConversion,
+  assertNotFutureDate,
+  getGuardianForUser,
   regenerateReceipt,
   sendReceiptEmail,
   getProof,

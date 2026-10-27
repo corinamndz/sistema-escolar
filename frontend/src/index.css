@@ -8675,3 +8675,89 @@ body.is-printing-boleta { overflow: hidden; }
   .pp-eval { flex-direction: column; align-items: stretch; }
   .pp-eval__side { flex-direction: row; justify-content: space-between; align-items: center; text-align: left; }
 }
+
+/* =====================================================================
+   Pagos agrupados (varias cuotas, un comprobante)
+   ===================================================================== */
+.pay-banner__action { margin-left: auto; flex-shrink: 0; }
+.batch-hint { display: flex; align-items: center; gap: 6px; margin: -6px 0 14px; font-size: 13px; color: var(--color-text-muted); }
+
+/* Casilla de cada cuota */
+.pay-card__pick { display: inline-flex; align-items: center; margin-right: 2px; cursor: pointer; }
+.pay-card__pick input { width: 18px; height: 18px; margin: 0; accent-color: var(--color-primary); cursor: pointer; }
+.pay-card.is-selected { border-color: var(--color-border-active); box-shadow: 0 0 0 3px var(--color-primary-softer); }
+
+/* Barra inferior ("carrito") */
+.batch-cart {
+  position: sticky; bottom: 16px; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 18px; padding: 12px 16px; border: 1px solid var(--color-border-active); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
+}
+.batch-cart__info { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.batch-cart__count {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; padding: 0 8px; border-radius: 999px;
+  background: var(--color-primary); color: #fff; font-family: var(--font-display); font-size: 16px; font-weight: 800;
+}
+.batch-cart__total { font-size: 13.5px; }
+.batch-cart__actions { display: flex; gap: 8px; margin-left: auto; }
+
+/* Resumen de cuotas por alumno (pagar y revisar) */
+.batch-summary { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-muted); }
+.batch-summary__student h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font-size: 13.5px; }
+.batch-summary__student ul { list-style: none; margin: 0; padding: 0; }
+.batch-summary__student li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 5px 0 5px 20px; border-top: 1px dashed var(--color-border); font-size: 13.5px; }
+.batch-summary__student li:first-child { border-top: 0; }
+.batch-summary__student li span { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.batch-summary__student li strong { white-space: nowrap; }
+.batch-summary__total { display: flex; justify-content: space-between; align-items: baseline; padding-top: 10px; border-top: 1px solid var(--color-border-strong); font-weight: 600; }
+.batch-summary__total strong { font-family: var(--font-display); font-size: 18px; }
+.text-danger { color: var(--color-danger-text, var(--color-danger)); }
+
+/* Historial de la familia */
+.my-batches { margin-bottom: 18px; }
+.my-batches .card__title { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.my-batches ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.my-batches__item { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.my-batches__item--reported { border-color: var(--color-warning, #f59e0b); background: var(--color-warning-soft); }
+.my-batches__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.my-batches__head { display: flex; align-items: center; gap: 8px; }
+.my-batches__reason { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 13px; color: var(--color-danger-text, var(--color-danger)); }
+.my-batches__actions { display: flex; align-items: center; gap: 6px; }
+
+/* Administración: por revisar */
+.pending-batches { margin-bottom: 18px; border-color: var(--color-border-active); }
+.pending-batches__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pending-batches__head .icon { color: var(--color-primary-text); }
+.pending-batches__head .text-muted { flex-basis: 100%; }
+.pending-batches ul { list-style: none; margin: 0; padding: 0; }
+.pending-batches li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--color-border); }
+.pending-batches__amount { display: flex; flex-direction: column; align-items: flex-end; }
+.batch-flag { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+
+/* Revisión de un pago agrupado */
+.batch-review { display: flex; flex-direction: column; gap: 14px; }
+.batch-review__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.batch-review__total { font-family: var(--font-display); font-size: 28px; font-weight: 800; }
+.batch-review__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; margin: 0; }
+.batch-review__facts dt { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); }
+.batch-review__facts dd { margin: 2px 0 0; font-size: 14px; }
+.batch-review__wide { grid-column: 1 / -1; }
+.batch-review__section { margin: 6px 0 0; font-size: 15px; }
+@media (max-width: 640px) {
+  .batch-cart { bottom: 8px; }
+  .batch-cart__actions { width: 100%; justify-content: flex-end; }
+  .pending-batches li { grid-template-columns: 1fr auto; }
+  .pending-batches li > .btn { grid-column: 1 / -1; justify-self: end; }
+  .batch-review__facts { grid-template-columns: 1fr; }
+}
+
+/* Mis pagos: cuotas por pagar / vencidas / próximas en tabla (casilla del pago agrupado) */
+.pay-pick { width: 17px; height: 17px; margin: 0; accent-color: var(--color-primary); cursor: pointer; vertical-align: middle; }
+.student-pay__body .data-table td { padding-top: 10px; padding-bottom: 10px; }
+.student-pay__body .data-table th:first-child:has(.pay-pick), .student-pay__body .data-table td:first-child:has(.pay-pick) { width: 36px; padding-right: 0; }
+.student-pay__body tr.is-overdue td:first-child { box-shadow: inset 3px 0 0 var(--color-danger); }
+.student-pay__body tr.is-selected td { background: var(--color-primary-softer); }
+.student-pay__body tr.is-selected td:first-child { box-shadow: inset 3px 0 0 var(--color-primary); }
+.pay-row__amount { font-family: var(--font-display); font-size: 15px; white-space: nowrap; }
+.pay-row__reported { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--color-warning-text); }
+.pay-row__actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; white-space: nowrap; }

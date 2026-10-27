@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const controller = require('./payment.controller');
+const batches = require('./paymentBatch.controller');
 const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 const { requirePermission } = require('../../middlewares/permission.middleware');
@@ -24,6 +25,18 @@ router.use(authMiddleware, tenantMiddleware, denyTeachers);
 // Sin permiso administrativo de "payments": el servicio filtra por el
 // representante del usuario autenticado (y valida que el pago sea suyo).
 router.get('/mine', controller.listMine);
+
+// ---- Pagos agrupados (varias cuotas, un comprobante) ----
+// Familia: el servicio valida que cada cuota sea suya. Administración: con permiso de Pagos.
+router.post('/batches/quote', batches.quote);
+router.post('/batches', proofUpload, batches.create);
+router.get('/batches/mine', batches.mine);
+router.post('/batches/:id/withdraw', batches.withdraw);
+router.get('/batches/:id/proof', batches.downloadProof);
+router.get('/batches', requirePermission('payments', 'read'), batches.list);
+router.get('/batches/:id', batches.getOne);
+router.post('/batches/:id/approve', requirePermission('payments', 'approve_payment'), batches.approve);
+router.post('/batches/:id/reject', requirePermission('payments', 'approve_payment'), batches.reject);
 router.post('/:id/report', proofUpload, controller.report);
 // Comprobante adjunto: privado; el servicio valida si quien lo pide es la familia o quien revisa pagos.
 router.get('/:id/proof', controller.downloadProof);

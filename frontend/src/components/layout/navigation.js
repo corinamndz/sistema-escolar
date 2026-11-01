@@ -1,11 +1,14 @@
+import { isPortalViewOn } from '../../lib/portalViews';
+
 /**
  * Menú principal agrupado por secciones. `moduleCode` se valida contra los
  * permisos del usuario (`can(moduleCode, 'read')`); `public: true` lo muestra
  * a cualquier usuario autenticado; `guardianOnly` solo a representantes;
  * `teacherOnly` solo a usuarios con ficha docente;
  * `blockTeacher` lo oculta a los docentes restringidos a su carga (el backend
- * igual responde 403). El Topbar usa esta misma lista para el título de la
- * página actual.
+ * igual responde 403); `portalView` lo oculta si el colegio desactivó esa
+ * sección del portal (Configuración → Vistas del representante). El Topbar
+ * usa esta misma lista para el título de la página actual.
  */
 const NAV_SECTIONS = [
   {
@@ -31,7 +34,7 @@ const NAV_SECTIONS = [
       { moduleCode: 'events', label: 'Eventos y cartelera', icon: 'calendar', path: '/events' },
       // Citas con padres: la administración agenda; el docente consulta las de sus alumnos.
       { moduleCode: 'appointments', label: 'Citas con padres', teacherLabel: 'Citas de mis alumnos', icon: 'clock', path: '/appointments' },
-      { moduleCode: 'portal_events', label: 'Cartelera', icon: 'calendar', path: '/portal/events', guardianOnly: true },
+      { moduleCode: 'portal_events', label: 'Cartelera', icon: 'calendar', path: '/portal/events', guardianOnly: true, portalView: 'events' },
     ],
   },
   {
@@ -60,7 +63,7 @@ const NAV_SECTIONS = [
       { moduleCode: 'payments', label: 'Pagos', icon: 'card', path: '/payments', blockTeacher: true },
       { moduleCode: 'payments', label: 'Monedas y tasas', icon: 'trendingUp', path: '/payments/currencies', blockTeacher: true },
       // Vista de padres: solo para cuentas de representante (no depende de permisos administrativos).
-      { moduleCode: 'my_payments', label: 'Mis pagos', icon: 'receipt', path: '/payments/mine', guardianOnly: true, blockTeacher: true },
+      { moduleCode: 'my_payments', label: 'Mis pagos', icon: 'receipt', path: '/payments/mine', guardianOnly: true, blockTeacher: true, portalView: 'payments' },
     ],
   },
   {
@@ -72,6 +75,8 @@ const NAV_SECTIONS = [
       { moduleCode: 'tenant_settings', label: 'Log de notificaciones', icon: 'inbox', path: '/notifications/log', blockTeacher: true },
       // Bitácora de actividad: exclusiva del Administrador (rol de sistema), no depende de permisos de módulo.
       { moduleCode: 'audit', label: 'Auditoría', icon: 'eye', path: '/audit', adminOnly: true },
+      // Soporte técnico: el Administrador reporta fallas a la plataforma (panel central del superadmin).
+      { moduleCode: 'support', label: 'Soporte técnico', icon: 'helpCircle', path: '/support', adminOnly: true },
     ],
   },
 ];
@@ -115,8 +120,9 @@ function hasDashboard({ can, user }) {
 }
 
 /** ¿Se muestra este ítem del menú al usuario? */
-function isNavItemVisible(item, { can, user }) {
+function isNavItemVisible(item, { can, user, portalViews }) {
   if (item.home) return hasDashboard({ can, user });
+  if (!isPortalViewOn(portalViews, item.portalView)) return false;
   if (item.adminOnly) return Boolean(user?.isAdmin);
   if (item.blockTeacher && user?.isRestrictedTeacher) return false;
   if (item.guardianOnly) return Boolean(user?.guardianId);

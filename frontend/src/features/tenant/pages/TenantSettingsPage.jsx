@@ -24,6 +24,7 @@ import PaymentAccountsSettings from '../components/PaymentAccountsSettings';
 import MailSettingsCard from '../components/MailSettingsCard';
 import NotificationPreferencesCard from '../components/NotificationPreferencesCard';
 import AcademicReviewCard from '../components/AcademicReviewCard';
+import PortalViewsCard from '../components/PortalViewsCard';
 import BcvRateCard from '../../payments/components/BcvRateCard';
 import SchoolPeriodsTab from '../../academics/components/SchoolPeriodsTab';
 
@@ -68,6 +69,12 @@ const TABS = [
     label: 'Notificaciones',
     icon: 'bell',
     hint: 'Qué avisos se envían por la campana del sistema y cuáles por correo electrónico.',
+  },
+  {
+    key: 'portal',
+    label: 'Vistas del representante',
+    icon: 'users',
+    hint: 'Qué secciones del portal ven las familias: pagos, cartelera, citas y las pestañas de cada alumno.',
   },
   { key: 'avanzado', label: 'Otros', long: '/ Avanzado', icon: 'settings', hint: 'Acceso a la plataforma y otros ajustes del sistema.' },
 ];
@@ -386,6 +393,8 @@ function TenantSettingsPage() {
         {tab === 'correo' && <MailSettingsCard canEdit={canEdit} schoolName={settings.name} />}
 
         {tab === 'notificaciones' && <NotificationPreferencesCard canEdit={canEdit} />}
+
+        {tab === 'portal' && <PortalViewsCard canEdit={canEdit} />}
 
         {tab === 'revision' && <AcademicReviewCard canEdit={canEdit} />}
 

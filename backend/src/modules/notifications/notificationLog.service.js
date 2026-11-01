@@ -23,6 +23,7 @@ const TYPE_LABELS = {
   ...Object.fromEntries(CATALOG.map((e) => [e.key, e.label])),
   credentials: 'Credenciales de acceso',
   payment_receipt: 'Comprobante de pago',
+  password_reset: 'Recuperación de contraseña',
   // Avisos personales de la revisión académica (migración 059): solo campana, fuera del catálogo de preferencias.
   review_request: 'Revisión académica · solicitud',
   review_result: 'Revisión académica · resultado',
@@ -158,9 +159,11 @@ async function mailRows(trx, tenantId, since) {
     created_at: r.created_at,
     sent_at: r.status === 'sent' ? r.created_at : null,
     resend_of: r.resend_of || null,
-    resendable: r.kind === 'credentials' ? credentialsResendable(r) : Boolean(r.ref_id),
+    resendable: r.kind === 'password_reset' ? false : r.kind === 'credentials' ? credentialsResendable(r) : Boolean(r.ref_id),
     resend_hint:
-      r.kind !== 'credentials'
+      r.kind === 'password_reset'
+        ? 'Por seguridad el enlace no se guarda: la persona debe pedir uno nuevo desde «¿Olvidaste tu contraseña?» en el login.'
+        : r.kind !== 'credentials'
         ? 'Regenera el comprobante en PDF y lo envía de nuevo al representante.'
         : credentialsResendable(r)
           ? 'Se generará una contraseña temporal NUEVA y se enviará al usuario (la anterior nunca le llegó).'
@@ -284,6 +287,7 @@ async function resendMail(trx, tenantId, id, userId) {
   const r = await trx('mail_log').where({ id, tenant_id: tenantId }).first();
   if (!r) throw ApiError.notFound('Correo no encontrado.');
   if (r.kind === 'credentials') return resendCredentials(trx, tenantId, r, userId);
+  if (r.kind === 'password_reset') throw ApiError.conflict('Los enlaces de recuperación no se reenvían: la persona debe solicitar uno nuevo desde el login.');
   const payment = r.ref_id ? await trx('payments').where({ id: r.ref_id, tenant_id: tenantId }).first() : null;
   if (!payment || payment.status !== 'paid') throw ApiError.conflict('El pago ya no está confirmado: no hay comprobante para reenviar.');
   const { sent, error } = await payments.sendReceiptEmail(trx, tenantId, payment.id, { resendOf: r.id, userId });

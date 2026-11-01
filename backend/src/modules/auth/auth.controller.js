@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const authService = require('./auth.service');
+const passwordReset = require('./passwordReset.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const { getEffectivePermissions } = require('../../middlewares/permission.middleware');
 const { getTeacherScope } = require('../access/teacherScope');
@@ -57,6 +58,34 @@ const changePassword = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Contraseña actualizada.' });
 });
 
+// ---- Recuperación de contraseña (públicas: el colegio llega por su identificador de la URL) ----
+
+const forgotPassword = asyncHandler(async (req, res) => {
+  const schema = z.object({
+    tenantSlug: z.string().min(1, 'tenantSlug es requerido.'),
+    email: z.string().trim().email('Ingresa un correo electrónico válido.').max(150),
+  });
+  const data = schema.parse(req.body);
+  res.status(200).json(await passwordReset.requestReset(data, audit.requestContext(req)));
+});
+
+// El token del enlace: 32 bytes en base64url (43 caracteres).
+const tokenField = z.string().min(20, 'El enlace no es válido.').max(200);
+
+const verifyResetToken = asyncHandler(async (req, res) => {
+  const schema = z.object({ tenantSlug: z.string().min(1), token: tokenField });
+  res.status(200).json(await passwordReset.verifyToken(schema.parse(req.body)));
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  const schema = z.object({
+    tenantSlug: z.string().min(1),
+    token: tokenField,
+    newPassword: z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres.').max(128),
+  });
+  res.status(200).json(await passwordReset.resetPassword(schema.parse(req.body), audit.requestContext(req)));
+});
+
 const createUser = asyncHandler(async (req, res) => {
   const schema = z.object({
     username: z.string().min(3),
@@ -69,4 +98,4 @@ const createUser = asyncHandler(async (req, res) => {
   res.status(201).json(user);
 });
 
-module.exports = { login, refresh, me, changePassword, createUser };
+module.exports = { login, refresh, me, changePassword, createUser, forgotPassword, verifyResetToken, resetPassword };

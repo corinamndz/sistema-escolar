@@ -10,6 +10,7 @@ const { logoUpload } = require('../../middlewares/upload.middleware');
 const { z } = require('zod');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const reviewSettings = require('../reviews/reviewSettings.service');
+const portalViews = require('./portalViews.service');
 
 router.use(authMiddleware, tenantMiddleware);
 
@@ -18,6 +19,24 @@ router.get('/profile', controller.getProfile);
 router.get('/settings', requirePermission('tenant_settings', 'read'), controller.getSettings);
 // El permiso se verifica antes de leer el archivo: un usuario sin permiso no llega a subir nada.
 router.put('/settings', requirePermission('tenant_settings', 'update'), logoUpload, controller.updateSettings);
+
+// Vistas del portal del representante (migración 066): qué secciones ve la familia.
+router.get(
+  '/portal-views',
+  requirePermission('tenant_settings', 'read'),
+  asyncHandler(async (req, res) => res.status(200).json(await portalViews.listPortalViews(req.db, req.tenantId)))
+);
+router.put(
+  '/portal-views',
+  requirePermission('tenant_settings', 'update'),
+  asyncHandler(async (req, res) => {
+    const { views } = z
+      .object({ views: z.record(z.enum(portalViews.KEYS), z.boolean()).refine((v) => Object.keys(v).length > 0, 'Indica al menos una vista.') })
+      .strict()
+      .parse(req.body || {});
+    res.status(200).json(await portalViews.savePortalViews(req.db, req.tenantId, views));
+  })
+);
 
 // Escala de calificación de cada grado (cuantitativa 0-20 o cualitativa A-E).
 router.get('/grading-scales', requirePermission('tenant_settings', 'read'), controller.getGradingScales);

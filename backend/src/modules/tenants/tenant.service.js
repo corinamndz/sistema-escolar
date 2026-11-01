@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { getPortalViews } = require('./portalViews.service');
 const { toPublicUrl } = require('../../services/storage/logoStorage');
 const { GRADING_SCALES, scaleDefinition } = require('../grading/gradingScale');
 
@@ -24,6 +25,8 @@ async function getSettings(trx, tenantId) {
     contactPhone: settings?.contact_phone || null,
     contactEmail: settings?.contact_email || null,
     rif: settings?.rif || null,
+    // Secciones del portal del representante ({ payments: true, … }; migración 066).
+    portalViews: await getPortalViews(trx, tenantId),
   };
 }
 
@@ -115,9 +118,9 @@ async function updateSettings(
  * (id, estado). Es lo que necesitan el diseño y el pie de página del inicio.
  */
 async function getProfile(trx, tenantId) {
-  const { name, logoUrl, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail, rif } =
+  const { name, logoUrl, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail, rif, portalViews } =
     await getSettings(trx, tenantId);
-  return { name, logoUrl, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail, rif };
+  return { name, logoUrl, primaryColor, secondaryColor, menuGradient, accentSecondaryColor, tableHeaderStyle, contactPhone, contactEmail, rif, portalViews };
 }
 
 

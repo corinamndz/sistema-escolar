@@ -119,4 +119,31 @@ function importUpload(req, res, next) {
   });
 }
 
-module.exports = { logoUpload, MAX_LOGO_BYTES, proofUpload, MAX_PROOF_BYTES, importUpload, MAX_IMPORT_BYTES };
+// ---------------------------------------------------------------------------
+// Adjunto de un ticket de soporte (campo `attachment`, OPCIONAL): captura
+// JPG/PNG o PDF de hasta 5 MB, en memoria (se guarda en la base; la firma
+// binaria la valida support.service).
+// ---------------------------------------------------------------------------
+
+const supportMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PROOF_BYTES, files: 1, fields: 20 },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_PROOF_MIMES.includes(file.mimetype)) return cb(null, true);
+    return cb(ApiError.badRequest('Adjunta una captura JPG/PNG o un PDF.', [{ path: 'attachment', message: 'Formato no permitido. Usa JPG, PNG o PDF.' }]));
+  },
+}).single('attachment');
+
+function supportUpload(req, res, next) {
+  supportMulter(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof ApiError) return next(err);
+    if (err instanceof multer.MulterError) {
+      const message = err.code === 'LIMIT_FILE_SIZE' ? 'El adjunto no puede pesar más de 5 MB.' : 'No se pudo procesar el archivo adjunto.';
+      return next(ApiError.badRequest(message, [{ path: 'attachment', message }]));
+    }
+    return next(err);
+  });
+}
+
+module.exports = { logoUpload, MAX_LOGO_BYTES, proofUpload, MAX_PROOF_BYTES, importUpload, MAX_IMPORT_BYTES, supportUpload };

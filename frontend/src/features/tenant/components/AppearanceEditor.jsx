@@ -165,7 +165,7 @@ export function ThemePreview({ form, logoUrl }) {
       <div className="brand-preview__side" style={{ background: `linear-gradient(170deg, ${info.menuStart}, ${info.menuEnd})`, color: info.menuFg }}>
         <div className="brand-preview__brand">
           {/* Sin logo propio: el de MoDo Educa, igual que en el menú real. */}
-          <SchoolLogo src={logoUrl} alt="" className="brand-preview__logo" style={{ background: '#fff', padding: 2 }} />
+          <SchoolLogo src={logoUrl} alt="" tone="dark" className="brand-preview__logo" />
           <span>{form.name || 'Nombre del colegio'}</span>
         </div>
         <div className="brand-preview__item" style={{ background: `${info.accent}40`, boxShadow: `inset 3px 0 0 ${info.accent}` }}>

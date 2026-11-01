@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { useTenant } from '../../../context/TenantContext';
 import { useMutation } from '../../../hooks/useMutation';
@@ -10,7 +10,8 @@ import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
 import SchoolLogo from '../../../components/ui/SchoolLogo';
-import platformLogo from '../../../assets/modo-educa-logo.webp';
+import platformLogo from '../../../assets/modo-educa-logo.png';
+import { ForgotPasswordForm, ResetPasswordForm } from '../components/PasswordRecovery';
 import {
   BRANDING_UPDATED_KEY,
   isValidSlug,
@@ -20,25 +21,16 @@ import {
 import { PATH_TENANT } from '../../../lib/tenantPath';
 
 /**
- * Módulos del panel del login: tres esenciales (compactos) y dos destacados de
- * MoDo Educa (más grandes, con descripción).
+ * Módulos del panel del login: cuadrícula simétrica de 2 columnas (3 filas), todas
+ * las tarjetas con la misma estructura y altura; `isNew` agrega la etiqueta "Nuevo".
  */
 const FEATURES = [
-  { icon: 'graduation', label: 'Alumnos y representantes' },
-  { icon: 'clipboard', label: 'Planes de evaluación' },
-  { icon: 'card', label: 'Pagos y comprobantes' },
-];
-const HIGHLIGHTS = [
-  {
-    icon: 'shield',
-    label: 'Convivencia y disciplina',
-    desc: 'Seguimiento de normas e historial disciplinario de cada alumno, visible para las familias.',
-  },
-  {
-    icon: 'clock',
-    label: 'Gestión de horarios',
-    desc: 'Programación por bloques con arrastrar y soltar, sin cruces de docentes.',
-  },
+  { icon: 'graduation', label: 'Alumnos y representantes', desc: 'Expedientes, inscripciones y portal de las familias.' },
+  { icon: 'clipboard', label: 'Planes de evaluación', desc: 'Planes, calificaciones y boletines con revisión.' },
+  { icon: 'card', label: 'Pagos y comprobantes', desc: 'Mensualidades, pagos agrupados y recibos.' },
+  { icon: 'bell', label: 'Avisos y recordatorios', desc: 'Notificaciones con confirmación de lectura.' },
+  { icon: 'shield', label: 'Convivencia y disciplina', desc: 'Normas e historial visible para las familias.', isNew: true },
+  { icon: 'clock', label: 'Gestión de horarios', desc: 'Bloques con arrastrar y soltar, sin cruces.', isNew: true },
 ];
 
 const LOOKUP_DELAY_MS = 350;
@@ -101,9 +93,12 @@ function useTenantBranding(slug) {
   return state;
 }
 
-/** Logo del colegio en el panel lateral; sin logo propio (o sin colegio aún), el de MoDo Educa. */
-function SchoolMark({ branding, size = 'lg' }) {
-  return <SchoolLogo src={branding?.logoUrl} name={branding?.name} className={`school-mark school-mark--${size} school-mark--img`} />;
+/**
+ * Logo destacado del panel lateral (oscuro), sin placa: el del colegio en cuanto se
+ * reconoce su identificador; sin colegio (o sin logo propio), el de MoDo Educa.
+ */
+function SchoolMark({ branding }) {
+  return <SchoolLogo src={branding?.logoUrl} name={branding?.name} variant="full" tone="dark" className="login-hero__logo" />;
 }
 
 /** Producto y empresa creadora del software. */
@@ -113,36 +108,24 @@ const COMPANY_NAME = 'MoDo';
 /**
  * Logo oficial de MoDo Educa: preside SIEMPRE el formulario, para que quede
  * claro que se ingresa al sistema de gestión escolar de MoDo. Es un archivo de
- * assets (WebP con fondo transparente, ~80 KB): Vite lo empaqueta con hash en
- * el nombre, así el navegador lo guarda en caché y carga al instante. Alto
- * fijo + object-fit: contain → nunca se deforma.
+ * assets (PNG horizontal con fondo transparente): Vite lo empaqueta con hash en
+ * el nombre, así el navegador lo guarda en caché y carga al instante (la
+ * pantalla de inicio ya lo trajo). Alto fijo + object-fit: contain → nunca se deforma.
  */
 function PlatformLogo() {
   return (
     <div className="login-platform">
-      <img src={platformLogo} alt={`${PLATFORM_NAME} · Sistema de gestión escolar`} width="1201" height="228" decoding="async" fetchpriority="high" />
+      <img src={platformLogo} alt={`${PLATFORM_NAME} · Sistema de gestión escolar`} width="1400" height="410" decoding="async" fetchpriority="high" />
     </div>
   );
 }
 
 /**
- * Identidad del COLEGIO cliente, separada de la marca MoDo Educa: su logo o
- * escudo grande y su nombre con peso de título. Si no subió logo (o no
- * carga), se usa el logotipo de MoDo Educa.
+ * `mode`: 'login' (por defecto) · 'forgot' (/forgot-password: pedir el enlace) ·
+ * 'reset' (/reset-password?token=…: crear la nueva contraseña). Los tres comparten
+ * el panel del colegio; solo cambia el contenido de la tarjeta.
  */
-function SchoolIdentity({ branding }) {
-  return (
-    <div className="login-school">
-      <SchoolLogo src={branding.logoUrl} name={branding.name} className="login-school__logo" />
-      <div className="login-school__text">
-        <span className="login-school__label">Colegio</span>
-        <strong>{branding.name}</strong>
-      </div>
-    </div>
-  );
-}
-
-function LoginPage() {
+function LoginPage({ mode = 'login' }) {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -154,16 +137,14 @@ function LoginPage() {
   const [initial] = useState(() => (PATH_TENANT ? { slug: PATH_TENANT, source: 'path' } : resolveTenantSlug()));
   const [form, setForm] = useState({ tenantSlug: initial.slug, username: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
-  // Por ruta, enlace o subdominio el colegio ya está decidido: se oculta el campo (con opción de cambiarlo).
-  const [editingSchool, setEditingSchool] = useState(!['path', 'url', 'subdomain'].includes(initial.source));
   const { status, branding } = useTenantBranding(form.tenantSlug);
+  // Multi-tenant: la URL del colegio (/demo/login, enlace o subdominio) ya decide a
+  // qué colegio se ingresa, así que no se pide. Solo si se entra sin colegio en la
+  // URL (o el de la URL no existe) aparece el campo del identificador.
+  const askSchool = !['path', 'url', 'subdomain'].includes(initial.source) || status === 'not_found';
 
-  // Si el colegio de la URL no existe, se muestra el campo para corregirlo.
-  useEffect(() => {
-    if (!editingSchool && status === 'not_found') setEditingSchool(true);
-  }, [editingSchool, status]);
-
-  if (isAuthenticated) {
+  // Con sesión iniciada no hay login que mostrar; el enlace de recuperación sí se respeta.
+  if (isAuthenticated && mode !== 'reset') {
     return <Navigate to={location.state?.from?.pathname || '/'} replace />;
   }
 
@@ -188,15 +169,41 @@ function LoginPage() {
     not_found: <Icon name="alertCircle" size={17} className="login-slug__status text-danger" />,
   }[status];
 
+  const schoolField = askSchool && (
+    <Field
+      label="Colegio (identificador)"
+      error={status === 'not_found' ? 'No encontramos un colegio con ese identificador.' : null}
+      hint={status === 'found' ? `Colegio: ${schoolName}` : 'Te lo indica tu colegio. Ej.: demo'}
+    >
+      <div className="input-group login-slug">
+        <Icon name="building" size={17} className="input-group__icon" />
+        <input
+          className={`input ${status === 'not_found' ? 'input--error' : ''}`}
+          name="tenantSlug"
+          placeholder="ej. demo"
+          value={form.tenantSlug}
+          onChange={handleChange}
+          autoComplete="organization"
+          autoCapitalize="none"
+          spellCheck={false}
+          required
+        />
+        {slugStatusIcon}
+      </div>
+    </Field>
+  );
+
   return (
     <div className={`login-page ${branding ? 'login-page--branded' : ''}`}>
       <aside className="login-hero">
         <div className="login-hero__brand">
-          <SchoolMark branding={branding} size="sm" />
-          {schoolName || PLATFORM_NAME}
+          <SchoolMark branding={branding} />
+          {/* El logo de MoDo Educa ya lleva el nombre; el del colegio, no siempre. */}
+          {schoolName && <span>{schoolName}</span>}
         </div>
 
-        <div>
+        {/* Panel unificado (vidrio translúcido): bienvenida + módulos en un solo bloque. */}
+        <section className="login-showcase">
           {branding ? (
             <>
               <h1>Bienvenidos a {schoolName}</h1>
@@ -208,30 +215,23 @@ function LoginPage() {
               <p>Académico, administrativo y financiero conectados para que el equipo se enfoque en lo que importa: los alumnos.</p>
             </>
           )}
-          <div className="login-features">
+          <ul className="login-features">
             {FEATURES.map((f) => (
-              <div key={f.label} className="login-feature">
+              <li key={f.label} className={`login-feature${f.isNew ? ' login-feature--new' : ''}`}>
                 <span className="login-feature__icon">
                   <Icon name={f.icon} size={18} />
                 </span>
-                {f.label}
-              </div>
-            ))}
-            {HIGHLIGHTS.map((f) => (
-              <div key={f.label} className="login-feature login-feature--highlight">
-                <span className="login-feature__icon">
-                  <Icon name={f.icon} size={20} />
-                </span>
-                <div>
+                <div className="login-feature__body">
                   <strong>
-                    {f.label} <span className="login-feature__badge">Nuevo</span>
+                    {f.label}
+                    {f.isNew && <span className="login-feature__badge">Nuevo</span>}
                   </strong>
                   <span className="login-feature__desc">{f.desc}</span>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
-        </div>
+          </ul>
+        </section>
 
         <div className="login-hero__foot">
           © {new Date().getFullYear()} {schoolName ? `${schoolName} · ` : ''}
@@ -241,107 +241,69 @@ function LoginPage() {
 
       <main className="login-panel">
         <div className="login-card">
-          {/* 1) Marca del software (MoDo Educa) · 2) colegio cliente al que se ingresa */}
+          {/* Solo la marca MoDo Educa: el colegio ya lo indica la URL (y el panel izquierdo). */}
           <header className="login-card__brand login-card__brand--stacked">
             <PlatformLogo />
-            {branding ? (
-              <SchoolIdentity branding={branding} />
-            ) : (
-              <div>
-                <h2>Bienvenido de nuevo</h2>
-                <p className="login-card__sub">Ingresa con las credenciales de tu colegio.</p>
-              </div>
-            )}
+            {mode === 'login' && <h2 className="sr-only">Iniciar sesión{schoolName ? ` en ${schoolName}` : ''}</h2>}
           </header>
 
-          <Alert>{error}</Alert>
+          {mode === 'forgot' && <ForgotPasswordForm tenantSlug={normalizeSlug(form.tenantSlug)} schoolField={schoolField} />}
+          {mode === 'reset' && <ResetPasswordForm tenantSlug={normalizeSlug(form.tenantSlug)} />}
 
-          <form onSubmit={handleSubmit}>
-            {editingSchool ? (
-              <Field
-                label="Colegio (identificador)"
-                error={status === 'not_found' ? 'No encontramos un colegio con ese identificador.' : null}
-                hint={status === 'found' ? `Colegio: ${schoolName}` : 'Te lo indica tu colegio. Ej.: demo'}
-              >
-                <div className="input-group login-slug">
-                  <Icon name="building" size={17} className="input-group__icon" />
-                  <input
-                    className={`input ${status === 'not_found' ? 'input--error' : ''}`}
-                    name="tenantSlug"
-                    placeholder="ej. demo"
-                    value={form.tenantSlug}
+          {mode === 'login' && (
+            <>
+              <Alert>{error}</Alert>
+
+              <form className="login-form" onSubmit={handleSubmit}>
+                {schoolField}
+                <Field label="Usuario o correo">
+                  <Input
+                    icon="user"
+                    name="username"
+                    placeholder="Tu usuario o correo electrónico"
+                    value={form.username}
                     onChange={handleChange}
-                    autoComplete="organization"
+                    autoComplete="username"
                     autoCapitalize="none"
-                    spellCheck={false}
                     required
                   />
-                  {slugStatusIcon}
-                </div>
-              </Field>
-            ) : (
-              <div className="login-school-chip">
-                <Icon name="building" size={16} />
-                <span>
-                  Ingresando a <strong>{schoolName || form.tenantSlug}</strong>
-                </span>
-                <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditingSchool(true)}>
-                  Cambiar
-                </button>
-              </div>
-            )}
-            <Field label="Usuario o correo">
-              <Input
-                icon="user"
-                name="username"
-                placeholder="Tu usuario o correo electrónico"
-                value={form.username}
-                onChange={handleChange}
-                autoComplete="username"
-                autoCapitalize="none"
-                required
-              />
-            </Field>
-            <Field label="Contraseña">
-              <div className="input-group">
-                <Icon name="lock" size={17} className="input-group__icon" />
-                <input
-                  className="input"
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  placeholder="••••••••"
-                  value={form.password}
-                  onChange={handleChange}
-                  autoComplete="current-password"
-                  style={{ paddingRight: 44 }}
-                  required
-                />
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm btn--icon"
-                  style={{ position: 'absolute', right: 5 }}
-                  onClick={() => setShowPassword((s) => !s)}
-                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                >
-                  <Icon name="eye" size={16} />
-                </button>
-              </div>
-            </Field>
+                </Field>
+                <Field label="Contraseña">
+                  <div className="input-group">
+                    <Icon name="lock" size={17} className="input-group__icon" />
+                    <input
+                      className="input"
+                      type={showPassword ? 'text' : 'password'}
+                      name="password"
+                      placeholder="••••••••"
+                      value={form.password}
+                      onChange={handleChange}
+                      autoComplete="current-password"
+                      style={{ paddingRight: 44 }}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm btn--icon"
+                      style={{ position: 'absolute', right: 5 }}
+                      onClick={() => setShowPassword((s) => !s)}
+                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      <Icon name="eye" size={16} />
+                    </button>
+                  </div>
+                  <Link to="/forgot-password" className="login-forgot">
+                    ¿Olvidaste tu contraseña?
+                  </Link>
+                </Field>
 
-            <div style={{ height: 24 }} />
-            <Button type="submit" size="lg" className="btn--block" loading={loading} loadingText="Ingresando…">
-              Ingresar <Icon name="arrowRight" size={17} />
-            </Button>
-          </form>
-
-          {import.meta.env.DEV && (
-            <div className="login-demo">
-              <Icon name="sparkles" size={16} />
-              <div>
-                Datos de prueba: colegio <code>demo</code>, usuario <code>admin</code>, contraseña <code>Admin123!</code>
-              </div>
-            </div>
+                <Button type="submit" size="lg" className="btn--block login-form__submit" loading={loading} loadingText="Ingresando…">
+                  Ingresar <Icon name="arrowRight" size={17} />
+                </Button>
+              </form>
+            </>
           )}
+
         </div>
       </main>
     </div>

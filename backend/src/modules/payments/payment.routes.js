@@ -9,6 +9,8 @@ const { proofUpload } = require('../../middlewares/upload.middleware');
 const { z } = require('zod');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const optionsService = require('./paymentOptions.service');
+// Configuración → Vistas del representante: «Mis pagos» desactivado → 403 en las rutas de la familia.
+const familyPayments = require('../tenants/portalViews.service').requirePortalView('payments');
 
 const options = {
   schoolPeriods: asyncHandler(async (req, res) => res.status(200).json(await optionsService.listSchoolPeriods(req.db, req.tenantId))),
@@ -24,20 +26,20 @@ router.use(authMiddleware, tenantMiddleware, denyTeachers);
 // ---- Vista de padres ----
 // Sin permiso administrativo de "payments": el servicio filtra por el
 // representante del usuario autenticado (y valida que el pago sea suyo).
-router.get('/mine', controller.listMine);
+router.get('/mine', familyPayments, controller.listMine);
 
 // ---- Pagos agrupados (varias cuotas, un comprobante) ----
 // Familia: el servicio valida que cada cuota sea suya. Administración: con permiso de Pagos.
-router.post('/batches/quote', batches.quote);
-router.post('/batches', proofUpload, batches.create);
-router.get('/batches/mine', batches.mine);
-router.post('/batches/:id/withdraw', batches.withdraw);
+router.post('/batches/quote', familyPayments, batches.quote);
+router.post('/batches', familyPayments, proofUpload, batches.create);
+router.get('/batches/mine', familyPayments, batches.mine);
+router.post('/batches/:id/withdraw', familyPayments, batches.withdraw);
 router.get('/batches/:id/proof', batches.downloadProof);
 router.get('/batches', requirePermission('payments', 'read'), batches.list);
 router.get('/batches/:id', batches.getOne);
 router.post('/batches/:id/approve', requirePermission('payments', 'approve_payment'), batches.approve);
 router.post('/batches/:id/reject', requirePermission('payments', 'approve_payment'), batches.reject);
-router.post('/:id/report', proofUpload, controller.report);
+router.post('/:id/report', familyPayments, proofUpload, controller.report);
 // Comprobante adjunto: privado; el servicio valida si quien lo pide es la familia o quien revisa pagos.
 router.get('/:id/proof', controller.downloadProof);
 // Recibo PDF: privado, misma regla (la familia dueña del pago o quien lee pagos).

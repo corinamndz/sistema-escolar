@@ -18,16 +18,18 @@ import PortalEvaluations from '../components/PortalEvaluations';
 import PortalEvaluationPlan from '../components/PortalEvaluationPlan';
 import PortalClubs from '../components/PortalClubs';
 import PortalRecognitions from '../components/PortalRecognitions';
+import { usePortalViews } from '../../../lib/portalViews';
 
+// `view`: la clave en Configuración → Vistas del representante (Información siempre se muestra).
 const TABS = [
-  { key: 'grades', label: 'Calificaciones' },
-  { key: 'plan', label: 'Plan de evaluación' },
-  { key: 'schedule', label: 'Horario' },
-  { key: 'evaluations', label: 'Evaluaciones' },
-  { key: 'history', label: 'Historial académico' },
-  { key: 'recognitions', label: 'Reconocimientos' },
-  { key: 'discipline', label: 'Convivencia' },
-  { key: 'clubs', label: 'Clubes' },
+  { key: 'grades', label: 'Calificaciones', view: 'grades' },
+  { key: 'plan', label: 'Plan de evaluación', view: 'evaluation_plan' },
+  { key: 'schedule', label: 'Horario', view: 'schedule' },
+  { key: 'evaluations', label: 'Evaluaciones', view: 'evaluations' },
+  { key: 'history', label: 'Historial académico', view: 'history' },
+  { key: 'recognitions', label: 'Reconocimientos', view: 'recognitions' },
+  { key: 'discipline', label: 'Convivencia', view: 'discipline' },
+  { key: 'clubs', label: 'Clubes', view: 'clubs' },
   { key: 'info', label: 'Información' },
 ];
 
@@ -38,7 +40,10 @@ const TABS = [
 function PortalStudentPage() {
   const { studentId } = useParams();
   const [params, setParams] = useSearchParams();
-  const tab = TABS.some((t) => t.key === params.get('tab')) ? params.get('tab') : 'grades';
+  const isOn = usePortalViews();
+  const tabs = TABS.filter((t) => !t.view || isOn(t.view));
+  // Pestaña pedida (p. ej. desde un aviso) si está activa; si no, la primera visible.
+  const tab = tabs.some((t) => t.key === params.get('tab')) ? params.get('tab') : tabs[0].key;
   const { data, loading, error } = useFetch(() => portalApi.getMine(), []);
 
   if (loading) return <Spinner />;
@@ -84,7 +89,7 @@ function PortalStudentPage() {
       {student.grades_locked ? (
         <GradesLockedNotice overdueCount={student.payments?.overdue_count} />
       ) : (
-        <Tabs tabs={TABS} active={tab} onChange={(key) => setParams({ tab: key }, { replace: true })} />
+        <Tabs tabs={tabs} active={tab} onChange={(key) => setParams({ tab: key }, { replace: true })} />
       )}
 
       {!student.grades_locked && tab === 'grades' && <StudentGrades studentId={studentId} />}

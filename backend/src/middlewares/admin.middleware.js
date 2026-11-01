@@ -27,7 +27,7 @@ async function requireAdmin(req, res, next) {
   try {
     if (!req.db || !req.user) throw ApiError.unauthorized('No autenticado.');
     if (!(await isAdmin(req.db, req.tenantId, req.user.id))) {
-      throw ApiError.forbidden('Solo el Administrador puede acceder a la auditoría.');
+      throw ApiError.forbidden('Solo el Administrador del colegio puede acceder a esta sección.');
     }
     next();
   } catch (err) {

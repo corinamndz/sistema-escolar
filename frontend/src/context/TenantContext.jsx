@@ -31,6 +31,8 @@ function TenantProvider({ children }) {
   const { isAuthenticated } = useAuth();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(false);
+  // true tras la PRIMERA carga con sesión (la pantalla de inicio espera a la marca del colegio).
+  const [loadedOnce, setLoadedOnce] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,6 +50,7 @@ function TenantProvider({ children }) {
       }
     } finally {
       setLoading(false);
+      setLoadedOnce(true);
     }
   }, []);
 
@@ -59,7 +62,10 @@ function TenantProvider({ children }) {
     const wasAuthenticated = authRef.current;
     authRef.current = isAuthenticated;
     if (isAuthenticated) load();
-    else if (wasAuthenticated) setSettings(DEFAULT_SETTINGS);
+    else if (wasAuthenticated) {
+      setSettings(DEFAULT_SETTINGS);
+      setLoadedOnce(false);
+    }
   }, [isAuthenticated, load]);
 
   // Al volver a la pestaña se relee la configuración (máx. cada 30 s): si la
@@ -101,8 +107,8 @@ function TenantProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ settings, loading, refreshTenant: load, applyBranding }),
-    [settings, loading, load, applyBranding]
+    () => ({ settings, loading, loadedOnce, refreshTenant: load, applyBranding }),
+    [settings, loading, loadedOnce, load, applyBranding]
   );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;

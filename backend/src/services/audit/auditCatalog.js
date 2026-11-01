@@ -28,6 +28,7 @@ const MODULES = {
   events: { label: 'Eventos', noun: 'EVENTO' },
   appointments: { label: 'Citas con padres', noun: 'CITA' },
   recognitions: { label: 'Reconocimientos', noun: 'RECONOCIMIENTO' },
+  support: { label: 'Soporte técnico', noun: 'TICKET' },
 };
 
 const SEGMENT_MODULE = {
@@ -54,12 +55,17 @@ const SEGMENT_MODULE = {
   events: 'events',
   appointments: 'appointments',
   recognitions: 'recognitions',
+  support: 'support',
 };
 
 /** No se registran: no cambian datos del colegio o son ruido (marcar leído, validar antes de importar…). */
 const IGNORED = new Set([
   'POST /auth/login', // se registra aparte (éxito y fallo), ver auth.service
   'POST /auth/refresh',
+  // Recuperación de contraseña: se registra aparte (passwordReset.service), sin sesión.
+  'POST /auth/forgot-password',
+  'POST /auth/reset-password/verify',
+  'POST /auth/reset-password',
   'POST /imports/:type/validate',
   'POST /evaluation-plans/activity-template/parse',
   'POST /notifications/read-all',
@@ -80,6 +86,7 @@ const ACTIONS = {
   'DELETE /tenant/mail-settings': ['ELIMINAR_CORREO', 'Quitó la configuración de correo'],
   'POST /tenant/mail-settings/test': ['PROBAR_CORREO', 'Envió un correo de prueba'],
   'PUT /tenant/notification-preferences': ['ACTUALIZAR_AVISOS', 'Actualizó las preferencias de avisos'],
+  'PUT /tenant/portal-views': ['ACTUALIZAR_VISTAS_PORTAL', 'Actualizó las vistas del portal del representante'],
   'PUT /tenant/academic-settings': ['ACTUALIZAR_REVISION_ACADEMICA', 'Cambió si el contenido programático requiere revisión'],
 
   'POST /roles': ['CREAR_ROL', 'Creó el rol'],
@@ -174,6 +181,8 @@ const ACTIONS = {
   'POST /recognitions': ['OTORGAR_RECONOCIMIENTO', 'Otorgó un reconocimiento'],
   'PUT /recognitions/:id': ['EDITAR_RECONOCIMIENTO', 'Editó el reconocimiento'],
   'DELETE /recognitions/:id': ['ELIMINAR_RECONOCIMIENTO', 'Eliminó el reconocimiento'],
+  'POST /support/tickets': ['CREAR_TICKET_SOPORTE', 'Reportó un ticket de soporte'],
+  'POST /support/tickets/:id/messages': ['RESPONDER_TICKET_SOPORTE', 'Respondió el ticket de soporte'],
   'PUT /discipline/sanctions/:id': ['ACTUALIZAR_SANCION', 'Actualizó una sanción'],
   'DELETE /discipline/sanctions/:id': ['ELIMINAR_SANCION', 'Eliminó una sanción'],
 

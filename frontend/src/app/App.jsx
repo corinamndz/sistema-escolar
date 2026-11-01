@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import AppLayout from '../components/layout/AppLayout';
 import ProtectedRoute from './ProtectedRoute';
+import SplashScreen from '../components/layout/SplashScreen';
 import PermissionRoute from './PermissionRoute';
 
 import LoginPage from '../features/auth/pages/LoginPage';
@@ -26,7 +27,9 @@ import AppointmentsPage from '../features/appointments/pages/AppointmentsPage';
 import NotificationLogPage from '../features/notifications/pages/NotificationLogPage';
 import NotificationCenterPage from '../features/notifications/pages/NotificationCenterPage';
 import RecognitionsPage from '../features/recognitions/pages/RecognitionsPage';
+import PortalViewGate from '../components/layout/PortalViewGate';
 import AuditPage from '../features/audit/pages/AuditPage';
+import SupportPage from '../features/support/pages/SupportPage';
 import GradeSummaryPage from '../features/grading/pages/GradeSummaryPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
@@ -46,6 +49,9 @@ function App() {
     <ThemeProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* Recuperación de contraseña: mismo diseño del login, otra tarjeta. */}
+        <Route path="/forgot-password" element={<LoginPage mode="forgot" />} />
+        <Route path="/reset-password" element={<LoginPage mode="reset" />} />
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
@@ -101,6 +107,7 @@ function App() {
             </Route>
             <Route element={<PermissionRoute adminOnly />}>
               <Route path="audit" element={<AuditPage />} />
+              <Route path="support" element={<SupportPage />} />
             </Route>
             <Route element={<PermissionRoute module="appointments" />}>
               <Route path="appointments" element={<AppointmentsPage />} />
@@ -142,19 +149,21 @@ function App() {
 
             {/* Vista de padres: cualquier usuario autenticado con hijos asociados, sin permiso administrativo */}
             <Route element={<PermissionRoute guardianOnly blockTeacher />}>
-              <Route path="payments/mine" element={<MyPaymentsPage />} />
+              <Route path="payments/mine" element={<PortalViewGate view="payments"><MyPaymentsPage /></PortalViewGate>} />
             </Route>
             {/* Portal de padres: detalle y calificaciones de un representado (el backend valida el vínculo) */}
             <Route path="portal/students/:studentId" element={<PortalStudentPage />} />
             {/* Cartelera de eventos para las familias (el backend filtra por sus hijos) */}
             <Route element={<PermissionRoute guardianOnly />}>
-              <Route path="portal/events" element={<PortalEventsPage />} />
+              <Route path="portal/events" element={<PortalViewGate view="events"><PortalEventsPage /></PortalViewGate>} />
             </Route>
 
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Route>
       </Routes>
+      {/* Logo de MoDo Educa al arrancar; se desvanece al validar la sesión y cargar la marca del colegio. */}
+      <SplashScreen />
     </ThemeProvider>
   );
 }

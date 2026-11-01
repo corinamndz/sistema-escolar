@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- MoDo Educa: el "o" con play y flecha del logotipo, con el degradado de la marca (violeta → azul → turquesa) -->
+  <defs>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="6" y1="60" x2="60" y2="4">
+      <stop offset="0" stop-color="#6E14C4" />
+      <stop offset="0.45" stop-color="#3D6FC6" />
+      <stop offset="0.75" stop-color="#0F94BF" />
+      <stop offset="1" stop-color="#13B4BE" />
+    </linearGradient>
+  </defs>
+  <circle cx="25" cy="39" r="17.5" fill="none" stroke="url(#g)" stroke-width="9.5" />
+  <path d="M19.5 30v18l14.5-9z" fill="url(#g)" stroke="url(#g)" stroke-width="2.5" stroke-linejoin="round" />
+  <path d="M37.5 26.5 50 14" stroke="url(#g)" stroke-width="8.5" stroke-linecap="round" />
+  <path d="M40 4h20v20z" fill="url(#g)" stroke="url(#g)" stroke-width="2.5" stroke-linejoin="round" />
+</svg>

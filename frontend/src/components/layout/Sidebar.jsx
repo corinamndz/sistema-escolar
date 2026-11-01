@@ -24,7 +24,9 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
 
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => isNavItemVisible(item, { can, user })).map((item) => ({ ...item, label: navItemLabel(item, user) })),
+    items: section.items
+      .filter((item) => isNavItemVisible(item, { can, user, portalViews: settings.portalViews }))
+      .map((item) => ({ ...item, label: navItemLabel(item, user) })),
   })).filter((section) => section.items.length > 0);
 
   const displayName = user?.fullName || user?.username;
@@ -53,9 +55,16 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
         .join(' ')}
       aria-label="Menú principal"
     >
-      <div className="sidebar__brand">
-        {/* Sin logo propio (o si no carga): el de MoDo Educa. */}
-        <SchoolLogo src={settings.logoUrl} name={settings.name} className="sidebar__logo" />
+      <div className={`sidebar__brand${compact ? '' : ' sidebar__brand--hero'}`}>
+        {/* Logo del colegio (Configuración → Apariencia), transparente sobre el menú; sin logo
+            propio (o si no carga), el de MoDo Educa para fondo oscuro. Con el menú en íconos, la versión compacta. */}
+        <SchoolLogo
+          src={settings.logoUrl}
+          name={settings.name}
+          variant={compact ? 'compact' : 'full'}
+          tone="dark"
+          className={compact ? 'sidebar__logo' : 'sidebar__hero-logo'}
+        />
 
         {!compact && (
           <div className="sidebar__brand-text">

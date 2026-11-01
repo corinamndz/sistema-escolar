@@ -12,6 +12,7 @@ import { LevelBadge } from '../../academics/levels';
 import UpcomingEvents from '../../portal/components/UpcomingEvents';
 import { formatAmounts, formatDate, formatMoney } from '../../payments/paymentStatus';
 import MyAppointments from '../../appointments/components/MyAppointments';
+import { usePortalViews } from '../../../lib/portalViews';
 
 const STUDENT_STATUS = {
   active: ['Activo', 'success'],
@@ -22,7 +23,7 @@ const STUDENT_STATUS = {
 
 
 /** `refCurrency`: moneda en que el backend totalizó lo pendiente (portal.ref_currency). */
-function StudentCard({ student, refCurrency }) {
+function StudentCard({ student, refCurrency, showPayments = true }) {
   const [statusLabel, statusVariant] = STUDENT_STATUS[student.status] || ['—', 'neutral'];
   const { payments } = student;
   // Con cuotas vencidas, las calificaciones están bloqueadas (el backend también lo exige).
@@ -71,7 +72,8 @@ function StudentCard({ student, refCurrency }) {
         )}
       </div>
 
-      <div
+      {showPayments && (
+        <div
         className={`student-card__block student-card__pay ${
           payments.overdue_count ? 'is-overdue' : payments.pending_count ? 'is-pending' : 'is-ok'
         }`}
@@ -108,7 +110,8 @@ function StudentCard({ student, refCurrency }) {
             Último pago: {payments.last_paid.period_label} · {formatDate(payments.last_paid.paid_at)}
           </div>
         )}
-      </div>
+        </div>
+      )}
       <div className="student-card__actions">
         {locked ? (
           <button
@@ -154,6 +157,9 @@ export function BillingNotice({ issues }) {
  */
 function GuardianPanel() {
   const { data, loading, error } = useFetch(() => portalApi.getMine(), []);
+  // Secciones que el colegio ocultó (Configuración → Vistas del representante).
+  const isOn = usePortalViews();
+  const showPayments = isOn('payments');
 
   if (loading) return <Spinner label="Cargando tus alumnos…" />;
   if (error) return <Alert>{error}</Alert>;
@@ -165,10 +171,12 @@ function GuardianPanel() {
 
   return (
     <>
-      {incomplete && <BillingNotice issues={billingIssues} />}
+      {showPayments && incomplete && <BillingNotice issues={billingIssues} />}
 
-      <div className="grid grid--3" style={{ marginBottom: 24 }}>
+      <div className={`grid ${showPayments ? 'grid--3' : 'grid--1'}`} style={{ marginBottom: 24 }}>
         <StatCard label="Alumnos a cargo" value={totals.students} icon="graduation" tone="primary" hint="Vinculados a tu cuenta" />
+        {showPayments && (
+          <>
         <StatCard
           label="Pagos pendientes"
           value={totals.pending_count}
@@ -197,12 +205,14 @@ function GuardianPanel() {
               : 'Suma de pagos pendientes'
           }
         />
+          </>
+        )}
       </div>
 
       {/* Citas por confirmar: lo primero que la familia debe atender. */}
-      <MyAppointments />
+      {isOn('appointments') && <MyAppointments />}
 
-      <UpcomingEvents />
+      {isOn('events') && <UpcomingEvents />}
 
       <section className="card">
         <div className="card__header">
@@ -210,11 +220,13 @@ function GuardianPanel() {
             <h3 className="card__title">
               Mis alumnos <span className="data-table__count">{students.length}</span>
             </h3>
-            <p className="card__subtitle">Información académica y estado de pagos de cada uno</p>
+            <p className="card__subtitle">{showPayments ? 'Información académica y estado de pagos de cada uno' : 'Información académica de cada uno'}</p>
           </div>
-          <Link to="/payments/mine" className="btn btn--secondary btn--sm">
-            <Icon name="receipt" size={15} /> Ver mis pagos
-          </Link>
+          {showPayments && (
+            <Link to="/payments/mine" className="btn btn--secondary btn--sm">
+              <Icon name="receipt" size={15} /> Ver mis pagos
+            </Link>
+          )}
         </div>
 
         {students.length === 0 ? (
@@ -228,7 +240,7 @@ function GuardianPanel() {
         ) : (
           <div className="student-cards">
             {students.map((s) => (
-              <StudentCard key={s.id} student={s} refCurrency={data.ref_currency} />
+              <StudentCard key={s.id} student={s} refCurrency={data.ref_currency} showPayments={showPayments} />
             ))}
           </div>
         )}

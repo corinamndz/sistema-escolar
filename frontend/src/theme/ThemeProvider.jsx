@@ -33,7 +33,7 @@ function ThemeProvider({ children }) {
   }, [theme]);
 
   useEffect(() => {
-    document.title = settings.name ? `${settings.name} · Sistema Escolar` : 'Sistema Escolar';
+    document.title = settings.name && settings.name !== 'Sistema Escolar' ? `${settings.name} · MoDo Educa` : 'MoDo Educa';
   }, [settings.name]);
 
   const value = useMemo(() => ({ setPreview }), []);

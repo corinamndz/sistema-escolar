@@ -41,6 +41,10 @@ const tenantApi = {
   getAcademicSettings: () => axiosClient.get('/tenant/academic-settings').then((r) => r.data),
   updateAcademicSettings: (requiresAcademicReview) => axiosClient.put('/tenant/academic-settings', { requiresAcademicReview }).then((r) => r.data),
   getNotificationPreferences: () => axiosClient.get('/tenant/notification-preferences').then((r) => r.data),
+  /** Vistas del portal del representante: { views: [{ key, group, label, description, icon, enabled }] } */
+  getPortalViews: () => axiosClient.get('/tenant/portal-views').then((r) => r.data),
+  /** { payments: false, … } (uno o varios) → la lista actualizada */
+  savePortalViews: (views) => axiosClient.put('/tenant/portal-views', { views }).then((r) => r.data),
   /** { preferences: [{ event, channel: 'bell' | 'email', enabled }] } → la matriz actualizada */
   saveNotificationPreferences: (preferences) => axiosClient.put('/tenant/notification-preferences', { preferences }).then((r) => r.data),
   /** Ajustes de tiempo de los recordatorios: { evaluationReminderDays?, eventReminderDays?, meetingReminderDays?, overdueIntervalDays?, overdueMaxReminders? } → la matriz actualizada */

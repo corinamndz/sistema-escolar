@@ -175,6 +175,13 @@ const removeEntry = asyncHandler(async (req, res) => {
   res.status(200).json(await service.removeEntry(req.db, req.tenantId, uuid.parse(req.params.id)));
 });
 
+/** DELETE /schedules/sections/:id/entries — vacía el horario de la sección (todas sus clases). */
+const clearSection = asyncHandler(async (req, res) => {
+  const sectionId = uuid.parse(req.params.id);
+  await assertSectionsInLevel(req, await coordinator.requireLevel(req), [sectionId]);
+  res.status(200).json(await service.clearSection(req.db, req.tenantId, sectionId));
+});
+
 /**
  * GET /schedules?school_period_id=&grade_id=&section_id=&teacher_id=
  * Horario filtrado (administración, solo lectura). Todos los filtros son
@@ -314,4 +321,4 @@ const saveUnavailability = asyncHandler(async (req, res) => {
   res.status(200).json(await generator.saveUnavailability(req.db, req.tenantId, uuid.parse(req.params.periodId), uuid.parse(req.params.staffId), cells));
 });
 
-module.exports = { listPeriods, generate, getGeneration, applyGeneration, discardGeneration, getUnavailability, saveUnavailability, listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers, listGrades, listAssignments, downloadPdf, getEvaluationCalendar, downloadEvaluationPdf };
+module.exports = { clearSection, listPeriods, generate, getGeneration, applyGeneration, discardGeneration, getUnavailability, saveUnavailability, listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers, listGrades, listAssignments, downloadPdf, getEvaluationCalendar, downloadEvaluationPdf };

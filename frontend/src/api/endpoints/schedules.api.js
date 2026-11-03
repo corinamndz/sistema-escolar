@@ -26,6 +26,8 @@ const schedulesApi = {
   /** Mueve una clase: { dayOfWeek, timeSlotId, onOccupied?: 'swap' | 'replace' }. → clase + swapped/replaced si hubo. */
   move: (entryId, data) => axiosClient.put(`/schedules/entries/${entryId}`, data).then((r) => r.data),
   remove: (entryId) => axiosClient.delete(`/schedules/entries/${entryId}`).then((r) => r.data),
+  /** Vacía el horario de la sección → { removed, section } */
+  clearSection: (sectionId) => axiosClient.delete(`/schedules/sections/${sectionId}/entries`).then((r) => r.data),
   /**
    * Horario filtrado (solo lectura): { school_period_id | section_id, grade_id?, teacher_id? }.
    * → { school_period, grade, section, teacher, days, slots, entries, summary }

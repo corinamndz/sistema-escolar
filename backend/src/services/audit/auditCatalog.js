@@ -148,6 +148,7 @@ const ACTIONS = {
   'POST /evaluation-plans/:planId/activities': ['CREAR_ACTIVIDAD', 'Creó la actividad'],
   'PUT /evaluation-plans/:planId/activities/:activityId': ['ACTUALIZAR_ACTIVIDAD', 'Actualizó la actividad'],
   'DELETE /evaluation-plans/:planId': ['ELIMINAR_PLAN', 'Eliminó un plan de evaluación'],
+  'DELETE /schedules/sections/:id/entries': ['LIMPIAR_HORARIO', 'Vació el horario completo de una sección'],
   'DELETE /evaluation-plans/:planId/activities/:activityId': ['ELIMINAR_ACTIVIDAD', 'Eliminó una actividad evaluativa'],
 
   'PUT /grading/activities/:activityId/scores': ['REGISTRAR_NOTA', 'Registró o cambió una calificación'],

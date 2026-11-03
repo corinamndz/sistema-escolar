@@ -12,6 +12,7 @@ import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import ScheduleGrid, { hueOf } from '../components/ScheduleGrid';
 import SlotsEditorModal from '../components/SlotsEditorModal';
 import TeacherScheduleView from '../components/TeacherScheduleView';
@@ -23,6 +24,9 @@ import ScheduleGeneratorModal from '../components/ScheduleGeneratorModal';
 import TeacherAvailabilityModal from '../components/TeacherAvailabilityModal';
 import { blobErrorMessage, saveBlob } from '../../../utils/download';
 import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
+
+/** Duración del desvanecimiento al quitar una clase (igual que .schedule-entry.is-removing en index.css). */
+const REMOVE_FADE_MS = 180;
 
 const VIEWS = [
   { key: 'section', label: 'Por grado / sección', icon: 'layers' },
@@ -261,16 +265,93 @@ function SchedulesPage() {
     }
   };
 
+  /**
+   * Quita una clase de la grilla (× de la tarjeta o arrastrándola al panel):
+   *   1. la tarjeta se desvanece y la celda queda vacía al instante;
+   *   2. se borra en el servidor (la carga del docente se libera: se calcula de las clases);
+   *   3. el aviso ofrece "Deshacer" (vuelve a colocarla en la misma hora), en lugar
+   *      de una confirmación previa que frenaría cada cambio.
+   * Si el servidor falla, la clase vuelve a su celda.
+   */
+  const [removingIds, setRemovingIds] = useState(() => new Set());
+  const removing = (id, on) =>
+    setRemovingIds((s) => {
+      const next = new Set(s);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   const remove = async (entry) => {
+    if (removingIds.has(entry.id)) return; // doble clic
+    removing(entry.id, true);
+    setSelected(null);
     setSaveStatus('saving');
+    await new Promise((r) => setTimeout(r, REMOVE_FADE_MS)); // desvanecimiento
+    setData((d) => (d ? { ...d, entries: d.entries.filter((e) => e.id !== entry.id) } : d));
     try {
       await schedulesApi.remove(entry.id);
-      await refresh();
       markSaved([]);
-      toast.success('Clase quitada', `${entry.subject_name}`);
+      refresh(); // horas pendientes del panel y carga de los docentes
+      toast.show({
+        variant: 'success',
+        title: 'Clase quitada',
+        message: `${entry.subject_name} · ${entry.teacher_name || 'sin docente'}`,
+        duration: 6000,
+        action: { label: 'Deshacer', onClick: () => undoRemove(entry) },
+      });
     } catch (err) {
+      setData((d) => (d && !d.entries.some((e) => e.id === entry.id) ? { ...d, entries: [...d.entries, entry] } : d));
       setSaveStatus('error');
       toast.error('No se pudo quitar', getErrorMessage(err));
+    } finally {
+      removing(entry.id, false);
+    }
+  };
+  /**
+   * "Limpiar horario": con confirmación obligatoria, quita TODAS las clases de la
+   * sección. La grilla queda vacía al instante; si el servidor falla, se recarga.
+   */
+  const confirm = useConfirm();
+  const [clearing, setClearing] = useState(false);
+  const clearSchedule = async () => {
+    const label = `${data.section.grade_name} · Sección ${data.section.name}`;
+    const ok = await confirm({
+      title: `¿Vaciar todo el horario de ${label}?`,
+      message: `Se desasignarán las ${data.entries.length} clases de la semana y la carga de sus docentes quedará libre. Los bloques horarios y la asignación de docentes no cambian. Esta acción no se puede deshacer.`,
+      confirmLabel: 'Sí, limpiar horario',
+      danger: true,
+      icon: 'trash',
+    });
+    if (!ok) return;
+    setClearing(true);
+    setSelected(null);
+    setSaveStatus('saving');
+    const previous = data.entries;
+    setData((d) => (d ? { ...d, entries: [] } : d));
+    try {
+      const { removed } = await schedulesApi.clearSection(sectionId);
+      markSaved([]);
+      refresh(); // horas pendientes del panel de materias
+      toast.success('Horario vaciado', `${label}: ${removed} ${removed === 1 ? 'clase quitada' : 'clases quitadas'}.`);
+    } catch (err) {
+      setData((d) => (d ? { ...d, entries: previous } : d));
+      setSaveStatus('error');
+      toast.error('No se pudo limpiar el horario', getErrorMessage(err));
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  /** "Deshacer": la vuelve a colocar en la misma hora (con el docente asignado hoy a la materia). */
+  const undoRemove = async (entry) => {
+    setSaveStatus('saving');
+    try {
+      await schedulesApi.place(sectionId, { subjectId: entry.subject_id, dayOfWeek: entry.day_of_week, timeSlotId: entry.time_slot_id });
+      await refresh();
+      markSaved([`${entry.day_of_week}|${entry.time_slot_id}`]);
+    } catch (err) {
+      setSaveStatus('error');
+      toast.error('No se pudo deshacer', getErrorMessage(err));
     }
   };
 
@@ -381,6 +462,12 @@ function SchedulesPage() {
                 title={noSlots ? 'Configura primero los bloques horarios del año' : 'Arma el horario de todas las secciones sin cruces de profesores'}
               >
                 Generar Horario Automático
+              </Button>
+            )}
+            {/* Vaciar la sección abierta (solo en la grilla editable y si tiene clases). */}
+            {view === 'section' && editable && data?.entries?.length > 0 && (
+              <Button variant="danger" icon="trash" onClick={clearSchedule} loading={clearing} loadingText="Limpiando…">
+                Limpiar horario
               </Button>
             )}
             <Button
@@ -761,6 +848,7 @@ function SchedulesPage() {
                   onEntryDragStart={(e) => setDragging(itemOfEntry(e))}
                   onEntryDragEnd={() => setDragging(null)}
                   onEntryRemove={remove}
+                  removingIds={removingIds}
                   // Tocar una clase: con algo elegido, se coloca ahí (reemplaza/intercambia);
                   // si no, se elige esa clase para moverla (pantallas táctiles, teclado).
                   onEntrySelect={(e) => {

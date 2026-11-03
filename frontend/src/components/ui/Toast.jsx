@@ -36,10 +36,11 @@ function ToastProvider({ children }) {
     timers.current.delete(id);
   }, []);
 
+  /** `action`: { label, onClick } → botón en el aviso (p. ej. "Deshacer"); al usarlo, el aviso se cierra. */
   const show = useCallback(
-    ({ variant = 'info', title, message, duration = DEFAULT_DURATION }) => {
+    ({ variant = 'info', title, message, duration = DEFAULT_DURATION, action = null }) => {
       const id = nextId++;
-      setToasts((list) => [...list.slice(-4), { id, variant, title, message, duration }]);
+      setToasts((list) => [...list.slice(-4), { id, variant, title, message, duration, action }]);
       if (duration > 0) timers.current.set(id, setTimeout(() => dismiss(id), duration));
       return id;
     },
@@ -81,6 +82,18 @@ function ToastProvider({ children }) {
                 <div className="toast__title">{t.title}</div>
                 {t.message && <p className="toast__message">{t.message}</p>}
               </div>
+              {t.action && (
+                <button
+                  type="button"
+                  className="toast__action"
+                  onClick={() => {
+                    dismiss(t.id);
+                    t.action.onClick();
+                  }}
+                >
+                  {t.action.label}
+                </button>
+              )}
               <button className="toast__close" onClick={() => dismiss(t.id)} aria-label="Cerrar notificación">
                 <Icon name="x" size={16} />
               </button>

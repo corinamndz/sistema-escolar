@@ -30,6 +30,8 @@ router.put('/periods/:periodId/slots', admin('update'), controller.saveSlots);
 router.post('/sections/:id/entries', admin('update'), controller.placeEntry);
 router.put('/entries/:id', admin('update'), controller.moveEntry);
 router.delete('/entries/:id', admin('update'), controller.removeEntry);
+// Limpiar el horario completo de una sección.
+router.delete('/sections/:id/entries', admin('update'), controller.clearSection);
 
 // Generador automático: genera una vista previa; se guarda solo al aplicarla.
 router.post('/periods/:periodId/generate', admin('update'), controller.generate);

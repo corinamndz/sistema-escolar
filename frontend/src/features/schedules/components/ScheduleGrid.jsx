@@ -33,6 +33,7 @@ function ScheduleGrid({
   onEntryDragStart,
   onEntryDragEnd,
   onEntryRemove,
+  removingIds = null, // clases que se están quitando (se desvanecen)
   entryText = (e) => ({ title: e.subject_name, sub: e.teacher_name }),
   colorOf,
   cellHint,
@@ -117,7 +118,7 @@ function ScheduleGrid({
                         return (
                           <div
                             key={entry.id}
-                            className={`schedule-entry ${entry.teacher_changed ? 'has-warning' : ''} ${clickable ? 'is-clickable' : ''} ${selectedEntryId === entry.id ? 'is-selected' : ''}`}
+                            className={`schedule-entry ${entry.teacher_changed ? 'has-warning' : ''} ${clickable ? 'is-clickable' : ''} ${selectedEntryId === entry.id ? 'is-selected' : ''} ${removingIds?.has(entry.id) ? 'is-removing' : ''}`}
                             role={clickable ? 'button' : undefined}
                             tabIndex={clickable ? 0 : undefined}
                             onKeyDown={
@@ -171,6 +172,7 @@ function ScheduleGrid({
                                   e.stopPropagation(); // no seleccionar la clase al quitarla
                                   onEntryRemove(entry);
                                 }}
+                                disabled={removingIds?.has(entry.id)}
                                 aria-label={`Quitar ${text.title}`}
                                 title="Quitar del horario"
                               >

@@ -338,6 +338,19 @@ async function removeEntry(trx, tenantId, entryId) {
   return { ok: true };
 }
 
+/**
+ * Vacía el horario de una sección: borra todas sus clases de la semana en una
+ * sola sentencia (dentro de la transacción del request: o todas o ninguna).
+ * La carga de los docentes se libera sola (se calcula de las clases). No toca
+ * los bloques horarios del año ni la asignación de docentes.
+ */
+async function clearSection(trx, tenantId, sectionId) {
+  const section = await loadSection(trx, tenantId, sectionId);
+  if (section.period_closed_at) throw ApiError.unprocessable(`El año escolar ${section.school_period_name} está finalizado: su horario es de solo lectura.`);
+  const removed = await trx('class_schedules').where({ tenant_id: tenantId, section_id: sectionId }).delete();
+  return { removed, section: { id: section.id, name: section.name, grade_name: section.grade_name } };
+}
+
 /** Sección de un año escolar (para validar el acceso del docente). */
 async function sectionOfEntry(trx, tenantId, entryId) {
   return (await loadEntry(trx, tenantId, entryId)).section_id;
@@ -674,7 +687,7 @@ module.exports = {
   getSectionSchedule,
   placeEntry,
   moveEntry,
-  removeEntry,
+  removeEntry, clearSection,
   sectionOfEntry,
   getTeacherSchedule,
   getStudentSchedule,

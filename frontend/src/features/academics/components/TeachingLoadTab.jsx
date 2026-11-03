@@ -7,6 +7,7 @@ import DetailDrawer from '../../../components/ui/DetailDrawer';
 import Select from '../../../components/ui/Select';
 import Badge from '../../../components/ui/Badge';
 import { LEVELS, LevelBadge, LevelFilter, teacherName } from '../levels';
+import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 
 const ROLE_LABELS = { lead: 'Titular', assistant: 'Auxiliar' };
 
@@ -22,9 +23,10 @@ function assignmentLabel(a) {
 function TeachingLoadTab() {
   const { data: periods } = useFetch(() => academicsApi.listSchoolPeriods(), []);
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
+  useDefaultSchoolPeriod(periods, schoolPeriodId, setSchoolPeriodId, { allowAll: true });
   const { data: teachers, loading, error } = useFetch(
-    () => academicsApi.getTeachingLoad(schoolPeriodId ? { schoolPeriodId } : undefined),
-    [schoolPeriodId]
+    () => (periods ? academicsApi.getTeachingLoad(schoolPeriodId ? { schoolPeriodId } : undefined) : Promise.resolve(null)),
+    [schoolPeriodId, Boolean(periods)]
   );
   const [level, setLevel] = useState('');
   const [viewing, setViewing] = useState(null);

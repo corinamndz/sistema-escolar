@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import clubsApi from '../../../api/endpoints/clubs.api';
 import academicsApi from '../../../api/endpoints/academics.api';
 import { getErrorMessage } from '../../../api/axiosClient';
@@ -14,7 +14,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { ClubFormModal, EnrollModal, MembersModal } from '../components/ClubModals';
 import { CLUB_CATEGORIES, sessionSummary } from '../clubCatalog';
-import { currentPeriod } from '../../../lib/schoolPeriods';
+import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 
 /**
  * Clubes y actividades extracurriculares: catálogo del colegio (con la
@@ -28,10 +28,7 @@ function ClubsPage() {
   const confirm = useConfirm();
   const { data: periods } = useFetch(() => academicsApi.listSchoolPeriods(), []);
   const [periodId, setPeriodId] = useState('');
-  useEffect(() => {
-    if (periodId || !periods?.length) return;
-    setPeriodId(currentPeriod(periods).id);
-  }, [periods, periodId]);
+  useDefaultSchoolPeriod(periods, periodId, setPeriodId);
   const period = (periods || []).find((p) => p.id === periodId);
 
   const { data: clubs, loading, error, refetch } = useFetch(() => (periodId ? clubsApi.list(periodId) : Promise.resolve([])), [periodId]);

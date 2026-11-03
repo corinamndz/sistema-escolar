@@ -14,7 +14,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { LEVELS, LEVEL_CODES } from '../levels';
 import { isSectionStaffed } from '../setup/useSetupStatus';
 import GradeWorkspace from './GradeWorkspace';
-import { currentPeriod } from '../../../lib/schoolPeriods';
+import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 
 /**
  * Panel por grado de Secciones y docentes (/secciones-academicas).
@@ -40,10 +40,7 @@ function AcademicPanel({ onGoToSetup }) {
   const gradeId = params.get('grado') || '';
 
   // Año por defecto: el que está en curso hoy (no el siguiente ya creado).
-  useEffect(() => {
-    if (periodId || !periods?.length) return;
-    setPeriodId(currentPeriod(periods).id);
-  }, [periods, periodId]);
+  useDefaultSchoolPeriod(periods, periodId, setPeriodId);
 
   // Grado de la URL: si no viene, el primero; si no existe (enlace viejo, grado
   // eliminado o id mal copiado), se avisa y se muestra el primero.

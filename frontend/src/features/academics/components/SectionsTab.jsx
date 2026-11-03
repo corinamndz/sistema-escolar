@@ -17,6 +17,7 @@ import { LEVELS, LEVEL_CODES, LevelBadge, LevelFilter, LevelRule } from '../leve
 import TeacherAssignmentModal from './TeacherAssignmentModal';
 import ImportActions from '../../../components/import/ImportActions';
 import HelpTip from '../../../components/ui/HelpTip';
+import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 
 /** Personal docente de una sección según su nivel (docente / auxiliar / docente guía). */
 export function TeachersSummary({ section }) {
@@ -168,6 +169,8 @@ function SectionFormModal({ initial, onClose, onSaved }) {
     maxStudents: initial.max_students || 30,
   });
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  // Sección nueva: en el año escolar en curso (al editar, el año no cambia).
+  useDefaultSchoolPeriod(isEdit ? null : periods, form.schoolPeriodId, (id) => setForm((f) => ({ ...f, schoolPeriodId: id })));
 
   const { run, loading, error, fieldErrors } = useMutation(
     isEdit ? (data) => academicsApi.updateSection(initial.id, data) : academicsApi.createSection

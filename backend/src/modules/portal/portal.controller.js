@@ -7,6 +7,8 @@ const evaluationCalendar = require('../schedules/evaluationCalendar.service');
 const clubs = require('../clubs/club.service');
 const discipline = require('../discipline/discipline.service');
 const recognitions = require('../recognitions/recognition.service');
+const acknowledgments = require('./planAcknowledgment.service');
+const audit = require('../../services/audit/audit.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 
 /** GET /portal/me — panel del representante autenticado ({ guardian: null } si el usuario no es representante). */
@@ -71,7 +73,21 @@ const getStudentPlanDetail = asyncHandler(async (req, res) => {
   const planId = z.string().uuid().parse(req.params.planId);
   await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
   await grades.assertGradesUnlocked(req.db, req.tenantId, studentId); // 403 si tiene cuotas vencidas
-  res.status(200).json(await grades.getStudentPlanDetail(req.db, req.tenantId, studentId, planId));
+  const detail = await grades.getStudentPlanDetail(req.db, req.tenantId, studentId, planId);
+  // Constancia de lectura (069): ¿este representante ya confirmó esta versión del plan?
+  res.status(200).json({ ...detail, acknowledgment: await acknowledgments.stateFor(req.db, req.tenantId, req.user.id, studentId, detail) });
+});
+
+/**
+ * POST /portal/students/:studentId/evaluation-plans/:planId/acknowledge — "He leído y acepto
+ * el plan de evaluación": guarda la constancia (fecha, IP, navegador y la versión vista).
+ */
+const acknowledgePlan = asyncHandler(async (req, res) => {
+  const studentId = z.string().uuid().parse(req.params.studentId);
+  const planId = z.string().uuid().parse(req.params.planId);
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
+  await grades.assertGradesUnlocked(req.db, req.tenantId, studentId); // 403 si tiene cuotas vencidas
+  res.status(201).json(await acknowledgments.acknowledge(req.db, req.tenantId, req.user.id, studentId, planId, audit.requestContext(req)));
 });
 
 /**
@@ -112,6 +128,7 @@ const getStudentClubs = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  acknowledgePlan,
   getStudentRecognitions,
   getRecognitionCertificate,
   getStudentClubs,

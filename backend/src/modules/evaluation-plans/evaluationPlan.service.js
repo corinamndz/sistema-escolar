@@ -967,6 +967,43 @@ async function upsertActivity(
   return { ...saved, max_score: Number(saved.max_score), ...structure.get(saved.id) };
 }
 
+/**
+ * Elimina un plan con todo lo que cuelga de él (en cascada: actividades,
+ * criterios e indicadores, fechas por sección, proyecto pedagógico, secciones
+ * del plan y comentarios de revisión). Se rechaza (409) si borrarlo haría
+ * perder algo que no se puede recuperar:
+ *   - notas o evaluaciones de competencias de algún alumno;
+ *   - constancias de lectura de los representantes (069), que son el respaldo
+ *     legal de la Dirección.
+ * Devuelve un resumen para el mensaje de confirmación.
+ */
+async function deletePlan(trx, tenantId, planId) {
+  const plan = await trx('evaluation_plans as ep')
+    .join('sections as sec', 'sec.id', 'ep.section_id')
+    .join('grades as g', 'g.id', 'sec.grade_id')
+    .join('terms as t', 't.id', 'ep.term_id')
+    .leftJoin('subjects as sub', 'sub.id', 'ep.subject_id')
+    .where({ 'ep.id': planId, 'ep.tenant_id': tenantId })
+    .first('ep.id', trx.raw('COALESCE(sub.name, ep.subject) AS subject'), 'g.name as grade_name', 't.name as term_name');
+  if (!plan) throw ApiError.notFound('Plan de evaluación no encontrado.');
+
+  if (await planHasGrades(trx, planId)) {
+    throw ApiError.conflict(
+      `El plan de ${plan.subject} (${plan.grade_name}, ${plan.term_name}) ya tiene notas de alumnos: eliminarlo borraría esas calificaciones. Si se creó por error, quita primero las notas desde Calificaciones.`
+    );
+  }
+  const acks = await trx('evaluation_plan_acknowledgments').where({ tenant_id: tenantId, plan_id: planId }).count('* as n').first();
+  if (Number(acks.n) > 0) {
+    throw ApiError.conflict(
+      `El plan tiene ${acks.n} ${Number(acks.n) === 1 ? 'constancia' : 'constancias'} de lectura de representantes: es el respaldo legal de la Dirección y no se puede borrar. Si necesitas cambiarlo, edítalo (las familias volverán a confirmar la nueva versión).`
+    );
+  }
+
+  const { n: activities } = await trx('evaluation_activities').where({ evaluation_plan_id: planId }).count('* as n').first();
+  await trx('evaluation_plans').where({ id: planId, tenant_id: tenantId }).delete();
+  return { ...plan, deleted_activities: Number(activities) };
+}
+
 async function deleteActivity(trx, tenantId, planId, activityId) {
   await getOpenPlan(trx, tenantId, planId);
   // Debe pertenecer al plan de la URL (antes se podía borrar la actividad de otro plan).
@@ -1024,6 +1061,7 @@ async function reopenPlan(trx, tenantId, planId) {
 }
 
 module.exports = {
+  deletePlan,
   ensureTerm,
   updatePlan,
   listPlanSections,

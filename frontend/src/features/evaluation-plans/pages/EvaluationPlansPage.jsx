@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { ReviewInbox, ReviewStatusBadge } from '../../reviews/components/ReviewWidgets';
@@ -23,6 +23,7 @@ import { LEVELS, LEVEL_CODES, LevelBadge, LevelRule } from '../../academics/leve
 import { FORMATS, FormatPicker } from '../components/DetailedPlanner';
 import { TERM_OPTIONS, TermSelect, termLabel } from '../terms';
 import DuplicateToYearModal from '../../../components/ui/DuplicateToYearModal';
+import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 
 /** Estado del plan según su ponderación: cerrado, listo para cerrar, incompleto o sin actividades. */
 export function planState(plan) {
@@ -69,7 +70,7 @@ function EvaluationPlansPage() {
   const { can } = useAuth();
   const navigate = useNavigate();
   const { data: periods, loading: loadingPeriods } = useFetch(() => evaluationPlansApi.listPeriodOptions(), []);
-  const { data: plans, loading: loadingPlans, error: plansError, refetch: refetchPlans } = useFetch(() => evaluationPlansApi.list(), []);
+  const { data: plans, setData: setPlans, loading: loadingPlans, error: plansError, refetch: refetchPlans } = useFetch(() => evaluationPlansApi.list(), []);
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
   const { data: terms, refetch: refetchTerms } = useFetch(
     () => (schoolPeriodId ? evaluationPlansApi.listTerms(schoolPeriodId) : Promise.resolve([])),
@@ -80,13 +81,8 @@ function EvaluationPlansPage() {
   const [editingTerm, setEditingTerm] = useState(null); // lapso cuyas fechas se editan
   const [createFor, setCreateFor] = useState(null); // { termNumber } | {} → modal de nuevo plan
 
-  // Año por defecto: el más reciente que tenga planes (o el más reciente).
-  useEffect(() => {
-    if (schoolPeriodId || !periods?.length || !plans) return;
-    const sorted = [...periods].sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')));
-    const withPlans = sorted.find((p) => plans.some((pl) => pl.school_period_id === p.id));
-    setSchoolPeriodId((withPlans || sorted[0]).id);
-  }, [periods, plans, schoolPeriodId]);
+  // Año por defecto: el año escolar en curso (regla común de los selectores de año).
+  useDefaultSchoolPeriod(periods, schoolPeriodId, setSchoolPeriodId);
 
   const searchText = (p) => [p.subject, p.teacher_name, p.grade_name, p.section_names || p.section_name, p.term_name, termLabel(p.term_number)].join(' ');
   const yearPlans = useMemo(() => (plans || []).filter((p) => p.school_period_id === schoolPeriodId), [plans, schoolPeriodId]);
@@ -386,7 +382,32 @@ function EvaluationPlansPage() {
                           </div>
                           {termOpen && (
                             <div id={termBodyId} className="term-subgroup__body">
-                              <DataTable bare searchable={false} paginated={false} columns={planColumns} rows={t.plans} rowActions={rowActions} emptyMessage="Sin planes." />
+                              <DataTable
+                                bare
+                                searchable={false}
+                                paginated={false}
+                                columns={planColumns}
+                                rows={t.plans}
+                                rowActions={rowActions}
+                                onDelete={(p) => evaluationPlansApi.remove(p.id)}
+                                canDelete={can('evaluation_plans', 'delete')}
+                                deleteConfirm={(p) => ({
+                                  title: '¿Eliminar este plan de evaluación?',
+                                  message: `${p.subject_name || p.subject} · ${p.grade_name} ${p.section_names || p.section_name || ''} · ${termLabel(p.term_number, p.term_name)}. Esta acción no se puede deshacer${
+                                    p.activity_count > 0
+                                      ? ` y borrará ${p.activity_count === 1 ? 'su actividad' : `sus ${p.activity_count} actividades`} con sus criterios y fechas`
+                                      : ''
+                                  }. Si ya tiene notas de alumnos o constancias de lectura de las familias, no se podrá eliminar.`,
+                                  confirmLabel: 'Sí, eliminar',
+                                  successMessage: 'Plan de evaluación eliminado',
+                                })}
+                                // Se quita de la tabla al instante (sin recargar) y luego se sincroniza.
+                                onDeleted={(p) => {
+                                  setPlans((list) => (list || []).filter((x) => x.id !== p.id));
+                                  refetchPlans();
+                                }}
+                                emptyMessage="Sin planes."
+                              />
                             </div>
                           )}
                         </div>

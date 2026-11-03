@@ -18,6 +18,8 @@ router.get('/appointments', view('appointments'), appointments.myAppointments);
 router.post('/appointments/:id/confirm', view('appointments'), appointments.confirmMine);
 router.get('/students/:studentId/grades', view('grades'), controller.getStudentGrades);
 router.get('/students/:studentId/evaluation-plans/:planId', view('evaluation_plan'), controller.getStudentPlanDetail);
+// Constancia "He leído y acepto el plan de evaluación" (069).
+router.post('/students/:studentId/evaluation-plans/:planId/acknowledge', view('evaluation_plan'), controller.acknowledgePlan);
 // Contenido programático de una materia con sus evaluaciones publicadas (sección del alumno).
 router.get('/students/:studentId/subjects/:subjectId/program', view('grades'), controller.getStudentSubjectProgram);
 router.get('/students/:studentId/history', view('history'), controller.getStudentHistory);

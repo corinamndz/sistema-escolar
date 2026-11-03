@@ -24,6 +24,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { ReviewButton } from '../../reviews/components/ReviewWidgets';
 import BulkImportActions from '../../../components/import/BulkImportActions';
 import DuplicateToYearModal from '../../../components/ui/DuplicateToYearModal';
+import PlanAcknowledgments, { acknowledgmentRatio } from '../components/PlanAcknowledgments';
 import { TermBadge, termLabel } from '../terms';
 import { INSTRUMENT_LABELS } from '../instruments';
 import {
@@ -59,6 +60,9 @@ function EvaluationPlanDetailPage() {
   const { data: plan, loading, error, refetch } = useFetch(() => evaluationPlansApi.getOne(id), [id]);
   const navigate = useNavigate();
   const [duplicating, setDuplicating] = useState(false);
+  // Confirmaciones de lectura de las familias (069): totales para el botón de la cabecera y el panel lateral.
+  const [showAcks, setShowAcks] = useState(false);
+  const acks = useFetch(() => evaluationPlansApi.listAcknowledgments(id), [id]);
   const { data: periods } = useFetch(() => (duplicating ? evaluationPlansApi.listPeriodOptions() : Promise.resolve(null)), [duplicating]);
   const [activityModal, setActivityModal] = useState(null); // null | {} (crear) | {...} (editar)
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -192,6 +196,22 @@ function EvaluationPlanDetailPage() {
           <>
             {/* Revisión y aprobación: el docente envía; coordinación del nivel o dirección revisan. */}
             <ReviewButton target={{ planId: plan.id }} title={plan.subject || ''} status={plan.review_status} onChanged={refetch} defaultOpen={openReview} />
+            <Button
+              variant="secondary"
+              icon="eye"
+              onClick={() => {
+                acks.refetch(); // al abrir, el estado más reciente
+                setShowAcks(true);
+              }}
+              title="Quiénes confirmaron «He leído y acepto el plan de evaluación»"
+            >
+              Confirmaciones de lectura
+              {acks.data && (
+                <span className={`ack-count${acks.data.totals.students > 0 && acks.data.totals.students_confirmed === acks.data.totals.students ? ' is-complete' : ''}`}>
+                  {acknowledgmentRatio(acks.data)}
+                </span>
+              )}
+            </Button>
             {can('evaluation_plans', 'create') && (
               <Button variant="secondary" icon="copy" onClick={() => setDuplicating(true)}>
                 Duplicar a otro año
@@ -386,6 +406,19 @@ function EvaluationPlanDetailPage() {
           <Table columns={activityColumns} rows={plan.activities} emptyMessage="Aún no hay actividades en este plan." />
         )}
       </Card>
+
+      {/* Constancia de lectura de las familias (069): quién confirmó, cuándo y desde dónde. */}
+      {showAcks && (
+        <Drawer
+          size="lg"
+          icon="eye"
+          title="Confirmaciones de lectura"
+          subtitle={`${plan.subject} · ${plan.grade_name} ${plan.sections.map((s) => s.name).join(', ')} · ${termLabel(plan.term_number, plan.term_name)}`}
+          onClose={() => setShowAcks(false)}
+        >
+          <PlanAcknowledgments data={acks.data} loading={acks.loading} error={acks.error} planTitle={`${plan.subject}-${plan.grade_name}-${plan.term_name}`} />
+        </Drawer>
+      )}
 
       {activityModal !== null && (
         <ActivityFormModal

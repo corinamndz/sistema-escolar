@@ -9097,3 +9097,59 @@ body.is-printing-boleta { overflow: hidden; }
 .dup-year .alert { margin: 14px 0 0; text-align: left; }
 .dup-year .form-actions { margin-top: 20px; }
 .dup-year__icon--success { color: var(--color-success-text); background: var(--color-success-soft); box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-success-soft) 50%, white); }
+
+/* ==========================================================================
+   Constancia de lectura del plan de evaluación (portal) y su reporte
+   ========================================================================== */
+.plan-ack {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-border-active);
+  border-radius: var(--radius-lg);
+  background: var(--color-primary-softer);
+}
+.plan-ack__seal {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+}
+.plan-ack__text { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; font-size: 13.5px; line-height: 1.5; color: var(--color-text-secondary); }
+.plan-ack__text strong { font-size: 15px; color: var(--color-text); }
+.plan-ack__check { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; font-weight: 600; color: var(--color-text); cursor: pointer; }
+.plan-ack__check input { width: 16px; height: 16px; accent-color: var(--color-primary); }
+.plan-ack__text .alert { margin: 6px 0 0; }
+.plan-ack__btn { flex: none; }
+.plan-ack--outdated { border-color: var(--color-warning-border, #fcd34d); background: var(--color-warning-soft, #fffbeb); }
+.plan-ack--outdated .plan-ack__seal { background: #fef3c7; color: var(--color-warning-text, #b45309); }
+/* Sello verde: confirmado (sin botón). */
+.plan-ack--ok { border-color: var(--color-success-border); background: var(--color-success-soft); }
+.plan-ack--ok .plan-ack__seal { background: var(--color-success); color: #fff; box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-success) 18%, transparent); }
+.plan-ack--ok .plan-ack__text strong { color: var(--color-success-text); }
+@media (max-width: 720px) {
+  .plan-ack { flex-wrap: wrap; }
+  .plan-ack__btn { width: 100%; }
+}
+
+.plan-ack-report { display: flex; flex-direction: column; gap: 14px; }
+.plan-ack-report > .alert { margin: 0; }
+.plan-ack-report__summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.plan-ack-report__big { display: flex; align-items: baseline; gap: 8px; margin-right: 8px; font-size: 13px; color: var(--color-text-secondary); }
+.plan-ack-report__big strong { font-family: var(--font-display); font-size: 24px; color: var(--color-text); }
+.plan-ack-report__chip { padding: 4px 10px; border-radius: 999px; background: var(--color-surface-muted); font-size: 12.5px; font-weight: 600; color: var(--color-text-secondary); }
+.plan-ack-report__chip.is-ok { background: var(--color-success-soft); color: var(--color-success-text); }
+.plan-ack-report__chip.is-warn { background: #fef3c7; color: #b45309; }
+.plan-ack-report__chip.is-danger { background: var(--color-danger-soft); color: var(--color-danger-text); }
+.plan-ack-report__ip { font-size: 12px; }
+
+/* Contador del botón "Confirmaciones de lectura" en la cabecera del plan. */
+.ack-count { margin-left: 2px; padding: 1px 8px; border-radius: 999px; background: var(--color-surface-muted); font-size: 12px; font-weight: 700; color: var(--color-text-secondary); }
+.ack-count.is-complete { background: var(--color-success-soft); color: var(--color-success-text); }

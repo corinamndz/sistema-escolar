@@ -28,7 +28,11 @@ router.post('/terms', requirePermission('evaluation_plans', 'create'), controlle
 router.get('/', requirePermission('evaluation_plans', 'read'), controller.listPlans);
 router.post('/', requirePermission('evaluation_plans', 'create'), controller.createPlan);
 router.get('/:id', requirePermission('evaluation_plans', 'read'), ownPlan('id'), controller.getPlan);
+// Reporte de confirmaciones de lectura de los representantes (Dirección y el docente del plan).
+router.get('/:planId/acknowledgments', requirePermission('evaluation_plans', 'read'), ownPlan('planId'), controller.listAcknowledgments);
 router.put('/:planId', requirePermission('evaluation_plans', 'update'), ownPlan('planId'), controller.updatePlan);
+// Eliminar: permiso de borrar planes y, si es docente, que el plan sea de su carga.
+router.delete('/:planId', requirePermission('evaluation_plans', 'delete'), ownPlan('planId'), controller.deletePlan);
 
 router.post('/:planId/project', requirePermission('evaluation_plans', 'create'), ownPlan('planId'), controller.createProject);
 router.post('/projects/:projectId/competencies', requirePermission('evaluation_plans', 'update'), ownProject, controller.addCompetency);

@@ -29,6 +29,7 @@ import { PaymentDetailModal } from '../components/PaymentDetailModal';
 import { Link, useSearchParams } from 'react-router-dom';
 import { BatchReviewDrawer, PendingBatches } from '../components/BatchReview';
 import { currentPeriod } from '../../../lib/schoolPeriods';
+import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 
 const FILTERS = [
   { key: 'due', label: 'Por cobrar' },
@@ -47,15 +48,19 @@ function PaymentsPage() {
   const { data: periods } = useFetch(() => paymentsApi.schoolPeriodOptions(), []);
   const [status, setStatus] = useState('due');
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
+  // Arranca en el año escolar en curso ("Todos los años" sigue disponible en el selector).
+  useDefaultSchoolPeriod(periods, schoolPeriodId, setSchoolPeriodId, { allowAll: true });
   // Tasas de las monedas activas + moneda en que se muestran los equivalentes (se recuerda).
   const { data: rates, loading: loadingRates, refetch: refetchRates } = useFetch(() => paymentsApi.currentRate(), []);
   const [viewCurrency, setViewCurrency] = useViewCurrency('payments.viewCurrency', rates);
   const currencyParam = viewCurrency ? { currency: viewCurrency } : {};
   const params = { ...(status ? { status } : {}), ...(schoolPeriodId ? { schoolPeriodId } : {}), ...currencyParam };
-  const { data: rows, loading, error, refetch } = useFetch(() => paymentsApi.list(params), [status, schoolPeriodId, viewCurrency]);
+  // Se espera la lista de años: así la primera carga ya es del año en curso (no de todos y luego otra vez).
+  const ready = Boolean(periods);
+  const { data: rows, loading, error, refetch } = useFetch(() => (ready ? paymentsApi.list(params) : Promise.resolve(null)), [ready, status, schoolPeriodId, viewCurrency]);
   const { data: summary, refetch: refetchSummary } = useFetch(
-    () => paymentsApi.summary({ ...(schoolPeriodId ? { schoolPeriodId } : {}), ...currencyParam }),
-    [schoolPeriodId, viewCurrency]
+    () => (ready ? paymentsApi.summary({ ...(schoolPeriodId ? { schoolPeriodId } : {}), ...currencyParam }) : Promise.resolve(null)),
+    [ready, schoolPeriodId, viewCurrency]
   );
   const [modal, setModal] = useState(null); // 'fees' | 'generate' | 'other'
 
@@ -426,18 +431,12 @@ function mergeAmounts(amounts) {
 // ---------------------------------------------------------------------------
 
 /**
- * Año escolar elegido en un modal. El valor por defecto (el activo, o el primero)
- * se fija también si la lista de años llega DESPUÉS de abrir el modal: antes se
- * calculaba una sola vez y, si aún no había cargado, quedaba vacío para siempre
- * (el selector mostraba "2026-2027" pero no se cargaban ni guardaban tarifas).
+ * Año escolar elegido en un modal: el año en curso (regla común de los
+ * selectores), también si la lista de años llega DESPUÉS de abrir el modal.
  */
 function usePeriodChoice(periods) {
-  const pick = () => currentPeriod(periods)?.id || '';
-  const [schoolPeriodId, setSchoolPeriodId] = useState(pick);
-  useEffect(() => {
-    if (!periods.some((p) => p.id === schoolPeriodId)) setSchoolPeriodId(pick());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periods]);
+  const [schoolPeriodId, setSchoolPeriodId] = useState(() => currentPeriod(periods)?.id || '');
+  useDefaultSchoolPeriod(periods, schoolPeriodId, setSchoolPeriodId);
   return [schoolPeriodId, setSchoolPeriodId];
 }
 

@@ -9,6 +9,7 @@ import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { CATEGORY_LABELS } from '../../programmatic-content/categories';
 import { PlannerTable } from '../../evaluation-plans/components/DetailedPlanner';
+import PlanAcknowledgment from './PlanAcknowledgment';
 
 const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('es', { maximumFractionDigits: 2 }));
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -205,7 +206,7 @@ function SubjectPlanDetail({ studentId, subject, termName }) {
 }
 
 function PlanDetail({ studentId, planId }) {
-  const { data: plan, loading, error } = useFetch(() => portalApi.getStudentPlanDetail(studentId, planId), [studentId, planId]);
+  const { data: plan, setData: setPlan, loading, error } = useFetch(() => portalApi.getStudentPlanDetail(studentId, planId), [studentId, planId]);
 
   if (loading) return <Spinner />;
   if (error) return <Alert>{error}</Alert>;
@@ -228,6 +229,13 @@ function PlanDetail({ studentId, planId }) {
           <Badge variant={plan.total_weight === 100 ? 'success' : 'warning'}>Ponderación {fmt(plan.total_weight)}%</Badge>
         </div>
       </div>
+      {/* Constancia de lectura para la Dirección (069). */}
+      <PlanAcknowledgment
+        studentId={studentId}
+        planId={planId}
+        state={plan.acknowledgment}
+        onChange={(acknowledgment) => setPlan((p) => ({ ...p, acknowledgment }))}
+      />
       <PlannerTable activities={plan.activities} sections={[plan.section]} categoryLabels={CATEGORY_LABELS} />
     </section>
   );

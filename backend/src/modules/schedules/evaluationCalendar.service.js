@@ -1,5 +1,6 @@
 const { ApiError } = require('../../utils/ApiError');
 const { isContentReviewRequired } = require('../reviews/reviewSettings.service');
+const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 
 /**
  * Horario de EVALUACIONES de una sección, generado automáticamente (no se
@@ -230,7 +231,7 @@ async function getStudentEvaluationCalendar(trx, tenantId, studentId, { termNumb
     .join('sections as sec', 'sec.id', 'e.section_id')
     .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
     .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId, 'e.status': 'active' })
-    .orderByRaw('sp.is_active DESC, sp.start_date DESC NULLS LAST')
+    .orderByRaw(currentPeriodOrder('sp'))
     .select('e.section_id')
     .first();
   if (!enrollment) return { section: null, terms: [], term: null, slots: [], evaluations: [], undated: [], days: [], summary: null, audience: 'guardian' };

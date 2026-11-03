@@ -35,6 +35,8 @@ const portalApi = {
   getStudentSubjectProgram: (studentId, subjectId, params) =>
     axiosClient.get(`/portal/students/${studentId}/subjects/${subjectId}/program`, { params }).then((r) => r.data),
   getStudentPlanDetail: (studentId, planId) => axiosClient.get(`/portal/students/${studentId}/evaluation-plans/${planId}`).then((r) => r.data),
+  /** "He leído y acepto el plan de evaluación" → { status, last: { acknowledged_at, ip_address } } */
+  acknowledgePlan: (studentId, planId) => axiosClient.post(`/portal/students/${studentId}/evaluation-plans/${planId}/acknowledge`).then((r) => r.data),
   /** Datos de pago del colegio (pago móvil y cuentas) para reportar un pago: solo los activos. */
   getPaymentAccounts: () => axiosClient.get('/portal/payment-accounts').then((r) => r.data),
 };

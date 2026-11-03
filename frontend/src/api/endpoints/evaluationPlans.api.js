@@ -13,8 +13,12 @@ const evaluationPlansApi = {
 
   list: (params) => axiosClient.get('/evaluation-plans', { params }).then((r) => r.data),
   getOne: (id) => axiosClient.get(`/evaluation-plans/${id}`).then((r) => r.data),
+  /** Confirmaciones de lectura de los representantes: { plan, published, totals, items } */
+  listAcknowledgments: (id) => axiosClient.get(`/evaluation-plans/${id}/acknowledgments`).then((r) => r.data),
   /** { sectionIds: [...] (o sectionId), termId, format: 'simple' | 'detailed', subjectId | subject + teacherId } */
   create: (data) => axiosClient.post('/evaluation-plans', data).then((r) => r.data),
+  /** 409 si tiene notas o constancias de lectura de las familias. → { subject, grade_name, term_name, deleted_activities } */
+  remove: (id) => axiosClient.delete(`/evaluation-plans/${id}`).then((r) => r.data),
   /** Copia el plan (sin notas) a otro año: → { plan_id, period, term_name, sections, missing_sections, teacher_name, activities, topics_created } */
   duplicate: (planId, toPeriodId) => axiosClient.post(`/evaluation-plans/${planId}/duplicate`, { toPeriodId }).then((r) => r.data),
   /** Cambia el formato o las secciones: { format?, sectionIds? } */

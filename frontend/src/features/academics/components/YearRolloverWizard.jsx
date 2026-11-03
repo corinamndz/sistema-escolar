@@ -11,6 +11,7 @@ import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
+import { currentPeriod } from '../../../lib/schoolPeriods';
 
 const STEPS = ['Año de origen', 'Año nuevo', 'Qué copiar', 'Revisar'];
 
@@ -114,7 +115,10 @@ function withDependencies(options, key, on, requires) {
 function YearRolloverWizard({ periods, initialSourceId, onClose, onDone }) {
   const { can } = useAuth();
   const [step, setStep] = useState(0);
-  const [sourceId, setSourceId] = useState(initialSourceId || (periods.find((p) => p.section_count > 0) || periods[0])?.id || '');
+  // Origen sugerido: el año en curso entre los que tienen secciones (lo que se copia al nuevo).
+  const [sourceId, setSourceId] = useState(
+    initialSourceId || (currentPeriod(periods.filter((p) => p.section_count > 0)) || currentPeriod(periods))?.id || ''
+  );
   const [preview, setPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewError, setPreviewError] = useState(null);

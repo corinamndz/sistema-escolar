@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const service = require('./evaluationPlan.service');
 const duplication = require('./planDuplication.service');
+const acknowledgments = require('../portal/planAcknowledgment.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const teacherScope = require('../access/teacherScope');
 const { ApiError } = require('../../utils/ApiError');
@@ -278,7 +279,19 @@ const duplicatePlan = asyncHandler(async (req, res) => {
   res.status(201).json(result);
 });
 
+/** GET /evaluation-plans/:planId/acknowledgments — reporte de confirmaciones de lectura de los representantes (069). */
+const listAcknowledgments = asyncHandler(async (req, res) => {
+  res.status(200).json(await acknowledgments.report(req.db, req.tenantId, req.params.planId));
+});
+
+/** DELETE /evaluation-plans/:planId — 409 si tiene notas o constancias de lectura de las familias. */
+const deletePlan = asyncHandler(async (req, res) => {
+  res.status(200).json(await service.deletePlan(req.db, req.tenantId, req.params.planId));
+});
+
 module.exports = {
+  deletePlan,
+  listAcknowledgments,
   duplicatePlan,
   listPeriodOptions,
   listSectionOptions,

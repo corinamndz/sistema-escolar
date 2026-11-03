@@ -4,6 +4,7 @@ const { scaleDefinition } = require('../grading/gradingScale');
 const { loadActivityStructure } = require('../evaluation-plans/evaluationPlan.service');
 const { sortByProgram, compareUnits } = require('../programmatic-content/programmaticContent.service');
 const { isContentReviewRequired: familiesSeeOnlyApproved } = require('../reviews/reviewSettings.service');
+const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 
 /**
  * Calificaciones acumuladas de un alumno para el portal del representante.
@@ -103,13 +104,13 @@ function summarizePlan(activities) {
 async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriodId } = {}) {
   const student = await assertGuardianOfStudent(trx, tenantId, userId, studentId);
 
-  // Años escolares en los que el alumno tuvo inscripción (activa o no), el más reciente primero.
+  // Años escolares en los que el alumno tuvo inscripción (activa o no), el en curso primero.
   const periods = await trx('enrollments as e')
     .join('sections as sec', 'sec.id', 'e.section_id')
     .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
     .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId })
     .distinct('sp.id', 'sp.name', 'sp.start_date', 'sp.is_active', 'sp.passing_grade')
-    .orderByRaw('sp.is_active DESC, sp.start_date DESC NULLS LAST');
+    .orderByRaw(currentPeriodOrder('sp')); // el en curso primero: es el que se abre por defecto
 
   const base = { student, scale: GRADE_SCALE, passing_grade: PASSING_GRADE, periods, school_period: null, terms: [], subjects: [] };
   if (periods.length === 0) return base;
@@ -299,7 +300,16 @@ async function getStudentPlanDetail(trx, tenantId, studentId, planId) {
     .orderByRaw("(e.status = 'active') DESC")
     .first();
   if (!section) throw ApiError.notFound('Plan de evaluación no encontrado.');
+  return buildPlanDetail(trx, tenantId, planId, section);
+}
 
+/**
+ * El plan tal como lo ve la familia de un alumno de `section` ({ id, name,
+ * grade_name, grading_scale }): fechas de esa sección y temas del contenido
+ * programático. También lo usa el reporte de confirmaciones de lectura para
+ * saber qué versión es la vigente en cada sección. 404 si no está publicado.
+ */
+async function buildPlanDetail(trx, tenantId, planId, section) {
   const plan = await trx('evaluation_plans as ep')
     .join('terms as t', 't.id', 'ep.term_id')
     .leftJoin('subjects as sub', 'sub.id', 'ep.subject_id')
@@ -376,7 +386,7 @@ async function getStudentSubjectProgram(trx, tenantId, studentId, subjectId, { s
     .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId })
     .modify((q) => schoolPeriodId && q.andWhere('sec.school_period_id', schoolPeriodId))
     .select('sec.id', 'sec.name', 'sec.grade_id', 'g.name as grade_name', 'sp.id as period_id', 'sp.name as period_name')
-    .orderByRaw("(e.status = 'active') DESC, sp.is_active DESC, sp.start_date DESC NULLS LAST")
+    .orderByRaw(`(e.status = 'active') DESC, ${currentPeriodOrder('sp')}`)
     .first();
   if (!section) throw ApiError.notFound('El alumno no tiene inscripciones en ese año escolar.');
   const subject = await trx('grade_subjects as gs')
@@ -452,4 +462,4 @@ async function getStudentSubjectProgram(trx, tenantId, studentId, subjectId, { s
 }
 
 module.exports = {
-  assertGuardianOfStudent, assertGradesUnlocked, overdueCount, GRADES_LOCKED_MESSAGE, getStudentGrades, getStudentPlanDetail, getStudentSubjectProgram, GRADE_SCALE, PASSING_GRADE };
+  assertGuardianOfStudent, assertGradesUnlocked, overdueCount, GRADES_LOCKED_MESSAGE, getStudentGrades, getStudentPlanDetail, buildPlanDetail, getStudentSubjectProgram, GRADE_SCALE, PASSING_GRADE };

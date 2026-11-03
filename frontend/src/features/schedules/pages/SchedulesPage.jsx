@@ -22,9 +22,7 @@ import QuickAssign from '../components/QuickAssign';
 import ScheduleGeneratorModal from '../components/ScheduleGeneratorModal';
 import TeacherAvailabilityModal from '../components/TeacherAvailabilityModal';
 import { blobErrorMessage, saveBlob } from '../../../utils/download';
-import { currentPeriod } from '../../../lib/schoolPeriods';
-
-const defaultPeriod = currentPeriod;
+import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 
 const VIEWS = [
   { key: 'section', label: 'Por grado / sección', icon: 'layers' },
@@ -108,10 +106,7 @@ function SchedulesPage() {
   // Año por defecto: el EN CURSO (el que contiene la fecha de hoy). Si hay
   // varios años activos (p. ej. ya se creó el próximo), no se abre el futuro,
   // que aún no tiene bloques ni clases.
-  useEffect(() => {
-    if (periodId || !periods?.length) return;
-    setPeriodId(defaultPeriod(periods).id);
-  }, [periods, periodId]);
+  useDefaultSchoolPeriod(periods, periodId, setPeriodId);
   useEffect(() => {
     setGradeId('');
     setSectionId('');

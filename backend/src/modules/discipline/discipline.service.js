@@ -1,6 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const notices = require('../notifications/notices');
 const teacherScope = require('../access/teacherScope');
+const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 
 /**
  * Convivencia: sanciones disciplinarias de los alumnos.
@@ -99,7 +100,7 @@ async function resolveContext(trx, tenantId, studentId, { schoolPeriodId, termNu
       .join('sections as sec', 'sec.id', 'e.section_id')
       .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
       .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId, 'e.status': 'active' })
-      .orderByRaw('sp.is_active DESC, sp.start_date DESC NULLS LAST')
+      .orderByRaw(currentPeriodOrder('sp'))
       .select('sp.id')
       .first();
     if (!current) {

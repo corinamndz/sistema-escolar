@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 
 /**
  * Resumen de calificaciones (Administración): todos los alumnos activos con lo
@@ -26,7 +27,7 @@ async function getSummary(trx, tenantId, { schoolPeriodId } = {}) {
   const periods = await trx('school_periods')
     .where({ tenant_id: tenantId })
     .select('id', 'name', 'start_date', 'is_active', 'closed_at', 'passing_grade')
-    .orderByRaw('is_active DESC, start_date DESC NULLS LAST');
+    .orderByRaw(currentPeriodOrder()); // el en curso primero: es el que se abre por defecto
   if (!periods.length) return { periods: [], school_period: null, terms: [], students: [], scale: SCALE, passing_grade: PASSING };
   const period = schoolPeriodId ? periods.find((p) => p.id === schoolPeriodId) : periods[0];
   if (!period) throw ApiError.notFound('Año escolar no encontrado.');

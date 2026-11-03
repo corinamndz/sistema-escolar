@@ -2,13 +2,14 @@ const { ApiError } = require('../../utils/ApiError');
 const { applyPortalAccess, getPortalAccess, deactivatePortalUser } = require('./portalAccess.service');
 const tuition = require('../payments/tuition.service');
 const teacherScope = require('../access/teacherScope');
+const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 
 // ---------- Alumnos ----------
 
 /**
  * Alumnos con su inscripción vigente (sección, grado, nivel, año escolar) para
  * poder agruparlos por grado y sección. Si un alumno tuviera inscripciones
- * activas en más de un año, se toma la del año activo más reciente. Los
+ * activas en más de un año, se toma la del año en curso (currentPeriodOrder). Los
  * campos de inscripción vienen en null si no está inscrito.
  */
 async function listStudents(trx, tenantId, { status, scope = null, availableFor = null } = {}) {
@@ -25,7 +26,7 @@ async function listStudents(trx, tenantId, { status, scope = null, availableFor 
          JOIN education_levels el ON el.code = g.level_code
          JOIN school_periods sp ON sp.id = sec.school_period_id
          WHERE e.student_id = s.id AND e.status = 'active'
-         ORDER BY sp.is_active DESC, sp.start_date DESC NULLS LAST
+         ORDER BY ${currentPeriodOrder('sp')}
          LIMIT 1
        ) cur ON true`
     )
@@ -151,7 +152,7 @@ async function listGuardians(trx, tenantId) {
           JOIN education_levels el ON el.code = gr.level_code
           JOIN school_periods sp ON sp.id = sec.school_period_id
           WHERE e.student_id = s.id AND e.status = 'active'
-          ORDER BY sp.is_active DESC, sp.start_date DESC NULLS LAST, e.enrolled_at DESC
+          ORDER BY ${currentPeriodOrder('sp')}, e.enrolled_at DESC
           LIMIT 1
         ) cur ON true
         WHERE sg.guardian_id = g.id
@@ -182,7 +183,7 @@ async function listGuardianStudents(trx, guardianId) {
        JOIN education_levels el ON el.code = g.level_code
        JOIN school_periods sp ON sp.id = sec.school_period_id
        WHERE e.student_id = s.id AND e.status = 'active'
-       ORDER BY sp.is_active DESC, sp.start_date DESC NULLS LAST, e.enrolled_at DESC
+       ORDER BY ${currentPeriodOrder('sp')}, e.enrolled_at DESC
        LIMIT 1
      ) cur ON true
      WHERE sg.guardian_id = ?

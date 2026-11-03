@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import academicsApi from '../../../api/endpoints/academics.api';
 import { useAuth } from '../../../context/AuthContext';
@@ -12,7 +12,7 @@ import Icon from '../../../components/ui/Icon';
 import ImportActions from '../../../components/import/ImportActions';
 import { LEVEL_CODES, LevelFilter } from '../levels';
 import SubjectFormModal from './SubjectFormModal';
-import { currentPeriod } from '../../../lib/schoolPeriods';
+import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 
 const MAX_GRADES = 4;
 
@@ -81,10 +81,7 @@ function SubjectsPage() {
   };
 
   // Año por defecto: el que está en curso hoy (no el siguiente ya creado).
-  useEffect(() => {
-    if (periodId || !periods?.length) return;
-    setPeriodId(currentPeriod(periods).id);
-  }, [periods, periodId]);
+  useDefaultSchoolPeriod(periods, periodId, setPeriodId);
 
   const ready = Boolean(periods) && (periodId || periods.length === 0);
   const { data: subjects, loading, error, refetch } = useFetch(

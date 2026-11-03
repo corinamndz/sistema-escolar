@@ -142,10 +142,12 @@ const ACTIONS = {
   'POST /reviews/contents/:gradeId/:subjectId/review': ['REVISAR_CONTENIDO', 'Revisó un contenido programático (aprobó, pidió ajustes o lo reabrió)'],
   'POST /reviews/contents/:gradeId/:subjectId/comments': ['COMENTAR_CONTENIDO', 'Comentó la revisión de un contenido programático'],
   'POST /evaluation-plans/:planId/reopen': ['REABRIR_PLAN', 'Reabrió un plan de evaluación'],
+  'POST /portal/students/:studentId/evaluation-plans/:planId/acknowledge': ['CONFIRMAR_LECTURA_PLAN', 'Confirmó haber leído y aceptado el plan de evaluación'],
   'POST /evaluation-plans/:planId/duplicate': ['DUPLICAR_PLAN', 'Duplicó un plan de evaluación para otro año escolar'],
   'POST /programmatic-content/duplicate': ['DUPLICAR_CONTENIDO', 'Duplicó el contenido programático para otro año escolar'],
   'POST /evaluation-plans/:planId/activities': ['CREAR_ACTIVIDAD', 'Creó la actividad'],
   'PUT /evaluation-plans/:planId/activities/:activityId': ['ACTUALIZAR_ACTIVIDAD', 'Actualizó la actividad'],
+  'DELETE /evaluation-plans/:planId': ['ELIMINAR_PLAN', 'Eliminó un plan de evaluación'],
   'DELETE /evaluation-plans/:planId/activities/:activityId': ['ELIMINAR_ACTIVIDAD', 'Eliminó una actividad evaluativa'],
 
   'PUT /grading/activities/:activityId/scores': ['REGISTRAR_NOTA', 'Registró o cambió una calificación'],

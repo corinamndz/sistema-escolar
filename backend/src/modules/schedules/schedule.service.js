@@ -5,6 +5,7 @@ const { generateSchedulePdf } = require('../../services/pdf/scheduleGenerator');
 const { generateEvaluationCalendarPdf } = require('../../services/pdf/evaluationCalendarGenerator');
 const evaluationCalendar = require('./evaluationCalendar.service');
 const { resolveLogoFileOrDefault } = require('../../services/storage/logoStorage');
+const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 
 /**
  * Horarios de clase.
@@ -658,7 +659,7 @@ async function getStudentSchedule(trx, tenantId, studentId) {
     .join('sections as sec', 'sec.id', 'e.section_id')
     .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
     .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId, 'e.status': 'active' })
-    .orderByRaw('sp.is_active DESC, sp.start_date DESC NULLS LAST')
+    .orderByRaw(currentPeriodOrder('sp'))
     .select('e.section_id')
     .first();
   if (!enrollment) return { section: null, days: DAYS, slots: [], entries: [], read_only: true };

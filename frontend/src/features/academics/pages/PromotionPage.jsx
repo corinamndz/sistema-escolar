@@ -17,6 +17,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import EvaluationRulesPanel from '../components/EvaluationRulesPanel';
 import TermBreakdown, { termLabel, gradeClass } from '../components/TermBreakdown';
+import { currentPeriod } from '../../../lib/schoolPeriods';
 
 const ACTION_LABELS = { promote: 'Promover', retain: 'Repite', graduate: 'Egresa' };
 const ACTION_VARIANT = { promote: 'success', retain: 'warning', graduate: 'primary' };
@@ -61,7 +62,7 @@ function PromotionPage() {
   const [collapsed, setCollapsed] = useState(null); // Set de claves de grupo contraídas (null = aún sin decidir)
 
   const openPeriods = (periods || []).filter((p) => !p.closed_at);
-  // Sugerencia inicial: el año que finaliza = el que empezó primero; el nuevo = el siguiente.
+  // Sugerencia inicial: el año que finaliza = el año en curso; el nuevo = el siguiente.
   useEffect(() => {
     if (!periods || fromId) return;
     // Desde el asistente de transición de año: ?from=<origen>&to=<nuevo>.
@@ -72,10 +73,13 @@ function PromotionPage() {
       setToId(to);
       return;
     }
+    // Origen: el año en curso; destino: el siguiente que empieza después de él.
     const sorted = [...openPeriods].sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || '')));
     if (sorted.length >= 2) {
-      setFromId(sorted[0].id);
-      setToId(sorted[1].id);
+      const from = currentPeriod(sorted) || sorted[0];
+      const to = sorted.find((p) => String(p.start_date || '') > String(from.start_date || '')) || sorted.find((p) => p.id !== from.id);
+      setFromId(from.id);
+      setToId(to.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periods]);

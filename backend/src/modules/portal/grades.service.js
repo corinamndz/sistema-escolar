@@ -418,8 +418,10 @@ async function getStudentSubjectProgram(trx, tenantId, studentId, subjectId, { s
   const evaluation = ({ programmatic_content_id: _c, unit: _u, topic: _t, ...a }) => ({ ...a, weight_percent: Number(a.weight_percent) });
 
   // Contenido: con la revisión activa, solo si el programa está aprobado.
-  const review = await trx('programmatic_content_reviews').where({ tenant_id: tenantId, grade_id: section.grade_id, subject_id: subjectId }).first('status');
-  const items = await trx('programmatic_content').where({ tenant_id: tenantId, grade_id: section.grade_id, subject_id: subjectId }).orderBy(['sort_order', 'created_at']);
+  // Temario y revisión del año de la inscripción del alumno (068).
+  const programWhere = { tenant_id: tenantId, grade_id: section.grade_id, subject_id: subjectId, school_period_id: section.period_id };
+  const review = await trx('programmatic_content_reviews').where(programWhere).first('status');
+  const items = await trx('programmatic_content').where(programWhere).orderBy(['sort_order', 'created_at']);
   const published = items.length > 0 && (!onlyApproved || review?.status === 'aprobado');
   const units = published
     ? [...new Set(items.map((i) => i.unit))].sort(compareUnits).map((unit) => ({

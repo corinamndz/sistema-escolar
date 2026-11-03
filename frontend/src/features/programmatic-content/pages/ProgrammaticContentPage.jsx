@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import programmaticContentApi from '../../../api/endpoints/programmaticContent.api';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
@@ -22,6 +22,7 @@ import { CATEGORY_LABELS } from '../categories';
 import ContentItemModal from '../components/ContentItemModal';
 import IncludeEvaluationModal from '../components/IncludeEvaluationModal';
 import BulkImportActions from '../../../components/import/BulkImportActions';
+import DuplicateToYearModal from '../../../components/ui/DuplicateToYearModal';
 import { currentPeriod } from '../../../lib/schoolPeriods';
 import { LEVELS } from '../../academics/levels';
 
@@ -114,9 +115,15 @@ function ProgrammaticContentPage() {
   const [params, setParams] = useSearchParams();
   const subjectId = params.get('materia') || '';
   const gradeId = params.get('grado') || '';
-  const { data: options, loading: loadingOptions, error: optionsError } = useFetch(() => programmaticContentApi.listOptions(), []);
+  const navigate = useNavigate();
   const { data: periods } = useFetch(() => evaluationPlansApi.listPeriodOptions(), []);
   const periodId = params.get('ano') || '';
+  // Cada año escolar tiene su propio temario (068): las opciones cuentan los temas del año elegido.
+  const { data: options, loading: loadingOptions, error: optionsError } = useFetch(
+    () => (periodId ? programmaticContentApi.listOptions({ schoolPeriodId: periodId }) : Promise.resolve(null)),
+    [periodId]
+  );
+  const [duplicating, setDuplicating] = useState(false);
   const [version, setVersion] = useState(0);
   const [closedUnits, setClosedUnits] = useState(() => new Set());
   const [openTopics, setOpenTopics] = useState(() => new Set());
@@ -159,7 +166,7 @@ function ProgrammaticContentPage() {
 
   const selected = options?.find((o) => o.subject_id === subjectId && o.grade_id === gradeId);
   const { data: content, setData: setContent, loading, error } = useFetch(
-    () => (selected ? programmaticContentApi.get({ gradeId, subjectId, schoolPeriodId: periodId || undefined }) : Promise.resolve(null)),
+    () => (selected && periodId ? programmaticContentApi.get({ gradeId, subjectId, schoolPeriodId: periodId }) : Promise.resolve(null)),
     [selected?.subject_id, selected?.grade_id, periodId, version]
   );
   const reload = () => setVersion((v) => v + 1);
@@ -195,19 +202,21 @@ function ProgrammaticContentPage() {
   const evaluationCount = items.reduce((n, i) => n + i.activities.length, 0);
   const units = content ? content.units.map((u) => u.unit) : [];
   const periodClosed = Boolean(content?.school_period?.closed);
-  const pair = content && { gradeId, subjectId, gradeName: content.grade_name, subjectName: content.subject_name };
+  const pair = content && { gradeId, subjectId, schoolPeriodId: periodId, gradeName: content.grade_name, subjectName: content.subject_name };
   // Revisión académica (059): con la revisión activa, el docente no edita lo que está en revisión o aprobado.
   const review = content?.review || null;
   const locked = Boolean(review?.locked);
   const canEditContent = (action) => can('evaluation_plans', action) && !locked;
-  const canCreate = canEditContent('create') && Boolean(content);
+  const canCreate = canEditContent('create') && Boolean(content) && !periodClosed;
+  // Duplicar el temario de este año a otro: requiere temas y permiso de crear (el destino valida su propia revisión).
+  const canDuplicate = can('evaluation_plans', 'create') && items.length > 0;
   // Carga masiva del temario: plantilla base (unidades actuales como guía) y subida.
   const bulkProps = content && {
     type: 'programmatic_content',
-    params: { gradeId, subjectId },
-    downloadTitle: `Excel para cargar unidades y temas de ${content.subject_name} (${content.grade_name})`,
+    params: { gradeId, subjectId, schoolPeriodId: periodId },
+    downloadTitle: `Excel para cargar unidades y temas de ${content.subject_name} (${content.grade_name}) en ${content.school_period?.name || 'el año'}`,
     title: 'Carga masiva de contenido programático',
-    description: `Los temas del archivo se agregan a ${content.subject_name} de ${content.grade_name}, después de los que ya tiene.`,
+    description: `Los temas del archivo se agregan a ${content.subject_name} de ${content.grade_name} en ${content.school_period?.name || 'el año elegido'}, después de los que ya tiene.`,
     onImported: handleImported,
   };
   const reviewLabel =
@@ -340,23 +349,28 @@ function ProgrammaticContentPage() {
                     ? `${plural(units.length, 'unidad', 'unidades')} · ${plural(items.length, 'tema', 'temas')} · ${plural(evaluationCount, 'evaluación', 'evaluaciones')}${
                         content.school_period ? ` en ${content.school_period.name}` : ''
                       }`
-                    : 'Elige la materia y el grado para ver su temario.'}
+                    : 'Elige el año escolar, el grado y la materia para ver su temario.'}
                 </p>
               </div>
-              {content && (review?.enabled || canCreate) && (
+              {content && (review?.enabled || canCreate || canDuplicate) && (
                 <div className="data-table__header-actions">
                   {/* Revisión del programa completo de esta materia en este grado (solo si el colegio la exige). */}
                   {review?.enabled && (
                     <ReviewButton
-                      target={{ gradeId, subjectId }}
-                      title={`${content.subject_name} · ${content.grade_name}`}
-                      key={`${gradeId}|${subjectId}|${version}`}
+                      target={{ gradeId, subjectId, schoolPeriodId: periodId }}
+                      title={`${content.subject_name} · ${content.grade_name} · ${content.school_period?.name || ''}`}
+                      key={`${gradeId}|${subjectId}|${periodId}|${version}`}
                       status={review.status}
                       label={reviewLabel || 'Revisión'}
                       primary={Boolean(reviewLabel)}
                       defaultOpen={openReview}
                       onChanged={reload}
                     />
+                  )}
+                  {canDuplicate && (
+                    <Button variant="secondary" icon="copy" onClick={() => setDuplicating(true)}>
+                      Duplicar a otro año
+                    </Button>
                   )}
                   {canCreate && (
                     <>
@@ -386,6 +400,16 @@ function ProgrammaticContentPage() {
             )}
 
             <div className="pc-toolbar">
+              <Field label="Año escolar">
+                <Select value={periodId} onChange={(e) => setParam({ ano: e.target.value })}>
+                  {(periods || []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.closed_at ? ' (finalizado)' : ''}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <Field label="Grado">
                 <Select
                   value={gradeId}
@@ -413,16 +437,6 @@ function ProgrammaticContentPage() {
                     <option key={s.subject_id} value={s.subject_id}>
                       {s.subject_name} ({plural(s.content_count, 'tema', 'temas')})
                       {s.subject_active ? '' : ' · inactiva'}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Evaluaciones del año">
-                <Select value={periodId} onChange={(e) => setParam({ ano: e.target.value })}>
-                  {(periods || []).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                      {p.closed_at ? ' (finalizado)' : ''}
                     </option>
                   ))}
                 </Select>
@@ -580,6 +594,29 @@ function ProgrammaticContentPage() {
         </>
       )}
 
+      {duplicating && content && (
+        <DuplicateToYearModal
+          title="Duplicar contenido programático"
+          subject={`${content.subject_name} · ${content.grade_name}`}
+          fromPeriodId={periodId}
+          periods={periods || []}
+          items={[plural(units.length, 'unidad', 'unidades'), `${plural(items.length, 'tema', 'temas')} con su descripción, en el mismo orden`]}
+          note="Los temas que ya existan en el año de destino (misma unidad y tema) no se repiten. Las evaluaciones se duplican desde cada plan de evaluación."
+          onConfirm={(toPeriodId) => programmaticContentApi.duplicate({ gradeId, subjectId, fromPeriodId: periodId, toPeriodId })}
+          renderResult={(r) => (
+            <>
+              {plural(r.copied, 'tema copiado', 'temas copiados')} a {r.to}
+              {r.skipped > 0 && ` (${plural(r.skipped, 'ya existía', 'ya existían')})`}.
+            </>
+          )}
+          goLabel="Ver en el año de destino"
+          onGo={(_r, toPeriodId) => {
+            setDuplicating(false);
+            setParam({ ano: toPeriodId });
+          }}
+          onClose={() => setDuplicating(false)}
+        />
+      )}
       {editing !== null && pair && (
         <ContentItemModal
           initial={editing.id ? editing : null}

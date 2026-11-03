@@ -16,7 +16,7 @@ const { requirePermission } = require('../../middlewares/permission.middleware')
  *   POST /reviews/plans/:planId/submit      { comment? } enviar / reenviar
  *   POST /reviews/plans/:planId/review      { decision: 'approve' | 'observe', comment? }
  *   POST /reviews/plans/:planId/comments    { body }
- *   … y lo mismo en /reviews/contents/:gradeId/:subjectId (el programa de una materia en un grado).
+ *   … y lo mismo en /reviews/contents/:gradeId/:subjectId/:schoolPeriodId (el programa de una materia en un grado, en un año).
  */
 router.use(authMiddleware, tenantMiddleware, requirePermission('evaluation_plans', 'read'));
 
@@ -29,7 +29,11 @@ const commentBody = z.object({ body: text.min(1, 'Escribe el comentario.') });
 
 const targets = {
   plans: { type: 'plan', path: '/plans/:planId', key: (p) => ({ planId: uuid.parse(p.planId) }) },
-  contents: { type: 'content', path: '/contents/:gradeId/:subjectId', key: (p) => ({ gradeId: uuid.parse(p.gradeId), subjectId: uuid.parse(p.subjectId) }) },
+  contents: {
+    type: 'content',
+    path: '/contents/:gradeId/:subjectId/:schoolPeriodId',
+    key: (p) => ({ gradeId: uuid.parse(p.gradeId), subjectId: uuid.parse(p.subjectId), schoolPeriodId: uuid.parse(p.schoolPeriodId) }),
+  },
 };
 
 router.get('/inbox', asyncHandler(async (req, res) => res.status(200).json(await service.inbox(req))));

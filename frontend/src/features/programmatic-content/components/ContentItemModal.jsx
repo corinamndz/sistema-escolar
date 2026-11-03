@@ -21,7 +21,7 @@ function ContentItemModal({ initial, pair, units, defaultUnit, onClose, onSaved 
     description: initial?.description || '',
   });
   const { run, loading, error, fieldErrors } = useMutation(
-    isEdit ? (data) => programmaticContentApi.update(initial.id, data) : (data) => programmaticContentApi.create({ ...data, gradeId: pair.gradeId, subjectId: pair.subjectId })
+    isEdit ? (data) => programmaticContentApi.update(initial.id, data) : (data) => programmaticContentApi.create({ ...data, gradeId: pair.gradeId, subjectId: pair.subjectId, schoolPeriodId: pair.schoolPeriodId })
   );
   const toast = useToast();
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));

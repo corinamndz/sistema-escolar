@@ -12,6 +12,7 @@ const can = (action) => requirePermission('evaluation_plans', action);
 router.use(authMiddleware, tenantMiddleware);
 
 router.get('/options', can('read'), controller.listOptions);
+router.post('/duplicate', can('create'), controller.duplicate);
 router.get('/', can('read'), controller.getContent);
 router.post('/', can('create'), controller.createItem);
 router.put('/:id', can('update'), controller.ownItem, controller.updateItem);

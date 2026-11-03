@@ -9084,3 +9084,16 @@ body.is-printing-boleta { overflow: hidden; }
 }
 .recovery-back:hover { color: var(--color-primary-text); text-decoration: none; }
 .recovery .alert { margin: 0; }
+
+/* ==========================================================================
+   Duplicar para otro año escolar (contenido programático y planes)
+   ========================================================================== */
+.dup-year .confirm__message { max-width: 360px; }
+.dup-year__form { display: flex; flex-direction: column; gap: 14px; margin: 18px 0 4px; text-align: left; }
+.dup-year__list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 12px 14px; list-style: none; border-radius: var(--radius-md); background: var(--color-surface-muted); font-size: 13.5px; color: var(--color-text-secondary); }
+.dup-year__list li { display: flex; align-items: flex-start; gap: 8px; }
+.dup-year__list .icon { flex: none; margin-top: 2px; color: var(--color-success); }
+.dup-year__note { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--color-text-muted); }
+.dup-year .alert { margin: 14px 0 0; text-align: left; }
+.dup-year .form-actions { margin-top: 20px; }
+.dup-year__icon--success { color: var(--color-success-text); background: var(--color-success-soft); box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-success-soft) 50%, white); }

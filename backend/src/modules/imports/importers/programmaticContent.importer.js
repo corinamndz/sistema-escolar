@@ -11,8 +11,9 @@ const topicKey = (unit, topic) => `${normalizeHeader(unit)}|${normalizeHeader(to
  * una combinación específica de grado y materia.
  *
  * Params requeridos en la URL (query string):
- *   gradeId   UUID del grado
- *   subjectId UUID de la materia
+ *   gradeId         UUID del grado
+ *   subjectId       UUID de la materia
+ *   schoolPeriodId  UUID del año escolar (068: cada año tiene su temario)
  */
 module.exports = {
   type: 'programmatic_content',
@@ -22,16 +23,18 @@ module.exports = {
   fileName: 'plantilla-contenido-programatico.xlsx',
 
   async prepare(trx, tenantId, params) {
-    const { gradeId, subjectId } = params || {};
-    if (!gradeId || !subjectId) {
-      throw ApiError.badRequest('Indica el grado y la materia antes de descargar la plantilla.');
+    const { gradeId, subjectId, schoolPeriodId } = params || {};
+    if (!gradeId || !subjectId || !schoolPeriodId) {
+      throw ApiError.badRequest('Indica el grado, la materia y el año escolar antes de descargar la plantilla.');
     }
 
-    // Misma regla que al crear un tema a mano: la materia debe estar asignada al grado en Materias y activa.
+    // Misma regla que al crear un tema a mano: la materia debe estar asignada al grado en Materias y activa,
+    // y el año escolar debe estar abierto.
     const gradeSubject = await contentService.getPair(trx, tenantId, gradeId, subjectId, { requireActive: true });
+    const period = await contentService.getPeriod(trx, tenantId, schoolPeriodId, { forWriting: true });
 
     const existing = await trx('programmatic_content')
-      .where({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId })
+      .where({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId, school_period_id: period.id })
       .select('unit', 'topic')
       .orderBy('sort_order');
 
@@ -47,13 +50,14 @@ module.exports = {
     return {
       gradeId,
       subjectId,
+      schoolPeriodId: period.id,
       gradeName: gradeSubject.grade_name,
       subjectName: gradeSubject.subject_name,
       existingKeys,
       columns,
       template: {
         fileName: 'plantilla-contenido-programatico.xlsx',
-        title: `Contenido programático — ${gradeSubject.subject_name} (${gradeSubject.grade_name})`,
+        title: `Contenido programático — ${gradeSubject.subject_name} (${gradeSubject.grade_name}) · ${period.name}`,
         instructions: [
           'Cada fila representa un tema. Repite el mismo nombre de unidad para agrupar varios temas bajo una misma unidad.',
           'Los temas se agregan en el orden del archivo, a continuación de los ya existentes.',
@@ -109,8 +113,9 @@ module.exports = {
 
   async insert(trx, tenantId, data, ctx) {
     await contentService.createItem(trx, tenantId, {
-      gradeId:     ctx.gradeId,
-      subjectId:   ctx.subjectId,
+      gradeId:        ctx.gradeId,
+      subjectId:      ctx.subjectId,
+      schoolPeriodId: ctx.schoolPeriodId,
       unit:        data.unit,
       topic:       data.topic,
       description: data.description,

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
 import programmaticContentApi from '../../../api/endpoints/programmaticContent.api';
 import { useFetch } from '../../../hooks/useFetch';
@@ -23,6 +23,7 @@ import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
 import { ReviewButton } from '../../reviews/components/ReviewWidgets';
 import BulkImportActions from '../../../components/import/BulkImportActions';
+import DuplicateToYearModal from '../../../components/ui/DuplicateToYearModal';
 import { TermBadge, termLabel } from '../terms';
 import { INSTRUMENT_LABELS } from '../instruments';
 import {
@@ -56,6 +57,9 @@ function EvaluationPlanDetailPage() {
   const [searchParams] = useSearchParams();
   const openReview = searchParams.get('revision') === '1';
   const { data: plan, loading, error, refetch } = useFetch(() => evaluationPlansApi.getOne(id), [id]);
+  const navigate = useNavigate();
+  const [duplicating, setDuplicating] = useState(false);
+  const { data: periods } = useFetch(() => (duplicating ? evaluationPlansApi.listPeriodOptions() : Promise.resolve(null)), [duplicating]);
   const [activityModal, setActivityModal] = useState(null); // null | {} (crear) | {...} (editar)
   const [showProjectForm, setShowProjectForm] = useState(false);
   const { run: deleteRun, error: deleteError } = useMutation((activityId) => evaluationPlansApi.deleteActivity(id, activityId));
@@ -188,6 +192,11 @@ function EvaluationPlanDetailPage() {
           <>
             {/* Revisión y aprobación: el docente envía; coordinación del nivel o dirección revisan. */}
             <ReviewButton target={{ planId: plan.id }} title={plan.subject || ''} status={plan.review_status} onChanged={refetch} defaultOpen={openReview} />
+            {can('evaluation_plans', 'create') && (
+              <Button variant="secondary" icon="copy" onClick={() => setDuplicating(true)}>
+                Duplicar a otro año
+              </Button>
+            )}
             {plan.subject_id && (
               <Link to={`/programmatic-content?materia=${plan.subject_id}&grado=${plan.grade_id}&ano=${plan.school_period_id}`} className="btn btn--secondary">
                 Contenido programático
@@ -205,6 +214,37 @@ function EvaluationPlanDetailPage() {
           </>
         }
       />
+
+      {duplicating && periods && (
+        <DuplicateToYearModal
+          title="Duplicar plan de evaluación"
+          subject={`${plan.subject} · ${plan.grade_name} ${plan.sections.map((s) => s.name).join(', ')} · ${termLabel(plan.term_number, plan.term_name)}`}
+          fromPeriodId={plan.school_period_id}
+          periods={periods}
+          items={[
+            `${plan.activities.length} ${plan.activities.length === 1 ? 'actividad' : 'actividades'} con sus porcentajes${plan.format === 'detailed' ? ', criterios e indicadores' : ''}`,
+            'Fechas corridas al lapso equivalente del año de destino',
+            ...(plan.pedagogicalProject ? ['El proyecto pedagógico y sus competencias'] : []),
+            ...(plan.subject_id ? ['Los temas que evalúa (se crean en el temario del destino si faltan)'] : []),
+          ]}
+          note="Va al mismo grado, secciones (por nombre) y lapso del otro año, a nombre del docente que dicta la materia allí. Las notas no se copian."
+          onConfirm={(toPeriodId) => evaluationPlansApi.duplicate(plan.id, toPeriodId)}
+          renderResult={(r) => (
+            <>
+              Plan creado en {r.period} · {r.term_name} · sección {r.sections.join(', ')}
+              {r.teacher_name ? ` · ${r.teacher_name}` : ''}. {r.activities} {r.activities === 1 ? 'actividad' : 'actividades'}
+              {r.topics_created > 0 && `; ${r.topics_created} ${r.topics_created === 1 ? 'tema agregado' : 'temas agregados'} al temario`}.
+              {r.missing_sections.length > 0 && ` Sin equivalente en ${r.period}: sección ${r.missing_sections.join(', ')}.`}
+            </>
+          )}
+          goLabel="Abrir el plan nuevo"
+          onGo={(r) => {
+            setDuplicating(false);
+            navigate(`/evaluation-plans/${r.plan_id}`);
+          }}
+          onClose={() => setDuplicating(false)}
+        />
+      )}
 
       <Card title="Configuración del plan" subtitle="Lapso académico, tipo de formato y secciones a las que se aplica">
         <PlanSettings plan={plan} canEdit={can('evaluation_plans', 'update')} onChanged={refetch} />
@@ -387,8 +427,9 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
   const isEdit = Boolean(initial.id);
   // Temas del contenido programático de la materia en el grado del plan (si es una materia del catálogo).
   const { data: content } = useFetch(
-    () => (plan.subject_id ? programmaticContentApi.get({ gradeId: plan.grade_id, subjectId: plan.subject_id }) : Promise.resolve(null)),
-    [plan.subject_id, plan.grade_id]
+    // Temario del MISMO año que el plan (068).
+    () => (plan.subject_id ? programmaticContentApi.get({ gradeId: plan.grade_id, subjectId: plan.subject_id, schoolPeriodId: plan.school_period_id }) : Promise.resolve(null)),
+    [plan.subject_id, plan.grade_id, plan.school_period_id]
   );
   const [contentId, setContentId] = useState(initial.programmatic_content_id || '');
   const [instrument, setInstrument] = useState(initial.instrument || '');

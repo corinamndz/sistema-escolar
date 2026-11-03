@@ -84,6 +84,17 @@ async function getPair(trx, tenantId, gradeId, subjectId, { requireActive = fals
   return pair;
 }
 
+/**
+ * Año escolar del temario (068: cada tema es de un año). `forWriting`: en un
+ * año finalizado no se agregan temas.
+ */
+async function getPeriod(trx, tenantId, schoolPeriodId, { forWriting = false } = {}) {
+  const period = schoolPeriodId ? await trx('school_periods').where({ id: schoolPeriodId, tenant_id: tenantId }).first() : null;
+  if (!period) throw ApiError.notFound('Año escolar no encontrado.');
+  if (forWriting && period.closed_at) throw ApiError.conflict(`El año escolar ${period.name} está finalizado: no se le pueden agregar temas.`);
+  return period;
+}
+
 async function getItem(trx, tenantId, id) {
   const item = await trx('programmatic_content').where({ id, tenant_id: tenantId }).first();
   if (!item) throw ApiError.notFound('Contenido programático no encontrado.');
@@ -96,7 +107,7 @@ async function getItem(trx, tenantId, id) {
  * asignadas en Materias. Docente: solo los que dicta. Las materias inactivas
  * se omiten salvo que ya tengan temas (para poder consultarlos).
  */
-async function listOptions(trx, tenantId, { pairs }) {
+async function listOptions(trx, tenantId, { pairs, schoolPeriodId = null }) {
   const rows = await trx('grade_subjects as gs')
     .join('grades as g', 'g.id', 'gs.grade_id')
     .join('subjects as s', 's.id', 'gs.subject_id')
@@ -109,7 +120,11 @@ async function listOptions(trx, tenantId, { pairs }) {
       's.id as subject_id',
       's.name as subject_name',
       's.is_active as subject_active',
-      trx.raw('(SELECT count(*)::int FROM programmatic_content pc WHERE pc.grade_id = gs.grade_id AND pc.subject_id = gs.subject_id) AS content_count')
+      // Temas del año elegido (sin año: de todos).
+      trx.raw(
+        '(SELECT count(*)::int FROM programmatic_content pc WHERE pc.grade_id = gs.grade_id AND pc.subject_id = gs.subject_id AND (?::uuid IS NULL OR pc.school_period_id = ?::uuid)) AS content_count',
+        [schoolPeriodId, schoolPeriodId]
+      )
     )
     // Orden de la estructura del colegio (nivel → grado) y, dentro del grado, por materia.
     .orderBy([{ column: 'el.sort_order' }, { column: 'g.sort_order' }, { column: 'g.name' }, { column: 's.name' }]);
@@ -117,18 +132,18 @@ async function listOptions(trx, tenantId, { pairs }) {
 }
 
 /**
- * Contenido programático de la materia en el grado, con las actividades de
- * evaluación de cada ítem en el año escolar indicado, más lo necesario para
+ * Contenido programático de la materia en el grado DEL AÑO indicado (cada año
+ * tiene su propio temario), con las actividades de evaluación de cada ítem en
+ * los planes de ese año, más lo necesario para
  * "Incluir evaluación": los planes de la materia en ese grado y año (a los que
  * se agrega la actividad) y las secciones donde se puede crear uno nuevo.
  */
 async function getContent(trx, tenantId, { gradeId, subjectId, schoolPeriodId }, { scope, coversPlan, coversSubject }) {
   const pair = await getPair(trx, tenantId, gradeId, subjectId);
-  const period = schoolPeriodId ? await trx('school_periods').where({ id: schoolPeriodId, tenant_id: tenantId }).first() : null;
-  if (schoolPeriodId && !period) throw ApiError.notFound('Año escolar no encontrado.');
+  const period = await getPeriod(trx, tenantId, schoolPeriodId);
 
   const items = await trx('programmatic_content')
-    .where({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId })
+    .where({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId, school_period_id: period.id })
     .orderBy([{ column: 'sort_order' }, { column: 'created_at' }]);
 
   // Planes de la materia en el grado y año, con sus secciones y su total.
@@ -232,11 +247,13 @@ async function getContent(trx, tenantId, { gradeId, subjectId, schoolPeriodId },
   };
 }
 
-async function createItem(trx, tenantId, { gradeId, subjectId, unit, topic, description }) {
+async function createItem(trx, tenantId, { gradeId, subjectId, schoolPeriodId, unit, topic, description }) {
   await getPair(trx, tenantId, gradeId, subjectId, { requireActive: true });
-  const { max } = await trx('programmatic_content').where({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId }).max('sort_order as max').first();
+  await getPeriod(trx, tenantId, schoolPeriodId, { forWriting: true });
+  const where = { tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId, school_period_id: schoolPeriodId };
+  const { max } = await trx('programmatic_content').where(where).max('sort_order as max').first();
   const [item] = await trx('programmatic_content')
-    .insert({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId, unit, topic, description, sort_order: max === null ? 0 : Number(max) + 1 })
+    .insert({ ...where, unit, topic, description, sort_order: max === null ? 0 : Number(max) + 1 })
     .returning('*');
   return item;
 }
@@ -258,8 +275,57 @@ async function deleteItem(trx, tenantId, id) {
 }
 
 /**
+ * Duplica el temario de una materia en un grado de un año a otro (unidades y
+ * temas, en el mismo orden). Los temas que ya existen en el destino (misma
+ * unidad y tema) no se repiten: se puede repetir sin crear duplicados.
+ * Las evaluaciones son de los planes (por sección y lapso) y se duplican desde
+ * Planes de evaluación.
+ */
+async function duplicateContent(trx, tenantId, { gradeId, subjectId, fromPeriodId, toPeriodId }) {
+  if (fromPeriodId === toPeriodId) throw ApiError.badRequest('Elige un año escolar de destino distinto al de origen.');
+  const pair = await getPair(trx, tenantId, gradeId, subjectId, { requireActive: true });
+  const from = await getPeriod(trx, tenantId, fromPeriodId);
+  const to = await getPeriod(trx, tenantId, toPeriodId, { forWriting: true });
+  const items = await copyTopics(trx, tenantId, { gradeId, subjectId, fromPeriodId: from.id, toPeriodId: to.id });
+  return { ...items, subject_name: pair.subject_name, grade_name: pair.grade_name, from: from.name, to: to.name };
+}
+
+/**
+ * Copia los temas (todos, o solo `onlyIds`) al año destino, saltando los que ya
+ * están. Devuelve { copied, skipped, map } con map: id origen → id destino
+ * (también para los que ya existían), para re-enlazar actividades duplicadas.
+ */
+async function copyTopics(trx, tenantId, { gradeId, subjectId, fromPeriodId, toPeriodId, onlyIds = null }) {
+  const base = { tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId };
+  const source = await trx('programmatic_content')
+    .where({ ...base, school_period_id: fromPeriodId })
+    .modify((q) => onlyIds && q.whereIn('id', onlyIds))
+    .orderBy([{ column: 'sort_order' }, { column: 'created_at' }]);
+  const existing = await trx('programmatic_content').where({ ...base, school_period_id: toPeriodId });
+  const key = (i) => `${i.unit.trim().toLowerCase()}|${i.topic.trim().toLowerCase()}`;
+  const byKey = new Map(existing.map((i) => [key(i), i.id]));
+  let next = existing.reduce((m, i) => Math.max(m, i.sort_order), -1) + 1;
+  const map = new Map();
+  let copied = 0;
+  for (const item of source) {
+    const found = byKey.get(key(item));
+    if (found) {
+      map.set(item.id, found);
+      continue;
+    }
+    const [row] = await trx('programmatic_content')
+      .insert({ ...base, school_period_id: toPeriodId, unit: item.unit, topic: item.topic, description: item.description, sort_order: next++ })
+      .returning('id');
+    byKey.set(key(item), row.id);
+    map.set(item.id, row.id);
+    copied += 1;
+  }
+  return { copied, skipped: source.length - copied, map };
+}
+
+/**
  * Valida el contenido de una actividad contra su plan (mensaje claro antes del
- * trigger de la migración 038): misma materia y mismo grado.
+ * trigger de las migraciones 038/068): misma materia, mismo grado y mismo año.
  */
 async function assertContentForPlan(trx, tenantId, contentId, plan) {
   const item = await trx('programmatic_content').where({ id: contentId, tenant_id: tenantId }).first();
@@ -270,7 +336,28 @@ async function assertContentForPlan(trx, tenantId, contentId, plan) {
       { path: 'programmaticContentId', message: 'No corresponde al plan.' },
     ]);
   }
+  const { school_period_id: periodId } = await trx('terms').where({ id: plan.term_id }).select('school_period_id').first();
+  if (item.school_period_id !== periodId) {
+    throw ApiError.unprocessable('Ese contenido programático es de otro año escolar que el plan.', [
+      { path: 'programmaticContentId', message: 'Es de otro año escolar.' },
+    ]);
+  }
   return item;
 }
 
-module.exports = { listOptions, getPair, getContent, getItem, createItem, updateItem, deleteItem, assertContentForPlan, compareUnits, unitNumber, sortByProgram };
+module.exports = {
+  listOptions,
+  getPair,
+  getPeriod,
+  getContent,
+  getItem,
+  createItem,
+  updateItem,
+  deleteItem,
+  duplicateContent,
+  copyTopics,
+  assertContentForPlan,
+  compareUnits,
+  unitNumber,
+  sortByProgram,
+};

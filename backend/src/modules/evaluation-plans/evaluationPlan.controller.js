@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const service = require('./evaluationPlan.service');
+const duplication = require('./planDuplication.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const teacherScope = require('../access/teacherScope');
 const { ApiError } = require('../../utils/ApiError');
@@ -267,7 +268,18 @@ const reopenPlan = asyncHandler(async (req, res) => {
   res.status(200).json(await service.reopenPlan(req.db, req.tenantId, req.params.planId));
 });
 
+/**
+ * POST /evaluation-plans/:planId/duplicate — { toPeriodId }: copia el plan (actividades,
+ * criterios, fechas y proyecto, sin notas) al mismo grado, secciones y lapso de otro año.
+ */
+const duplicatePlan = asyncHandler(async (req, res) => {
+  const { toPeriodId } = z.object({ toPeriodId: z.string().uuid('Elige el año escolar de destino.') }).parse(req.body);
+  const result = await duplication.duplicatePlan(req.db, req.tenantId, req.params.planId, { toPeriodId }, { assertCanCreate: (input) => assertCanCreatePlan(req, input) });
+  res.status(201).json(result);
+});
+
 module.exports = {
+  duplicatePlan,
   listPeriodOptions,
   listSectionOptions,
   getSectionAssignmentOptions,

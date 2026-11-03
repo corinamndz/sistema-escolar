@@ -80,7 +80,8 @@ async function loadPlanTarget(trx, tenantId, planId) {
   };
 }
 
-async function loadContentTarget(trx, tenantId, gradeId, subjectId) {
+/** Programa de una materia en un grado EN UN AÑO (068: cada año tiene su temario y su revisión). */
+async function loadContentTarget(trx, tenantId, gradeId, subjectId, schoolPeriodId) {
   const pair = await trx('grade_subjects as gs')
     .join('grades as g', 'g.id', 'gs.grade_id')
     .join('subjects as s', 's.id', 'gs.subject_id')
@@ -88,11 +89,14 @@ async function loadContentTarget(trx, tenantId, gradeId, subjectId) {
     .select('g.level_code', 'g.name as grade_name', 's.name as subject_name')
     .first();
   if (!pair) throw ApiError.notFound('La materia no se dicta en ese grado.');
-  const review = await trx('programmatic_content_reviews').where({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId }).first();
-  const items = await trx('programmatic_content').where({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId }).count('* as n').first();
+  const period = await trx('school_periods').where({ id: schoolPeriodId, tenant_id: tenantId }).first('id', 'name');
+  if (!period) throw ApiError.notFound('Año escolar no encontrado.');
+  const where = { tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId, school_period_id: schoolPeriodId };
+  const review = await trx('programmatic_content_reviews').where(where).first();
+  const items = await trx('programmatic_content').where(where).count('* as n').first();
   return {
     type: 'content',
-    key: { gradeId, subjectId },
+    key: { gradeId, subjectId, schoolPeriodId },
     enabled: await isContentReviewRequired(trx, tenantId),
     id: review?.id || null,
     status: review?.status || 'borrador',
@@ -104,7 +108,7 @@ async function loadContentTarget(trx, tenantId, gradeId, subjectId) {
     grade_name: pair.grade_name,
     subject_name: pair.subject_name,
     item_count: Number(items.n),
-    title: `${pair.subject_name} · ${pair.grade_name}`,
+    title: `${pair.subject_name} · ${pair.grade_name} · ${period.name}`,
   };
 }
 
@@ -190,7 +194,7 @@ async function present(req, target, role) {
   };
 }
 
-const loadTarget = (req, type, key) => (type === 'plan' ? loadPlanTarget(req.db, req.tenantId, key.planId) : loadContentTarget(req.db, req.tenantId, key.gradeId, key.subjectId));
+const loadTarget = (req, type, key) => (type === 'plan' ? loadPlanTarget(req.db, req.tenantId, key.planId) : loadContentTarget(req.db, req.tenantId, key.gradeId, key.subjectId, key.schoolPeriodId));
 
 async function getReview(req, type, key) {
   const target = await loadTarget(req, type, key);
@@ -205,8 +209,8 @@ async function getReview(req, type, key) {
 async function ensureContentReview(trx, tenantId, target) {
   if (target.id) return target.id;
   const [row] = await trx('programmatic_content_reviews')
-    .insert({ tenant_id: tenantId, grade_id: target.key.gradeId, subject_id: target.key.subjectId })
-    .onConflict(['tenant_id', 'grade_id', 'subject_id'])
+    .insert({ tenant_id: tenantId, grade_id: target.key.gradeId, subject_id: target.key.subjectId, school_period_id: target.key.schoolPeriodId })
+    .onConflict(['tenant_id', 'grade_id', 'subject_id', 'school_period_id'])
     .merge({ tenant_id: tenantId })
     .returning('id');
   target.id = row.id;
@@ -266,7 +270,7 @@ async function reviewersOf(trx, tenantId, level) {
 const linkOf = (target) =>
   target.type === 'plan'
     ? `/evaluation-plans/${target.key.planId}?revision=1`
-    : `/programmatic-content?materia=${target.key.subjectId}&grado=${target.key.gradeId}&revision=1`;
+    : `/programmatic-content?materia=${target.key.subjectId}&grado=${target.key.gradeId}&ano=${target.key.schoolPeriodId}&revision=1`;
 
 const clip = (text, max) => (text && text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
@@ -399,8 +403,8 @@ async function review(req, type, key, { decision, comment }) {
  * Programa de una materia en un grado: ¿lo puede editar este usuario ahora?
  * Lanza 409 si es el docente y está en revisión o aprobado (revisión activada).
  */
-async function assertContentEditable(req, gradeId, subjectId) {
-  const target = await loadContentTarget(req.db, req.tenantId, gradeId, subjectId);
+async function assertContentEditable(req, gradeId, subjectId, schoolPeriodId) {
+  const target = await loadContentTarget(req.db, req.tenantId, gradeId, subjectId, schoolPeriodId);
   if (!target.enabled || !LOCKED_STATUSES.includes(target.status)) return;
   const role = await roleFor(req, target);
   if (!isLockedFor(role.role, target)) return;
@@ -412,8 +416,8 @@ async function assertContentEditable(req, gradeId, subjectId) {
 }
 
 /** Estado de revisión del programa para la página de Contenido programático. */
-async function contentReviewState(req, gradeId, subjectId) {
-  const target = await loadContentTarget(req.db, req.tenantId, gradeId, subjectId);
+async function contentReviewState(req, gradeId, subjectId, schoolPeriodId) {
+  const target = await loadContentTarget(req.db, req.tenantId, gradeId, subjectId, schoolPeriodId);
   const role = await roleFor(req, target);
   return { enabled: target.enabled, status: target.status, status_label: STATUS_LABELS[target.status], my_role: role.role, locked: isLockedFor(role.role, target) };
 }
@@ -464,15 +468,24 @@ async function inbox(req) {
     .db('programmatic_content_reviews as r')
     .join('grades as g', 'g.id', 'r.grade_id')
     .join('subjects as s', 's.id', 'r.subject_id')
+    .join('school_periods as sp', 'sp.id', 'r.school_period_id')
     .leftJoin('users as u', 'u.id', 'r.submitted_by')
     .where({ 'r.tenant_id': req.tenantId, 'r.status': 'en_revision' })
     .modify((q) => level && q.andWhere('g.level_code', level))
-    .select('r.grade_id', 'r.subject_id', 'r.submitted_at', 'g.level_code', req.db.raw("s.name || ' · ' || g.name AS title"), req.db.raw('COALESCE(u.full_name, u.username) AS submitted_by_name'))
+    .select(
+      'r.grade_id',
+      'r.subject_id',
+      'r.school_period_id',
+      'r.submitted_at',
+      'g.level_code',
+      req.db.raw("s.name || ' · ' || g.name || ' · ' || sp.name AS title"),
+      req.db.raw('COALESCE(u.full_name, u.username) AS submitted_by_name')
+    )
     .orderBy('r.submitted_at');
 
   const items = [
     ...plans.map((p) => ({ type: 'plan', planId: p.plan_id, title: p.title, teacher_name: p.teacher_name, submitted_by_name: p.submitted_by_name, submitted_at: p.submitted_at, level_name: LEVEL_NAMES[p.level_code] })),
-    ...contents.map((c) => ({ type: 'content', gradeId: c.grade_id, subjectId: c.subject_id, title: c.title, submitted_by_name: c.submitted_by_name, submitted_at: c.submitted_at, level_name: LEVEL_NAMES[c.level_code] })),
+    ...contents.map((c) => ({ type: 'content', gradeId: c.grade_id, subjectId: c.subject_id, schoolPeriodId: c.school_period_id, title: c.title, submitted_by_name: c.submitted_by_name, submitted_at: c.submitted_at, level_name: LEVEL_NAMES[c.level_code] })),
   ].sort((a, b) => new Date(a.submitted_at) - new Date(b.submitted_at));
   return { reviewer: true, level: level ? { code: level, name: LEVEL_NAMES[level] } : null, items };
 }

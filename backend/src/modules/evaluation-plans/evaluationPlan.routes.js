@@ -40,5 +40,7 @@ router.delete('/:planId/activities/:activityId', requirePermission('evaluation_p
 
 router.post('/:planId/close', requirePermission('evaluation_plans', 'update'), ownPlan('planId'), controller.closePlan);
 router.post('/:planId/reopen', requirePermission('evaluation_plans', 'update'), ownPlan('planId'), controller.reopenPlan);
+// Duplicar para otro año escolar (crea un plan nuevo en el destino).
+router.post('/:planId/duplicate', requirePermission('evaluation_plans', 'create'), ownPlan('planId'), controller.duplicatePlan);
 
 module.exports = router;

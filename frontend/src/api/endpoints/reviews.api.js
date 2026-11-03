@@ -1,7 +1,7 @@
 import { axiosClient } from '../axiosClient';
 
-/** Ruta base del objeto revisado: un plan ({ planId }) o el programa de una materia en un grado ({ gradeId, subjectId }). */
-const base = (t) => (t.planId ? `/reviews/plans/${t.planId}` : `/reviews/contents/${t.gradeId}/${t.subjectId}`);
+/** Ruta base del objeto revisado: un plan ({ planId }) o el programa de una materia en un grado y año ({ gradeId, subjectId, schoolPeriodId }). */
+const base = (t) => (t.planId ? `/reviews/plans/${t.planId}` : `/reviews/contents/${t.gradeId}/${t.subjectId}/${t.schoolPeriodId}`);
 
 /** Revisión y aprobación de planes de evaluación y contenido programático. */
 const reviewsApi = {

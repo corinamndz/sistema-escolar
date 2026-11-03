@@ -19,9 +19,10 @@ async function requireOwnPlan(req, res, next) {
     if (req.params.type === 'programmatic_content') {
       const gradeId = req.query.gradeId || req.body?.gradeId;
       const subjectId = req.query.subjectId || req.body?.subjectId;
+      const schoolPeriodId = req.query.schoolPeriodId || req.body?.schoolPeriodId;
       if (gradeId && subjectId) {
         await scope.assertGradeSubjectAccess(req, gradeId, subjectId);
-        if (req.method !== 'GET') await reviews.assertContentEditable(req, gradeId, subjectId);
+        if (req.method !== 'GET' && schoolPeriodId) await reviews.assertContentEditable(req, gradeId, subjectId, schoolPeriodId);
       }
     }
     next();

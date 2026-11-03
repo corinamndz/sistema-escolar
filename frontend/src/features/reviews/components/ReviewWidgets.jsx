@@ -24,7 +24,7 @@ export function ReviewStatusBadge({ status }) {
 export function ReviewButton({ target, title, status: known, onChanged, label = 'Revisión', primary = false, defaultOpen = false }) {
   const [status, setStatus] = useState(known || null);
   const [open, setOpen] = useState(defaultOpen);
-  const key = target.planId || `${target.gradeId}|${target.subjectId}`;
+  const key = target.planId || `${target.gradeId}|${target.subjectId}|${target.schoolPeriodId}`;
 
   useEffect(() => {
     if (known) return setStatus(known);
@@ -92,7 +92,7 @@ export function ReviewInbox({ type, onChanged }) {
       </div>
       <ul className="review-inbox__list">
         {items.map((i) => (
-          <li key={i.planId || `${i.gradeId}|${i.subjectId}`}>
+          <li key={i.planId || `${i.gradeId}|${i.subjectId}|${i.schoolPeriodId}`}>
             <button type="button" className="review-inbox__item" onClick={() => setOpen(i)}>
               <Icon name={i.type === 'plan' ? 'clipboard' : 'layers'} size={16} />
               <span className="review-inbox__text">
@@ -112,7 +112,7 @@ export function ReviewInbox({ type, onChanged }) {
       </ul>
       {open && (
         <ReviewDrawer
-          target={open.type === 'plan' ? { planId: open.planId } : { gradeId: open.gradeId, subjectId: open.subjectId }}
+          target={open.type === 'plan' ? { planId: open.planId } : { gradeId: open.gradeId, subjectId: open.subjectId, schoolPeriodId: open.schoolPeriodId }}
           title={open.title}
           onClose={() => setOpen(null)}
           onChanged={(r) => {

@@ -116,7 +116,7 @@ module.exports = {
       .join('terms as t', 't.id', 'ep.term_id')
       .leftJoin('subjects as sub', 'sub.id', 'ep.subject_id')
       .where({ 'ep.id': planId.data, 'ep.tenant_id': tenantId })
-      .select('ep.*', 'sec.grade_id', 'g.name as grade_name', 't.name as term_name', 't.start_date as term_start', 't.end_date as term_end', trx.raw('COALESCE(sub.name, ep.subject) AS subject_name'))
+      .select('ep.*', 'sec.grade_id', 'g.name as grade_name', 't.name as term_name', 't.school_period_id', 't.start_date as term_start', 't.end_date as term_end', trx.raw('COALESCE(sub.name, ep.subject) AS subject_name'))
       .first();
     if (!plan) throw ApiError.notFound('Plan de evaluación no encontrado.');
     if (plan.status === 'closed') throw ApiError.conflict('El plan de evaluación está cerrado: reábrelo para cargar actividades.');
@@ -127,11 +127,12 @@ module.exports = {
     const sections = (await planService.listPlanSections(trx, plan.id)).map((s) => ({ id: s.id, name: s.name, dateKey: dateKey(s.name) }));
     const perSectionDates = sections.length > 1;
 
-    const topics = (await trx('programmatic_content').where({ tenant_id: tenantId, grade_id: plan.grade_id, subject_id: plan.subject_id }).select('id', 'unit', 'topic', 'sort_order')).sort(
+    // Temario del MISMO año que el plan (068).
+    const topics = (await trx('programmatic_content').where({ tenant_id: tenantId, grade_id: plan.grade_id, subject_id: plan.subject_id, school_period_id: plan.school_period_id }).select('id', 'unit', 'topic', 'sort_order')).sort(
       (a, b) => compareUnits(a.unit, b.unit) || a.sort_order - b.sort_order
     );
     if (!topics.length) {
-      throw ApiError.unprocessable(`${plan.subject_name} de ${plan.grade_name} aún no tiene contenido programático. Cárgalo primero en «Contenido programático» para generar la plantilla.`);
+      throw ApiError.unprocessable(`${plan.subject_name} de ${plan.grade_name} aún no tiene contenido programático en este año escolar. Cárgalo (o duplícalo del año anterior) en «Contenido programático» para generar la plantilla.`);
     }
 
     const existing = await trx('evaluation_activities as a')

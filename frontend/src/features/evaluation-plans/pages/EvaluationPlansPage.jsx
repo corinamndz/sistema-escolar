@@ -22,6 +22,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { LEVELS, LEVEL_CODES, LevelBadge, LevelRule } from '../../academics/levels';
 import { FORMATS, FormatPicker } from '../components/DetailedPlanner';
 import { TERM_OPTIONS, TermSelect, termLabel } from '../terms';
+import DuplicateToYearModal from '../../../components/ui/DuplicateToYearModal';
 
 /** Estado del plan según su ponderación: cerrado, listo para cerrar, incompleto o sin actividades. */
 export function planState(plan) {
@@ -170,10 +171,12 @@ function EvaluationPlansPage() {
     { key: 'review_status', header: 'Revisión', render: (p) => <ReviewStatusBadge status={p.review_status} />, sortValue: (p) => ['observado', 'en_revision', 'borrador', 'aprobado'].indexOf(p.review_status) },
   ];
   const [reviewing, setReviewing] = useState(null);
+  const [duplicating, setDuplicating] = useState(null);
   const rowActions = [
     { key: 'review', icon: 'inbox', label: 'Revisión y comentarios', tone: 'view', onClick: (p) => setReviewing(p) },
     { key: 'activities', icon: 'clipboard', label: 'Gestionar actividades y porcentajes', tone: 'edit', onClick: (p) => navigate(`/evaluation-plans/${p.id}`) },
     ...(can('grading', 'read') ? [{ key: 'grades', icon: 'graduation', label: 'Ver calificaciones', tone: 'view', onClick: (p) => navigate(`/grading/plans/${p.id}`) }] : []),
+    ...(can('evaluation_plans', 'create') ? [{ key: 'duplicate', icon: 'copy', label: 'Duplicar a otro año', tone: 'view', onClick: (p) => setDuplicating(p) }] : []),
   ];
   const canCreate = can('evaluation_plans', 'create');
 
@@ -182,6 +185,30 @@ function EvaluationPlansPage() {
       <PageHeader title="Planes de evaluación" subtitle="Organizados por materia y, dentro de cada una, por lapso académico" />
       {/* Coordinador / Director: planes que esperan su revisión. */}
       <ReviewInbox type="plan" onChanged={refetchPlans} />
+      {duplicating && (
+        <DuplicateToYearModal
+          title="Duplicar plan de evaluación"
+          subject={`${duplicating.subject_name || duplicating.subject} · ${duplicating.grade_name} ${duplicating.section_names || duplicating.section_name || ''} · ${termLabel(duplicating.term_number, duplicating.term_name)}`}
+          fromPeriodId={duplicating.school_period_id}
+          periods={periods || []}
+          items={['Actividades con sus porcentajes, criterios e indicadores', 'Fechas corridas al lapso equivalente', 'Proyecto pedagógico y temas evaluados']}
+          note="Va al mismo grado, secciones (por nombre) y lapso del otro año, a nombre del docente que dicta la materia allí. Las notas no se copian."
+          onConfirm={(toPeriodId) => evaluationPlansApi.duplicate(duplicating.id, toPeriodId)}
+          renderResult={(r) => (
+            <>
+              Plan creado en {r.period} · {r.term_name} · sección {r.sections.join(', ')}
+              {r.teacher_name ? ` · ${r.teacher_name}` : ''}. {r.activities} {r.activities === 1 ? 'actividad' : 'actividades'}.
+              {r.missing_sections.length > 0 && ` Sin equivalente en ${r.period}: sección ${r.missing_sections.join(', ')}.`}
+            </>
+          )}
+          goLabel="Abrir el plan nuevo"
+          onGo={(r) => navigate(`/evaluation-plans/${r.plan_id}`)}
+          onClose={() => {
+            setDuplicating(null);
+            refetchPlans();
+          }}
+        />
+      )}
       {reviewing && (
         <ReviewDrawer
           target={{ planId: reviewing.id }}

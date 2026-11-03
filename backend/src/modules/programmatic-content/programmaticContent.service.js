@@ -66,16 +66,21 @@ async function sortByProgram(trx, activities, { contentKey = 'programmatic_conte
   });
 }
 
-/** Grado + materia del plan de estudios; 404 si la materia no se dicta en ese grado. */
-async function getPair(trx, tenantId, gradeId, subjectId) {
+/**
+ * Grado + materia del plan de estudios (grade_subjects, lo que se configura en
+ * Materias); 404 si la materia no se dicta en ese grado. `requireActive`: para
+ * crear temas la materia además debe estar activa.
+ */
+async function getPair(trx, tenantId, gradeId, subjectId, { requireActive = false } = {}) {
   const pair = await trx('grade_subjects as gs')
     .join('grades as g', 'g.id', 'gs.grade_id')
     .join('subjects as s', 's.id', 'gs.subject_id')
     .join('education_levels as el', 'el.code', 'g.level_code')
     .where({ 'gs.tenant_id': tenantId, 'gs.grade_id': gradeId, 'gs.subject_id': subjectId })
-    .select('g.id as grade_id', 'g.name as grade_name', 'g.level_code', 'el.name as level_name', 's.id as subject_id', 's.name as subject_name')
+    .select('g.id as grade_id', 'g.name as grade_name', 'g.level_code', 'el.name as level_name', 's.id as subject_id', 's.name as subject_name', 's.is_active')
     .first();
-  if (!pair) throw ApiError.notFound('La materia no se dicta en ese grado.');
+  if (!pair) throw ApiError.notFound('La materia no se dicta en ese grado. Asígnala al grado en el módulo de Materias.');
+  if (requireActive && !pair.is_active) throw ApiError.conflict(`La materia "${pair.subject_name}" está inactiva: actívala en Materias para agregarle temas.`);
   return pair;
 }
 
@@ -86,8 +91,10 @@ async function getItem(trx, tenantId, id) {
 }
 
 /**
- * Materias y grados para el selector de la pantalla (docente: solo los suyos),
- * con cuántos temas tiene cada uno.
+ * Pares grado–materia para los selectores de la pantalla, tomados del plan de
+ * estudios (grade_subjects): cada grado ofrece solo las materias que tiene
+ * asignadas en Materias. Docente: solo los que dicta. Las materias inactivas
+ * se omiten salvo que ya tengan temas (para poder consultarlos).
  */
 async function listOptions(trx, tenantId, { pairs }) {
   const rows = await trx('grade_subjects as gs')
@@ -101,10 +108,12 @@ async function listOptions(trx, tenantId, { pairs }) {
       'g.level_code',
       's.id as subject_id',
       's.name as subject_name',
+      's.is_active as subject_active',
       trx.raw('(SELECT count(*)::int FROM programmatic_content pc WHERE pc.grade_id = gs.grade_id AND pc.subject_id = gs.subject_id) AS content_count')
     )
-    .orderBy([{ column: 's.name' }, { column: 'el.sort_order' }, { column: 'g.sort_order' }, { column: 'g.name' }]);
-  return pairs ? rows.filter((r) => pairs.has(`${r.grade_id}|${r.subject_id}`)) : rows;
+    // Orden de la estructura del colegio (nivel → grado) y, dentro del grado, por materia.
+    .orderBy([{ column: 'el.sort_order' }, { column: 'g.sort_order' }, { column: 'g.name' }, { column: 's.name' }]);
+  return rows.filter((r) => (r.subject_active || r.content_count > 0) && (!pairs || pairs.has(`${r.grade_id}|${r.subject_id}`)));
 }
 
 /**
@@ -224,7 +233,7 @@ async function getContent(trx, tenantId, { gradeId, subjectId, schoolPeriodId },
 }
 
 async function createItem(trx, tenantId, { gradeId, subjectId, unit, topic, description }) {
-  await getPair(trx, tenantId, gradeId, subjectId);
+  await getPair(trx, tenantId, gradeId, subjectId, { requireActive: true });
   const { max } = await trx('programmatic_content').where({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId }).max('sort_order as max').first();
   const [item] = await trx('programmatic_content')
     .insert({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId, unit, topic, description, sort_order: max === null ? 0 : Number(max) + 1 })
@@ -264,4 +273,4 @@ async function assertContentForPlan(trx, tenantId, contentId, plan) {
   return item;
 }
 
-module.exports = { listOptions, getContent, getItem, createItem, updateItem, deleteItem, assertContentForPlan, compareUnits, unitNumber, sortByProgram };
+module.exports = { listOptions, getPair, getContent, getItem, createItem, updateItem, deleteItem, assertContentForPlan, compareUnits, unitNumber, sortByProgram };

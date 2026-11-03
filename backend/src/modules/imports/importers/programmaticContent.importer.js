@@ -27,13 +27,8 @@ module.exports = {
       throw ApiError.badRequest('Indica el grado y la materia antes de descargar la plantilla.');
     }
 
-    const gradeSubject = await trx('grade_subjects as gs')
-      .join('grades as g', 'g.id', 'gs.grade_id')
-      .join('subjects as s', 's.id', 'gs.subject_id')
-      .where({ 'gs.grade_id': gradeId, 'gs.subject_id': subjectId, 'g.tenant_id': tenantId })
-      .select('g.name as grade_name', 's.name as subject_name')
-      .first();
-    if (!gradeSubject) throw ApiError.notFound('Combinación de grado y materia no encontrada.');
+    // Misma regla que al crear un tema a mano: la materia debe estar asignada al grado en Materias y activa.
+    const gradeSubject = await contentService.getPair(trx, tenantId, gradeId, subjectId, { requireActive: true });
 
     const existing = await trx('programmatic_content')
       .where({ tenant_id: tenantId, grade_id: gradeId, subject_id: subjectId })

@@ -16,15 +16,16 @@ import { currentPeriod } from '../../../lib/schoolPeriods';
 
 const MAX_GRADES = 4;
 
-/** "1er año · A, B" / "2do año · todas" para la celda de la tabla. */
-function GradesCell({ offering }) {
-  const grades = offering?.grades || [];
+/** "1er año · A, B" / "2do año · todas" para la celda de la tabla. `highlight`: grado filtrado (va primero y resaltado). */
+function GradesCell({ offering, highlight }) {
+  const all = offering?.grades || [];
+  const grades = highlight ? [...all.filter((g) => g.id === highlight), ...all.filter((g) => g.id !== highlight)] : all;
   if (!grades.length) return <span className="text-muted">Sin grados</span>;
   const label = (g) => (g.sections === 0 ? g.name : `${g.name} · ${g.available.length === g.sections ? 'todas' : g.available.join(', ') || 'ninguna'}`);
   return (
     <div className="subj-chips" title={grades.map(label).join(' / ')}>
       {grades.slice(0, MAX_GRADES).map((g) => (
-        <span key={g.id} className="chip">
+        <span key={g.id} className={`chip${g.id === highlight ? ' subj-chip--match' : ''}`}>
           {label(g)}
         </span>
       ))}
@@ -44,11 +45,17 @@ function CoverageCell({ offering }) {
   );
 }
 
+/** ¿La materia se dicta en ese grado (o en cualquiera) y en esa sección (o en cualquiera)? */
+const matchesGradeSection = (s, gradeId, section) =>
+  (!gradeId && !section) ||
+  (s.offering?.grades || []).some((g) => (!gradeId || g.id === gradeId) && (!section || g.available.includes(section)));
+
 /**
  * Módulo de Materias: cada materia, en qué grados y secciones se dicta y qué
  * docente la imparte en cada sección del año escolar elegido. La estructura del
  * colegio (grados, secciones y su personal) está en Grados y secciones.
- * `?grado=<id>` filtra las materias de un grado (enlace desde Grados y secciones).
+ * Filtros: año escolar, nivel, grado y sección. `?grado=<id>` llega desde
+ * Grados y secciones y queda elegido en el selector de grado.
  */
 function SubjectsPage() {
   const { can } = useAuth();
@@ -57,8 +64,21 @@ function SubjectsPage() {
   const { data: periods } = useFetch(() => academicsApi.listSchoolPeriods(), []);
   const [periodId, setPeriodId] = useState('');
   const [level, setLevel] = useState('');
+  const [section, setSection] = useState('');
   const [editing, setEditing] = useState(null); // null | {} nueva | materia
   const gradeFilter = params.get('grado') || '';
+  // Todos los grados del colegio, en el orden de la estructura (nivel → grado).
+  const { data: allGrades } = useFetch(() => academicsApi.listGrades(), []);
+
+  const setGradeFilter = (id) => {
+    setParams(id ? { grado: id } : {}, { replace: true });
+    setSection(''); // las secciones dependen del grado
+  };
+  const changeLevel = (code) => {
+    setLevel(code);
+    // El grado elegido deja de tener sentido si es de otro nivel.
+    if (gradeFilter && code && allGrades?.find((g) => g.id === gradeFilter)?.level_code !== code) setGradeFilter('');
+  };
 
   // Año por defecto: el que está en curso hoy (no el siguiente ya creado).
   useEffect(() => {
@@ -78,13 +98,18 @@ function SubjectsPage() {
     () => Object.fromEntries(LEVEL_CODES.map((code) => [code, (subjects || []).filter((s) => levelsOf(s).has(code)).length])),
     [subjects]
   );
-  const gradeName = (subjects || []).flatMap((s) => s.offering?.grades || []).find((g) => g.id === gradeFilter)?.name;
+  // Grados del selector: los del nivel elegido.
+  const gradeOptions = useMemo(() => (allGrades || []).filter((g) => !level || g.level_code === level), [allGrades, level]);
+  // Secciones del selector: las que tienen materias en el año, del grado elegido (o de todos).
+  const sectionOptions = useMemo(() => {
+    const names = new Set();
+    for (const s of subjects || [])
+      for (const g of s.offering?.grades || []) if (!gradeFilter || g.id === gradeFilter) g.available.forEach((n) => names.add(n));
+    return [...names].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+  }, [subjects, gradeFilter]);
   const rows = useMemo(
-    () =>
-      (subjects || []).filter(
-        (s) => (!level || levelsOf(s).has(level)) && (!gradeFilter || (s.offering?.grades || []).some((g) => g.id === gradeFilter))
-      ),
-    [subjects, level, gradeFilter]
+    () => (subjects || []).filter((s) => (!level || levelsOf(s).has(level)) && matchesGradeSection(s, gradeFilter, section)),
+    [subjects, level, gradeFilter, section]
   );
 
   const columns = [
@@ -99,7 +124,7 @@ function SubjectsPage() {
       ),
       sortValue: (s) => s.name,
     },
-    { key: 'grades', header: 'Grados y secciones', render: (s) => <GradesCell offering={s.offering} />, sortValue: (s) => s.offering?.sections_available || 0 },
+    { key: 'grades', header: 'Grados y secciones', render: (s) => <GradesCell offering={s.offering} highlight={gradeFilter} />, sortValue: (s) => s.offering?.sections_available || 0 },
     {
       key: 'coverage',
       header: (
@@ -146,15 +171,46 @@ function SubjectsPage() {
                 ))}
               </Select>
             )}
-            <LevelFilter value={level} onChange={setLevel} counts={counts} total={subjects?.length || 0} />
-            {gradeFilter && (
-              <button type="button" className="chip subj-filters__grade" onClick={() => setParams({}, { replace: true })} title="Quitar el filtro">
-                Grado: {gradeName || '…'} <Icon name="x" size={12} />
+            <LevelFilter value={level} onChange={changeLevel} counts={counts} total={subjects?.length || 0} />
+            <Select
+              value={gradeFilter}
+              onChange={(e) => setGradeFilter(e.target.value)}
+              aria-label="Filtrar por grado"
+              className={gradeFilter ? 'subj-filters__active' : ''}
+            >
+              <option value="">Todos los grados</option>
+              {gradeOptions.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={section}
+              onChange={(e) => setSection(e.target.value)}
+              aria-label="Filtrar por sección"
+              className={section ? 'subj-filters__active' : ''}
+              disabled={!sectionOptions.length}
+            >
+              <option value="">Todas las secciones</option>
+              {sectionOptions.map((name) => (
+                <option key={name} value={name}>
+                  Sección {name}
+                </option>
+              ))}
+            </Select>
+            {(gradeFilter || section) && (
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => setGradeFilter('')}>
+                <Icon name="x" size={14} /> Limpiar
               </button>
             )}
           </div>
         }
-        emptyMessage={gradeFilter ? 'Este grado aún no tiene materias.' : 'Aún no hay materias registradas.'}
+        emptyMessage={
+          gradeFilter || section
+            ? 'Ninguna materia se dicta en ese grado y sección en este año escolar.'
+            : 'Aún no hay materias registradas.'
+        }
         createLabel="Nueva materia"
         onCreate={() => setEditing({})}
         canCreate={can('academics', 'create')}

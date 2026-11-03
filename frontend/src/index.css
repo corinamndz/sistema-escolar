@@ -7355,8 +7355,10 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
    --------------------------------------------------------------------- */
 .subj-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .subj-filters select { width: auto; min-width: 150px; }
-.subj-filters__grade { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--color-border-active); background: var(--color-primary-softer); color: var(--color-primary-text); cursor: pointer; }
+/* Filtro de grado/sección aplicado: borde y fondo del acento, como el nivel activo. */
+.subj-filters select.subj-filters__active { border-color: var(--color-border-active); background-color: var(--color-primary-softer); color: var(--color-primary-text); font-weight: 600; }
 .subj-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.subj-chips .subj-chip--match { border-color: var(--color-border-active); background: var(--color-primary-softer); color: var(--color-primary-text); font-weight: 600; }
 .subj-active { display: flex; align-items: flex-end; padding-bottom: 6px; }
 
 .subj-offering { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }

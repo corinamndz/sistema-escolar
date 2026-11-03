@@ -23,6 +23,7 @@ import ContentItemModal from '../components/ContentItemModal';
 import IncludeEvaluationModal from '../components/IncludeEvaluationModal';
 import BulkImportActions from '../../../components/import/BulkImportActions';
 import { currentPeriod } from '../../../lib/schoolPeriods';
+import { LEVELS } from '../../academics/levels';
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -139,13 +140,13 @@ function ProgrammaticContentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Por defecto: la primera materia/grado disponible y el año activo más reciente.
+  // Por defecto: el primer grado y su primera materia, y el año activo más reciente.
+  // Si el par de la URL no existe, se conserva el grado (o la materia) cuando se puede.
   useEffect(() => {
     if (!options?.length) return;
     const valid = options.some((o) => o.subject_id === subjectId && o.grade_id === gradeId);
     if (valid) return;
-    const sameSubject = options.find((o) => o.subject_id === subjectId);
-    const pick = sameSubject || options[0];
+    const pick = options.find((o) => o.grade_id === gradeId) || options.find((o) => o.subject_id === subjectId) || options[0];
     setParam({ materia: pick.subject_id, grado: pick.grade_id });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, subjectId, gradeId]);
@@ -174,15 +175,21 @@ function ProgrammaticContentPage() {
     reload();
   };
 
-  // Materias agrupadas con sus grados para el selector.
-  const subjects = useMemo(() => {
+  // Grados (en el orden de la estructura, agrupados por nivel) con SUS materias:
+  // el selector de Materia muestra solo las asignadas al grado elegido en Materias.
+  const grades = useMemo(() => {
     const map = new Map();
     (options || []).forEach((o) => {
-      if (!map.has(o.subject_id)) map.set(o.subject_id, { id: o.subject_id, name: o.subject_name, grades: [] });
-      map.get(o.subject_id).grades.push(o);
+      if (!map.has(o.grade_id)) map.set(o.grade_id, { id: o.grade_id, name: o.grade_name, level_code: o.level_code, subjects: [] });
+      map.get(o.grade_id).subjects.push(o);
     });
     return [...map.values()];
   }, [options]);
+  const levelGroups = useMemo(
+    () => Object.keys(LEVELS).map((code) => ({ code, grades: grades.filter((g) => g.level_code === code) })).filter((l) => l.grades.length),
+    [grades]
+  );
+  const gradeSubjects = grades.find((g) => g.id === gradeId)?.subjects || [];
 
   const items = content ? content.units.flatMap((u) => u.items) : [];
   const evaluationCount = items.reduce((n, i) => n + i.activities.length, 0);
@@ -379,26 +386,33 @@ function ProgrammaticContentPage() {
             )}
 
             <div className="pc-toolbar">
-              <Field label="Materia">
+              <Field label="Grado">
                 <Select
-                  value={subjectId}
+                  value={gradeId}
                   onChange={(e) => {
-                    const s = subjects.find((x) => x.id === e.target.value);
-                    setParam({ materia: s.id, grado: s.grades[0].grade_id });
+                    const g = grades.find((x) => x.id === e.target.value);
+                    // La misma materia si también se dicta en el nuevo grado; si no, la primera del grado.
+                    const keep = g.subjects.find((s) => s.subject_id === subjectId);
+                    setParam({ grado: g.id, materia: (keep || g.subjects[0]).subject_id });
                   }}
                 >
-                  {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
+                  {levelGroups.map((l) => (
+                    <optgroup key={l.code} label={LEVELS[l.code].name}>
+                      {l.grades.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </Select>
               </Field>
-              <Field label="Grado">
-                <Select value={gradeId} onChange={(e) => setParam({ grado: e.target.value })}>
-                  {(subjects.find((s) => s.id === subjectId)?.grades || []).map((g) => (
-                    <option key={g.grade_id} value={g.grade_id}>
-                      {g.grade_name} ({plural(g.content_count, 'tema', 'temas')})
+              <Field label="Materia">
+                <Select value={subjectId} onChange={(e) => setParam({ materia: e.target.value })}>
+                  {gradeSubjects.map((s) => (
+                    <option key={s.subject_id} value={s.subject_id}>
+                      {s.subject_name} ({plural(s.content_count, 'tema', 'temas')})
+                      {s.subject_active ? '' : ' · inactiva'}
                     </option>
                   ))}
                 </Select>

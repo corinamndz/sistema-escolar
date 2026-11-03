@@ -24,6 +24,7 @@ import { FORMATS, FormatPicker } from '../components/DetailedPlanner';
 import { TERM_OPTIONS, TermSelect, termLabel } from '../terms';
 import DuplicateToYearModal from '../../../components/ui/DuplicateToYearModal';
 import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
+import { currentPeriod } from '../../../lib/schoolPeriods';
 
 /** Estado del plan según su ponderación: cerrado, listo para cerrar, incompleto o sin actividades. */
 export function planState(plan) {
@@ -442,7 +443,8 @@ function EvaluationPlansPage() {
       )}
 
       {createFor && (
-        <CreatePlanModal initialTermNumber={createFor.termNumber} onClose={() => setCreateFor(null)} onCreated={refetchPlans} />
+        // Los planes nuevos son del año escolar en curso (no del siguiente ya preparado).
+        <CreatePlanModal initialTermNumber={createFor.termNumber} schoolPeriod={currentPeriod(periods)} onClose={() => setCreateFor(null)} onCreated={refetchPlans} />
       )}
     </div>
   );
@@ -508,8 +510,12 @@ function CreateTermModal({ schoolPeriodId, initial, onClose, onCreated }) {
  *  - Inicial / Primaria sin materias marcadas en el grado: se elige el docente
  *    de aula y el área del catálogo de materias activas del colegio.
  */
-function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
-  const { data: sections, loading: loadingSections } = useFetch(() => evaluationPlansApi.listSectionOptions(), []);
+/**
+ * `schoolPeriod`: el año escolar en curso. Solo se listan SUS secciones: los
+ * planes de otro año se arman con "Duplicar a otro año" desde un plan existente.
+ */
+function CreatePlanModal({ initialTermNumber, schoolPeriod, onClose, onCreated }) {
+  const { data: sections, loading: loadingSections } = useFetch(() => evaluationPlansApi.listSectionOptions(schoolPeriod?.id), [schoolPeriod?.id]);
   const [sectionId, setSectionId] = useState('');
   const section = sections?.find((s) => s.id === sectionId);
   const { data: terms, loading: loadingTerms } = useFetch(
@@ -600,7 +606,13 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
             <Field label="Tipo de formato" full>
               <FormatPicker value={format} onChange={setFormat} />
             </Field>
-            <Field label="Sección" error={fieldErrors.sectionId} full required>
+            <Field
+              label="Sección"
+              error={fieldErrors.sectionId}
+              full
+              required
+              hint={schoolPeriod ? `Secciones del año escolar en curso (${schoolPeriod.name}).` : undefined}
+            >
               <Select sorted value={sectionId} onChange={changeSection} required>
                 <option value="">Selecciona…</option>
                 {LEVEL_CODES.map((code) => {
@@ -609,7 +621,7 @@ function CreatePlanModal({ initialTermNumber, onClose, onCreated }) {
                     <optgroup key={code} label={LEVELS[code].name}>
                       {list.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.grade_name} · {s.name} ({s.school_period_name})
+                          {s.grade_name} · {s.name}
                         </option>
                       ))}
                     </optgroup>

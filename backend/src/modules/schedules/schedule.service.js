@@ -641,7 +641,7 @@ async function evaluationCalendarPdf(trx, tenantId, { sectionId, termNumber }) {
     to: s.to,
     evaluations: cal.evaluations.filter((e) => !e.weekend),
     overloadedDates: new Set(s.overloaded_days),
-    summary: [plural(s.scheduled, 'evaluación programada', 'evaluaciones programadas'), plural(s.heavy, 'pesada', 'pesadas'), s.overloaded_days.length ? plural(s.overloaded_days.length, 'día cargado', 'días cargados') : 'sin días cargados'].join('  ·  '),
+    summary: [plural(s.scheduled, 'evaluación programada', 'evaluaciones programadas'), plural(s.heavy, 'de ponderación alta', 'de ponderación alta'), s.overloaded_days.length ? plural(s.overloaded_days.length, 'día cargado', 'días cargados') : 'sin días cargados'].join('  ·  '),
   });
   const term = cal.term ? `-lapso-${cal.term.term_number}` : '';
   return { buffer, fileName: `evaluaciones-${slugify(`${cal.section.grade_name} ${cal.section.name}`)}${term}-${slugify(cal.school_period.name)}.pdf` };

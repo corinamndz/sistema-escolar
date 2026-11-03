@@ -9,7 +9,7 @@ const { hueOf, hslToHex, mix, textOn, validHex } = require('./scheduleGenerator'
  *
  *   Una fila por semana (lunes a viernes) del rango del lapso; en cada día,
  *   sus evaluaciones con la hora del bloque de clase de la materia. Los días
- *   sobrecargados se resaltan; las pesadas (examen, proyecto o ≥ 20 %) llevan
+ *   sobrecargados se resaltan; las de ponderación alta (examen, proyecto o ≥ 20 %) llevan
  *   una marca. Si no cabe en una página, continúa en las siguientes.
  */
 
@@ -146,7 +146,7 @@ function generateEvaluationCalendarPdf(data) {
           doc.roundedRect(cx + 3, by, 3, itemH - 3, 1.5).fill(hslToHex(hue, 65, 45));
           const head = `${e.start_time ? `${e.start_time} ` : ''}${e.subject_name}`;
           doc.font('Helvetica-Bold').fontSize(7.5).fillColor(e.heavy ? INK : '#334155').text(head, cx + 9, by + 2.5, { width: dayW - 24, lineBreak: false, ellipsis: true });
-          // Marca de evaluación pesada: un punto dibujado (Helvetica no trae el carácter ●).
+          // Marca de ponderación alta: un punto dibujado (Helvetica no trae el carácter ●).
           if (e.heavy) doc.circle(cx + dayW - 11, by + 7, 2.6).fill(OVER_INK);
           doc.font('Helvetica').fontSize(6.8).fillColor(MUTED).text(`${e.title} · ${e.category_label} · ${e.weight_percent}%`, cx + 9, by + 12, { width: dayW - 16, lineBreak: false, ellipsis: true });
         });
@@ -160,7 +160,7 @@ function generateEvaluationCalendarPdf(data) {
     // Leyenda
     if (y + 16 < bottomLimit) {
       doc.circle(M + 3, y + 9.5, 2.6).fill(OVER_INK);
-      doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text('Evaluación pesada (examen, proyecto o 20 % o más del lapso).    Fondo rojo: día cargado (2 o más pesadas, o 3 o más evaluaciones).', M + 10, y + 6, { width: INNER - 10 });
+      doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text('Ponderación alta (examen, proyecto o 20 % o más del lapso).    Fondo rojo: día cargado (2 o más de ponderación alta, o 3 o más evaluaciones).', M + 10, y + 6, { width: INNER - 10 });
     }
     footer(doc, data.summary, accent, page);
     doc.end();

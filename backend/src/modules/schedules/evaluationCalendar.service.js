@@ -16,15 +16,26 @@ const { currentPeriodOrder } = require('../../utils/schoolPeriods');
  *      los martes. Si ese día no hay clase de la materia, queda "sin bloque"
  *      (y se avisa), sin inventar una hora.
  *
- * Además resume la CARGA por día para no amontonar evaluaciones pesadas
- * (examen, proyecto o ≥ 20 % del lapso): un día con 2 o más pesadas, o con 3
- * o más evaluaciones en total, se marca como sobrecargado.
+ * Cada evaluación lleva su PONDERACIÓN (calculada, no se guarda: los registros
+ * anteriores se clasifican solos):
+ *   high    alta: examen, proyecto o ≥ 20 % del lapso (lo que antes era "pesada")
+ *   medium  media: 10 % a < 20 %
+ *   low     baja: < 10 %
+ * y se resume la CARGA por día: un día con 2 o más de ponderación alta, o con
+ * 3 o más evaluaciones en total, se marca como sobrecargado.
  */
 
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const CATEGORY_LABELS = { formative: 'Formativa', exam: 'Examen', project: 'Proyecto', homework: 'Tarea', other: 'Otra' };
-const HEAVY_WEIGHT = 20;
-const isHeavy = (e) => e.category === 'exam' || e.category === 'project' || Number(e.weight_percent) >= HEAVY_WEIGHT;
+const HIGH_WEIGHT = 20;
+const MEDIUM_WEIGHT = 10;
+const WEIGHT_LEVEL_LABELS = { high: 'Ponderación alta', medium: 'Ponderación media', low: 'Ponderación baja' };
+function weightLevelOf(e) {
+  if (e.category === 'exam' || e.category === 'project' || Number(e.weight_percent) >= HIGH_WEIGHT) return 'high';
+  return Number(e.weight_percent) >= MEDIUM_WEIGHT ? 'medium' : 'low';
+}
+/** Compatibilidad (antes "pesada"): ponderación alta. */
+const isHeavy = (e) => weightLevelOf(e) === 'high';
 
 const ymd = (d) => (d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : d ? String(d).slice(0, 10) : null);
 const hhmm = (t) => (t ? String(t).slice(0, 5) : null);
@@ -136,7 +147,9 @@ async function getEvaluationCalendar(trx, tenantId, { sectionId, termNumber = nu
       category: r.category,
       category_label: CATEGORY_LABELS[r.category] || r.category,
       weight_percent: Number(r.weight_percent),
-      heavy: isHeavy(r),
+      weight_level: weightLevelOf(r),
+      weight_level_label: WEIGHT_LEVEL_LABELS[weightLevelOf(r)],
+      heavy: weightLevelOf(r) === 'high', // compatibilidad: ponderación alta
       subject_id: r.subject_id,
       subject_name: r.subject_name,
       subject_code: r.subject_code,
@@ -207,13 +220,15 @@ async function getEvaluationCalendar(trx, tenantId, { sectionId, termNumber = nu
       scheduled: evaluations.length,
       undated: undated.length,
       heavy: evaluations.filter((e) => e.heavy).length,
+      // Programadas por ponderación (las sin fecha no cuentan para la carga del día).
+      by_weight: Object.fromEntries(Object.keys(WEIGHT_LEVEL_LABELS).map((k) => [k, evaluations.filter((e) => e.weight_level === k).length])),
       overloaded_days: days.filter((d) => d.overloaded).map((d) => d.date),
       without_block: evaluations.filter((e) => !e.time_slot_id && e.subject_id).length,
       // Rango a mostrar: el del lapso; si no tiene fechas, el de las evaluaciones.
       from: term?.start_date || evaluations[0]?.date || null,
       to: term?.end_date || evaluations[evaluations.length - 1]?.date || null,
     },
-    rules: { heavy_weight: HEAVY_WEIGHT, heavy_categories: ['exam', 'project'], overloaded: { heavy: 2, total: 3 } },
+    rules: { heavy_weight: HIGH_WEIGHT, medium_weight: MEDIUM_WEIGHT, heavy_categories: ['exam', 'project'], overloaded: { heavy: 2, total: 3 } },
   };
 }
 
@@ -253,4 +268,4 @@ async function getStudentEvaluationCalendar(trx, tenantId, studentId, { termNumb
   return { ...cal, evaluations: cal.evaluations.map(forStudent), undated: cal.undated.map(forStudent), audience: 'guardian' };
 }
 
-module.exports = { getEvaluationCalendar, getStudentEvaluationCalendar, isHeavy, CATEGORY_LABELS };
+module.exports = { getEvaluationCalendar, getStudentEvaluationCalendar, isHeavy, weightLevelOf, WEIGHT_LEVEL_LABELS, CATEGORY_LABELS };

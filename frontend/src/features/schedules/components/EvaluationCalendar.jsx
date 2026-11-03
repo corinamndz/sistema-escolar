@@ -7,6 +7,7 @@ import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import ScheduleGrid, { hueOf } from './ScheduleGrid';
 import EvaluationDetailModal, { EVAL_STATUS } from './EvaluationDetailModal';
+import { WEIGHT_LEVELS, WEIGHT_LEVEL_KEYS, WeightDot, weightLevelOf } from '../weightLevels';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -29,9 +30,10 @@ const todayStr = () => {
  * para mover una evaluación se cambia su fecha en el plan.
  *
  *   - Vista mensual: un calendario lunes a viernes con las evaluaciones de
- *     cada día; los días sobrecargados (2+ pesadas o 3+ evaluaciones) en rojo.
+ *     cada día; los días sobrecargados (2+ de ponderación alta o 3+ evaluaciones) en rojo.
  *   - Vista semanal: la grilla de bloques horarios con cada evaluación en su hora.
- *   - Resumen: programadas, pesadas, días cargados, sin fecha y sin bloque.
+ *   - Resumen: programadas, por ponderación (alta / media / baja, que también
+ *     filtran el calendario), días cargados, sin fecha y sin bloque.
  *   - Al hacer clic en una evaluación se abre su detalle (EvaluationDetailModal).
  */
 /**
@@ -48,6 +50,7 @@ function EvaluationCalendar({ sectionId, termNumber, fetcher, fetchKey }) {
   const [anchor, setAnchor] = useState(null); // fecha de referencia (mes o semana mostrados)
   const [showUndated, setShowUndated] = useState(false);
   const [selectedId, setSelectedId] = useState(null); // evaluación abierta en el modal de detalle
+  const [level, setLevel] = useState(''); // filtro por ponderación ('' = todas)
 
   // Al cargar: el mes/semana de hoy si cae en el lapso; si no, el de la primera evaluación o el inicio del lapso.
   useEffect(() => {
@@ -60,12 +63,14 @@ function EvaluationCalendar({ sectionId, termNumber, fetcher, fetchKey }) {
 
   const byDate = useMemo(() => {
     const map = new Map();
-    (data?.evaluations || []).forEach((e) => {
-      if (!map.has(e.date)) map.set(e.date, []);
-      map.get(e.date).push(e);
-    });
+    (data?.evaluations || [])
+      .filter((e) => !level || weightLevelOf(e) === level)
+      .forEach((e) => {
+        if (!map.has(e.date)) map.set(e.date, []);
+        map.get(e.date).push(e);
+      });
     return map;
-  }, [data]);
+  }, [data, level]);
   const dayInfo = useMemo(() => new Map((data?.days || []).map((d) => [d.date, d])), [data]);
 
   if (loading) return <Spinner label="Sincronizando con los planes de evaluación…" />;
@@ -100,9 +105,22 @@ function EvaluationCalendar({ sectionId, termNumber, fetcher, fetchKey }) {
         <span className="evalcal__stat">
           <strong>{summary.scheduled}</strong> programada{summary.scheduled === 1 ? '' : 's'}
         </span>
-        <span className="evalcal__stat">
-          <span className="evalcal__heavy-dot" /> <strong>{summary.heavy}</strong> pesada{summary.heavy === 1 ? '' : 's'}
-        </span>
+        {/* Por ponderación: también filtran el calendario (clic de nuevo para ver todas). */}
+        {WEIGHT_LEVEL_KEYS.map((key) => {
+          const count = summary.by_weight?.[key] ?? (key === 'high' ? summary.heavy : 0);
+          return (
+            <button
+              key={key}
+              type="button"
+              className={`evalcal__stat evalcal__stat--level ${level === key ? 'is-active' : ''}`}
+              onClick={() => setLevel((l) => (l === key ? '' : key))}
+              aria-pressed={level === key}
+              title={level === key ? 'Ver todas las evaluaciones' : `Ver solo las de ${WEIGHT_LEVELS[key].label.toLowerCase()}`}
+            >
+              <WeightDot level={key} /> <strong>{count}</strong> {WEIGHT_LEVELS[key].label.toLowerCase()}
+            </button>
+          );
+        })}
         <span className={`evalcal__stat ${summary.overloaded_days.length ? 'evalcal__stat--danger' : 'evalcal__stat--ok'}`}>
           <Icon name={summary.overloaded_days.length ? 'alertTriangle' : 'checkCircle'} size={14} />
           <strong>{summary.overloaded_days.length}</strong> día{summary.overloaded_days.length === 1 ? '' : 's'} cargado{summary.overloaded_days.length === 1 ? '' : 's'}
@@ -168,9 +186,19 @@ function EvaluationCalendar({ sectionId, termNumber, fetcher, fetchKey }) {
         )}
 
         <p className="form-hint evalcal__legend">
-          <span className="evalcal__heavy-dot" /> Pesada: examen, proyecto o {data.rules.heavy_weight}% o más del lapso. En rojo, los días cargados (
-          {data.rules.overloaded.heavy}+ pesadas o {data.rules.overloaded.total}+ evaluaciones). Las fechas vienen de los planes de evaluación y la
-          hora, del horario de clases de la sección. Toca una evaluación para ver su detalle.
+          <WeightDot level="high" label />: examen, proyecto o {data.rules.heavy_weight}% o más del lapso · <WeightDot level="medium" label />: del{' '}
+          {data.rules.medium_weight ?? 10}% al {data.rules.heavy_weight}% · <WeightDot level="low" label />: menos de {data.rules.medium_weight ?? 10}%. En rojo, los
+          días cargados ({data.rules.overloaded.heavy}+ de ponderación alta o {data.rules.overloaded.total}+ evaluaciones). Las fechas vienen de los planes de
+          evaluación y la hora, del horario de clases de la sección. Toca una evaluación para ver su detalle.
+          {level && (
+            <>
+              {' '}
+              <strong>Mostrando solo {WEIGHT_LEVELS[level].label.toLowerCase()}.</strong>{' '}
+              <button type="button" className="link-button" onClick={() => setLevel('')}>
+                Ver todas
+              </button>
+            </>
+          )}
         </p>
       </Card>
 
@@ -185,7 +213,7 @@ function EvalChip({ e, compact = false, onSelect }) {
   return (
     <button
       type="button"
-      className={`evalcal__chip evalcal__chip--${e.status} ${e.heavy ? 'is-heavy' : ''}`}
+      className={`evalcal__chip evalcal__chip--${e.status} is-${weightLevelOf(e)}`}
       style={{ '--entry-hue': hueOf(e.subject_id || e.subject_name) }}
       onClick={() => onSelect?.(e)}
       aria-label={`${e.subject_name}: ${e.title}${status ? ` (${status.label})` : ''}. Ver detalle`}
@@ -193,7 +221,7 @@ function EvalChip({ e, compact = false, onSelect }) {
       <span className="evalcal__chip-head">
         {e.start_time && <span className="evalcal__time">{e.start_time}</span>}
         <strong>{e.subject_code || e.subject_name}</strong>
-        {e.heavy && <span className="evalcal__heavy-dot" aria-label="Pesada" />}
+        <WeightDot level={weightLevelOf(e)} />
       </span>
       {!compact && (
         <span className="evalcal__chip-sub">

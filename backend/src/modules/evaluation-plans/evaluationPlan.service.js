@@ -1,6 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const { exclusionOf } = require('../academics/sectionSubjects');
 const { assertContentForPlan, sortByProgram } = require('../programmatic-content/programmaticContent.service');
+const { weekendDay, weekendMessage } = require('../../utils/weekdays');
 
 // ---------- Lapsos/periodos ----------
 
@@ -703,7 +704,7 @@ const round2 = (n) => Math.round(Number(n) * 100) / 100;
  * Valida y normaliza la estructura detallada de una actividad:
  *  - criterios con al menos un indicador; indicadores con puntaje > 0;
  *  - la suma de puntajes de los indicadores = puntaje máximo de la actividad;
- *  - fechas de aplicación: una por sección DEL PLAN, dentro del lapso.
+ *  - fechas de aplicación: una por sección DEL PLAN, dentro del lapso y de lunes a viernes.
  */
 function validateDetailed(plan, planSections, { maxScore, criteria, sectionDates }) {
   if (criteria.length) {
@@ -738,6 +739,10 @@ function validateDetailed(plan, planSections, { maxScore, criteria, sectionDates
     }
     if (seen.has(d.sectionId)) throw ApiError.badRequest(`La sección ${allowed.get(d.sectionId)} tiene dos fechas de aplicación.`);
     seen.add(d.sectionId);
+    // Sin evaluaciones en sábado ni domingo (400).
+    if (weekendDay(d.date)) {
+      throw ApiError.badRequest(weekendMessage(d.date, `Sección ${allowed.get(d.sectionId)}:`), [{ path: 'sectionDates', message: `Sección ${allowed.get(d.sectionId)}: fin de semana.` }]);
+    }
     if ((plan.term_start && d.date < plan.term_start) || (plan.term_end && d.date > plan.term_end)) {
       throw ApiError.unprocessable(`La fecha de la sección ${allowed.get(d.sectionId)} debe estar dentro de ${termRange(plan)}.`, [
         { path: 'sectionDates', message: 'Fuera del lapso.' },
@@ -875,6 +880,12 @@ async function upsertActivity(
       await trx('evaluation_plans').where({ id: planId }).update({ format: 'detailed' });
       plan.format = 'detailed';
     }
+  }
+
+  // Sin evaluaciones en sábado ni domingo (400). Vale para el formulario, el
+  // proyecto pedagógico, "Incluir evaluación" y la carga desde Excel: todos pasan por aquí.
+  if (weekendDay(plannedDate)) {
+    throw ApiError.badRequest(weekendMessage(plannedDate), [{ path: 'plannedDate', message: `Es ${weekendDay(plannedDate)}: elige un día de lunes a viernes.` }]);
   }
 
   // La fecha estimada debe caer dentro del lapso (si el lapso tiene fechas).

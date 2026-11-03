@@ -1,6 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const planService = require('./evaluationPlan.service');
 const contentService = require('../programmatic-content/programmaticContent.service');
+const { nearestWeekday } = require('../../utils/weekdays');
 
 /**
  * "Duplicar para otro año": copia un plan de evaluación al mismo grado,
@@ -14,7 +15,8 @@ const contentService = require('../programmatic-content/programmaticContent.serv
  *   - Los temas que evalúan sus actividades se buscan en el temario del año
  *     destino (misma unidad y tema); los que falten se copian allí (068).
  *   - Las fechas se corren la misma distancia que hay entre el inicio del
- *     lapso de origen y el de destino (sin fechas de lapso: un año).
+ *     lapso de origen y el de destino (sin fechas de lapso: un año); si caen
+ *     en sábado o domingo pasan al día hábil más cercano del lapso.
  *   - Nace abierto y en borrador de revisión.
  * Corre en la transacción del request: o se copia todo o nada.
  */
@@ -85,6 +87,9 @@ async function duplicatePlan(trx, tenantId, planId, { toPeriodId }, { assertCanC
   const from = toDate(plan.term_start);
   const to = toDate(targetTerm.start_date);
   const offsetDays = from && to ? Math.round((to - from) / DAY) : null;
+  // Corrida la fecha, si cae en sábado o domingo pasa al día hábil más cercano dentro del lapso destino.
+  const termBounds = { min: targetTerm.start_date, max: targetTerm.end_date };
+  const moveDate = (d) => nearestWeekday(shiftDate(d, offsetDays), termBounds);
 
   // Temas del año destino para las actividades (los que falten se copian).
   const usedContent = [...new Set(plan.activities.map((a) => a.programmatic_content_id).filter(Boolean))];
@@ -108,7 +113,7 @@ async function duplicatePlan(trx, tenantId, planId, { toPeriodId }, { assertCanC
         category: a.category,
         weight_percent: a.weight_percent,
         description: a.description,
-        planned_date: shiftDate(a.planned_date, offsetDays),
+        planned_date: moveDate(a.planned_date),
         strategy: a.strategy,
         // jsonb (arreglo): igual que upsertActivity, se envía serializado.
         content_refs: JSON.stringify(a.content_refs || []),
@@ -137,7 +142,7 @@ async function duplicatePlan(trx, tenantId, planId, { toPeriodId }, { assertCanC
     for (const d of a.section_dates || []) {
       const sectionId = sectionMap.get(d.section_id);
       if (sectionId && d.applied_on) {
-        await trx('activity_section_dates').insert({ tenant_id: tenantId, activity_id: row.id, section_id: sectionId, applied_on: shiftDate(d.applied_on, offsetDays) });
+        await trx('activity_section_dates').insert({ tenant_id: tenantId, activity_id: row.id, section_id: sectionId, applied_on: moveDate(d.applied_on) });
       }
     }
   }

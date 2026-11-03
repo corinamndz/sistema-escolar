@@ -22,6 +22,7 @@ import ImportButton from '../../../components/import/ImportButton';
 import ExportButton from '../../../components/ui/ExportButton';
 import { LEVEL_CODES, LevelBadge, LevelFilter } from '../../academics/levels';
 import StudentGroups, { sectionLabel } from '../components/StudentGroups';
+import AcademicHistoryDrawer from '../components/AcademicHistoryDrawer';
 import LinksField, { linksChanged } from '../components/LinksField';
 
 const STATUS_LABELS = { active: ['Activo', 'success'], inactive: ['Inactivo', 'neutral'], graduated: ['Egresado', 'primary'], withdrawn: ['Retirado', 'danger'] };
@@ -178,12 +179,17 @@ function StudentsPage() {
     }
   };
 
-  const rowActions = canEdit
-    ? [
-        { key: 'withdraw', icon: 'logout', label: 'Retirar alumno', show: (r) => r.status === 'active', onClick: (r) => changeStatus(r, 'withdrawn') },
-        { key: 'reactivate', icon: 'checkCircle', label: 'Reactivar alumno', show: (r) => r.status !== 'active', onClick: (r) => changeStatus(r, 'active') },
-      ]
-    : [];
+  // Historial académico: para cualquiera que vea alumnos (solo lectura).
+  const [historyOf, setHistoryOf] = useState(null);
+  const rowActions = [
+    { key: 'history', icon: 'book', label: 'Historial académico', tone: 'view', onClick: (r) => setHistoryOf(r) },
+    ...(canEdit
+      ? [
+          { key: 'withdraw', icon: 'logout', label: 'Retirar alumno', show: (r) => r.status === 'active', onClick: (r) => changeStatus(r, 'withdrawn') },
+          { key: 'reactivate', icon: 'checkCircle', label: 'Reactivar alumno', show: (r) => r.status !== 'active', onClick: (r) => changeStatus(r, 'active') },
+        ]
+      : []),
+  ];
 
   const nameColumn = {
     key: 'name',
@@ -415,6 +421,7 @@ function StudentsPage() {
       )}
 
       {editing !== null && <StudentFormModal initial={editing} onClose={() => setEditing(null)} onSaved={refetch} />}
+      {historyOf && <AcademicHistoryDrawer student={historyOf} onClose={() => setHistoryOf(null)} />}
     </div>
   );
 }

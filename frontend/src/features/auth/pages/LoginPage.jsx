@@ -9,7 +9,7 @@ import Field from '../../../components/ui/Field';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
-import SchoolLogo from '../../../components/ui/SchoolLogo';
+import SchoolLogo, { isUsableLogoUrl } from '../../../components/ui/SchoolLogo';
 import platformLogo from '../../../assets/modo-educa-logo.png';
 import { ForgotPasswordForm, ResetPasswordForm } from '../components/PasswordRecovery';
 import {
@@ -94,16 +94,23 @@ function useTenantBranding(slug) {
 }
 
 /**
- * Logo destacado del panel lateral (oscuro), sin placa: el del colegio en cuanto se
- * reconoce su identificador; sin colegio (o sin logo propio), el de MoDo Educa.
+ * Sello institucional que corona el tarjetón del panel lateral: el logo del
+ * colegio en cuanto se reconoce su identificador (sobre fondo claro, como un
+ * escudo: los logos de los colegios suelen estar hechos para fondo blanco); sin
+ * colegio o sin logo propio, el birrete de MoDo Educa sobre vidrio oscuro.
  */
-function SchoolMark({ branding }) {
-  return <SchoolLogo src={branding?.logoUrl} name={branding?.name} variant="full" tone="dark" className="login-hero__logo" />;
+function SchoolSeal({ branding }) {
+  const custom = isUsableLogoUrl(branding?.logoUrl);
+  return (
+    <div className={`login-seal ${custom ? 'login-seal--school' : 'login-seal--platform'}`}>
+      <SchoolLogo src={branding?.logoUrl} name={branding?.name} variant={custom ? 'full' : 'compact'} tone="dark" className="login-seal__logo" />
+    </div>
+  );
 }
 
 /** Producto y empresa creadora del software. */
 const PLATFORM_NAME = 'MoDo Educa';
-const COMPANY_NAME = 'MoDo';
+const COMPANY_NAME = 'MoDo Soluciones Tecnológicas';
 
 /**
  * Logo oficial de MoDo Educa: preside SIEMPRE el formulario, para que quede
@@ -196,25 +203,24 @@ function LoginPage({ mode = 'login' }) {
   return (
     <div className={`login-page ${branding ? 'login-page--branded' : ''}`}>
       <aside className="login-hero">
-        <div className="login-hero__brand">
-          <SchoolMark branding={branding} />
-          {/* El logo de MoDo Educa ya lleva el nombre; el del colegio, no siempre. */}
-          {schoolName && <span>{schoolName}</span>}
-        </div>
-
-        {/* Panel unificado (vidrio translúcido): bienvenida + módulos en un solo bloque. */}
+        {/* Panel unificado (vidrio translúcido) coronado por el sello del colegio: identidad, bienvenida y módulos. */}
         <section className="login-showcase">
-          {branding ? (
-            <>
-              <h1>Bienvenidos a {schoolName}</h1>
-              <p>Portal de gestión escolar: calificaciones, pagos y comunicación con el colegio en un solo lugar.</p>
-            </>
-          ) : (
-            <>
-              <h1>La gestión de tu colegio, en un solo lugar.</h1>
-              <p>Académico, administrativo y financiero conectados para que el equipo se enfoque en lo que importa: los alumnos.</p>
-            </>
-          )}
+          <header className="login-showcase__head">
+            <SchoolSeal branding={branding} />
+            {branding ? (
+              <>
+                <span className="login-showcase__eyebrow">Portal de gestión escolar</span>
+                <h1 className="login-showcase__school">{schoolName}</h1>
+                <p>Bienvenidos: calificaciones, pagos y comunicación con el colegio en un solo lugar.</p>
+              </>
+            ) : (
+              <>
+                <span className="login-showcase__eyebrow">{PLATFORM_NAME}</span>
+                <h1>La gestión de tu colegio, en un solo lugar.</h1>
+                <p>Académico, administrativo y financiero conectados para que el equipo se enfoque en lo que importa: los alumnos.</p>
+              </>
+            )}
+          </header>
           <ul className="login-features">
             {FEATURES.map((f) => (
               <li key={f.label} className={`login-feature${f.isNew ? ' login-feature--new' : ''}`}>
@@ -233,10 +239,16 @@ function LoginPage({ mode = 'login' }) {
           </ul>
         </section>
 
-        <div className="login-hero__foot">
-          © {new Date().getFullYear()} {schoolName ? `${schoolName} · ` : ''}
-          {PLATFORM_NAME}, un producto de {COMPANY_NAME}
-        </div>
+        {/* Dos líneas: el colegio y la autoría del software (con nombres largos, nada se corta). */}
+        <footer className="login-hero__foot">
+          <span>
+            © {new Date().getFullYear()}
+            {schoolName ? ` ${schoolName}` : ` ${PLATFORM_NAME}`}
+          </span>
+          <span className="login-hero__credit">
+            {PLATFORM_NAME}, un producto de {COMPANY_NAME}
+          </span>
+        </footer>
       </aside>
 
       <main className="login-panel">

@@ -13,6 +13,7 @@ import { TERM_OPTIONS, termLabel } from '../../evaluation-plans/terms';
 import { ContentRefsEditor, CriteriaEditor, FormatPicker, detailedBody, detailedFormFrom } from '../../evaluation-plans/components/DetailedPlanner';
 import { INSTRUMENT_LABELS } from '../../evaluation-plans/instruments';
 import { CATEGORY_LABELS } from '../categories';
+import { weekendError } from '../../../utils/weekdays';
 
 const NEW_PLAN = 'new';
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -68,7 +69,13 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
   const pointsTotal = round2(indicatorPoints.reduce((n, p) => n + (Number.isFinite(p) ? p : 0), 0));
   const maxScore = toNum(detail.maxScore);
   const pointsMismatch = detailed && (!(maxScore > 0) || indicatorPoints.length === 0 || pointsTotal !== round2(maxScore));
-  const canSave = form.title.trim() && typed && !weightError && !needsSections && !pointsMismatch;
+  // Sin evaluaciones en sábado ni domingo (el backend también responde 400).
+  const plannedDateError = !detailed ? weekendError(form.plannedDate) : null;
+  const sectionDateErrors = detailed
+    ? sections.map((s) => weekendError(detail.sectionDates[s.id]) && `Sección ${s.name}: ${weekendError(detail.sectionDates[s.id])}`).filter(Boolean)
+    : [];
+  const dateError = Boolean(plannedDateError || sectionDateErrors.length);
+  const canSave = form.title.trim() && typed && !weightError && !needsSections && !pointsMismatch && !dateError;
 
   // Al cambiar de plan, el formato sugerido es el del plan (uno detallado sigue en detallado).
   const choosePlan = (id) => {
@@ -253,8 +260,8 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
             <Input type="number" min="0.01" max="100" step="0.01" suffix="%" value={form.weightPercent} onChange={set('weightPercent')} error={weightError} required />
           </Field>
           {!detailed && (
-            <Field label="Fecha estimada" hint="Opcional; dentro del lapso.">
-              <Input type="date" value={form.plannedDate} onChange={set('plannedDate')} />
+            <Field label="Fecha estimada" hint="Opcional; dentro del lapso, de lunes a viernes." error={plannedDateError}>
+              <Input type="date" value={form.plannedDate} onChange={set('plannedDate')} error={Boolean(plannedDateError)} />
             </Field>
           )}
           <Field label="Descripción" full hint="Opcional: instrucciones o criterios generales.">
@@ -309,7 +316,12 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
               <Field label="Criterios e indicadores de logro" required full hint="Cada criterio con sus indicadores y el puntaje de cada uno.">
                 <CriteriaEditor value={detail.criteria} onChange={(criteria) => setDetail((d) => ({ ...d, criteria }))} maxScore={detail.maxScore} />
               </Field>
-              <Field label="Fechas de aplicación" full hint={sections.length ? 'Opcional; dentro del lapso.' : 'Elige las secciones del plan para indicar sus fechas.'}>
+              <Field
+                label="Fechas de aplicación"
+                full
+                error={sectionDateErrors.join(' ') || undefined}
+                hint={sections.length ? 'Opcional; dentro del lapso, de lunes a viernes.' : 'Elige las secciones del plan para indicar sus fechas.'}
+              >
                 <div className="section-dates">
                   {sections.map((s) => (
                     <label key={s.id} className="section-dates__item">
@@ -319,6 +331,7 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
                         value={detail.sectionDates[s.id] || ''}
                         onChange={(e) => setDetail((d) => ({ ...d, sectionDates: { ...d.sectionDates, [s.id]: e.target.value } }))}
                         aria-label={`Fecha de aplicación en la sección ${s.name}`}
+                        error={Boolean(weekendError(detail.sectionDates[s.id]))}
                       />
                     </label>
                   ))}

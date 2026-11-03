@@ -319,10 +319,10 @@ img.sidebar__logo {
 /* Menú expandido: logo transparente, generoso, alineado con el nombre del colegio. */
 .sidebar__brand--hero {
   position: relative;
-  gap: 14px;
+  gap: 12px;
   height: auto;
   min-height: calc(var(--topbar-height) + 20px);
-  padding: 14px 18px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--sb-divider);
 }
 .sidebar__hero-logo {
@@ -336,9 +336,21 @@ img.sidebar__logo {
   border-radius: var(--radius-sm);
 }
 .sidebar__hero-logo.school-logo--default { background: none; border-radius: 0; }
-.sidebar__brand--hero .sidebar__school-name { font-size: 16px; }
+/* Nombres largos ("Unidad Educativa Colegio Simón Rodríguez"): hasta 3 líneas, en vez de cortarse en una.
+   Junto al logo quedan ~146 px: ese nombre necesita 3 líneas, que miden lo mismo que el logo (60 px). */
+.sidebar__brand--hero .sidebar__brand-text { flex: 1; }
+.sidebar__brand--hero .sidebar__school-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  font-size: 13px;
+  line-height: 1.22;
+  white-space: normal;
+  overflow-wrap: break-word; /* solo parte una palabra si no cabe sola */
+}
 /* Divisor fino entre logo y nombre, como la línea del propio logotipo. */
-.sidebar__brand--hero .sidebar__brand-text { padding: 4px 0 4px 14px; border-left: 1px solid var(--sb-divider); }
+.sidebar__brand--hero .sidebar__brand-text { gap: 2px; padding: 4px 0 4px 12px; border-left: 1px solid var(--sb-divider); }
 .sidebar__brand--hero .sidebar__close { position: absolute; top: 8px; right: 8px; }
 
 .sidebar__brand-text {
@@ -4010,24 +4022,6 @@ a.cell-person__name:hover {
   z-index: 1;
 }
 
-.login-hero__brand {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 20px;
-}
-.login-hero__logo {
-  display: block;
-  flex-shrink: 0;
-  width: auto;
-  height: 88px;
-  max-width: 150px;
-  object-fit: contain;
-  border-radius: var(--radius-md);
-}
-.login-hero__logo.school-logo--default { background: none; border-radius: 0; }
 
 /* Panel unificado de vidrio: bienvenida + módulos, con ritmo vertical compacto. */
 .login-showcase {
@@ -4106,9 +4100,16 @@ a.cell-person__name:hover {
 }
 
 .login-hero__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 600px;
   font-size: 12.5px;
-  color: rgba(248, 250, 252, 0.45);
+  line-height: 1.45;
+  color: rgba(248, 250, 252, 0.5);
+  overflow-wrap: break-word;
 }
+.login-hero__credit { color: rgba(248, 250, 252, 0.68); }
 
 .login-panel {
   display: flex;
@@ -6609,7 +6610,17 @@ button.link-icon:disabled { opacity: 0.6; cursor: progress; }
 .evalcal__stat--warn { border-color: var(--color-warning); background: var(--color-warning-soft); color: var(--color-warning-text); }
 button.evalcal__stat { cursor: pointer; }
 .evalcal__undated { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
-.evalcal__heavy-dot { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-danger); }
+/* Ponderación de las evaluaciones: alta / media / baja (tonos sobrios). */
+.weight-level { display: inline-flex; align-items: center; gap: 6px; }
+.weight-level__dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--wl, #94a3b8); }
+.weight-level--high { --wl: #9f1239; }
+.weight-level--medium { --wl: #b45309; }
+.weight-level--low { --wl: #64748b; }
+.weight-badge { display: inline-flex; align-items: center; padding: 2px 9px; border: 1px solid var(--wl-border); border-radius: 999px; background: var(--wl-bg); color: var(--wl-fg); font-size: 12px; font-weight: 600; }
+.weight-badge--high { --wl-bg: #fff1f2; --wl-border: #fecdd3; --wl-fg: #9f1239; }
+.weight-badge--medium { --wl-bg: #fffbeb; --wl-border: #fde68a; --wl-fg: #92400e; }
+.weight-badge--low { --wl-bg: #f8fafc; --wl-border: #e2e8f0; --wl-fg: #475569; }
+.evalcal__stat--level.is-active { border-color: var(--color-border-active); background: var(--color-primary-softer); color: var(--color-primary-text); }
 
 .evalcal__toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 12px; }
 .evalcal__nav { display: flex; align-items: center; gap: 6px; }
@@ -6630,7 +6641,7 @@ button.evalcal__stat { cursor: pointer; }
 .evalcal__more { font-size: 11.5px; color: var(--color-text-muted); }
 
 .evalcal__chip { display: flex; flex-direction: column; min-width: 0; padding: 3px 6px; border-left: 3px solid hsl(var(--entry-hue, 220) 65% 50%); border-radius: var(--radius-xs); background: hsl(var(--entry-hue, 220) 80% 95%); font-size: 11.5px; line-height: 1.25; }
-.evalcal__chip.is-heavy { box-shadow: inset 0 0 0 1px hsl(var(--entry-hue, 220) 60% 70%); }
+.evalcal__chip.is-high { box-shadow: inset 0 0 0 1px hsl(var(--entry-hue, 220) 60% 70%); }
 .evalcal__chip-head { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .evalcal__chip-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .evalcal__chip-sub { overflow: hidden; color: var(--color-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
@@ -9174,3 +9185,104 @@ body.is-printing-boleta { overflow: hidden; }
   cursor: pointer;
 }
 .toast__action:hover { background: var(--color-primary-softer); border-color: var(--color-border-active); }
+
+/* ==========================================================================
+   Detalle de sección: 2/3 personal docente y materias · 1/3 cupo y alumnos
+   ========================================================================== */
+.section-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
+.section-layout > .card { margin: 0; }
+/* El panel derecho toma el alto de la columna izquierda: no la estira; su lista hace scroll. */
+.section-layout__side { position: relative; min-height: 460px; }
+.section-roster { position: absolute; inset: 0; display: flex; flex-direction: column; margin: 0; }
+.section-roster .card__header { margin-bottom: 14px; }
+
+.section-capacity { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--color-surface-muted); }
+.section-capacity__numbers { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--color-text-secondary); }
+.section-capacity__numbers strong { font-family: var(--font-display); font-size: 20px; color: var(--color-text); }
+.section-capacity__free { font-weight: 600; color: var(--color-success-text); }
+.section-capacity .progress-bar { height: 6px; }
+.section-capacity.is-high .section-capacity__free { color: var(--color-warning-text); }
+.section-capacity.is-high .progress-bar__fill { background: var(--color-warning); }
+.section-capacity.is-full .section-capacity__free { color: var(--color-danger-text); }
+.section-capacity.is-full .progress-bar__fill { background: var(--color-danger); }
+
+.section-roster > .alert { margin: 0 0 10px; }
+.section-roster__search { margin-bottom: 10px; }
+.section-roster__list { flex: 1 1 auto; min-height: 0; margin: 0 -10px -6px; padding: 0 6px 6px; overflow-y: auto; list-style: none; }
+.section-roster__item { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--color-border); }
+.section-roster__item:last-child { border-bottom: none; }
+.section-roster__item .row-action { opacity: 0.55; transition: opacity var(--transition-fast); }
+.section-roster__item:hover .row-action, .section-roster__item .row-action:focus-visible { opacity: 1; }
+.section-roster__name { flex: 1; min-width: 0; overflow: hidden; font-size: 13.5px; font-weight: 600; color: var(--color-text); text-overflow: ellipsis; white-space: nowrap; }
+.section-roster__name:hover { color: var(--color-primary-text); }
+.section-roster__none { padding: 10px 4px; }
+.section-roster__empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--color-text-muted); font-size: 13.5px; }
+.section-roster__item .avatar { width: 30px; height: 30px; font-size: 11.5px; }
+
+@media (max-width: 1024px) {
+  .section-layout { grid-template-columns: minmax(0, 1fr); }
+  .section-layout__side { min-height: 0; }
+  .section-roster { position: static; }
+  .section-roster__list { max-height: 420px; }
+}
+
+/* ==========================================================================
+   Historial académico (panel desde Alumnos) e impresión
+   ========================================================================== */
+.history-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 14px; }
+.history-toolbar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.history-print-root { display: none; }
+.history-print__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #0f172a; font-size: 12px; color: #334155; }
+.history-print__head strong { font-size: 13px; color: #0f172a; }
+.history-print__head h1 { margin: 2px 0; font-size: 20px; color: #0f172a; }
+.history-print__head p { margin: 0; font-size: 13px; }
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body.printing-history > *:not(.history-print-root) { display: none !important; }
+  body.printing-history .history-print-root { display: block; }
+  body.printing-history { overflow: visible; background: #fff; }
+  .history-print-root .history-year { page-break-inside: avoid; break-inside: avoid; margin-bottom: 10px; }
+  .history-print-root .history-year__chevron { display: none; }
+  .history-print-root .history-year__head { cursor: default; }
+  .history-print-root .table-wrap { overflow: visible; }
+  .history-print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* ==========================================================================
+   Login · sello institucional que corona el tarjetón del panel lateral
+   ========================================================================== */
+/* El tarjetón queda centrado en el alto disponible; el pie sigue abajo. */
+.login-hero { justify-content: flex-start; padding-top: 84px; } /* deja lugar al sello aunque el tarjetón llegue arriba */
+.login-hero .login-showcase { margin: auto 0; }
+
+/* El sello se monta sobre el borde superior del tarjetón. */
+.login-showcase { padding-top: 0; }
+.login-showcase__head { display: flex; flex-direction: column; align-items: center; margin-bottom: 4px; text-align: center; }
+.login-showcase__head p { max-width: 460px; margin: 0 auto; }
+.login-showcase__eyebrow { margin-top: 14px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: color-mix(in srgb, var(--color-primary) 40%, white); }
+.login-showcase__head h1 { margin: 6px 0 10px; }
+.login-showcase__school { font-size: clamp(28px, 2.8vw, 38px); line-height: 1.15; letter-spacing: -0.01em; }
+
+.login-seal {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  margin-top: -60px; /* mitad del sello por fuera del tarjetón */
+  overflow: hidden;
+  border-radius: 50%;
+  box-shadow: 0 0 0 6px rgba(var(--color-primary-rgb), 0.28), 0 18px 40px -14px rgba(0, 0, 0, 0.6);
+}
+/* Logo del colegio: placa clara, como un escudo oficial. */
+/* Relleno de ~1/6: un logo cuadrado entra completo en el círculo (su diagonal < diámetro). */
+.login-seal--school { padding: 20px; background: #fff; }
+/* Sin logo propio: el birrete de MoDo Educa sobre vidrio oscuro. */
+.login-seal--platform { padding: 24px; border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.login-seal__logo { display: block; width: 100%; height: 100%; object-fit: contain; }
+.login-seal__logo.school-logo--default { background: none; }
+
+@media (max-width: 1180px) {
+  .login-seal { width: 100px; height: 100px; margin-top: -50px; }
+  .login-seal--school { padding: 17px; }
+}

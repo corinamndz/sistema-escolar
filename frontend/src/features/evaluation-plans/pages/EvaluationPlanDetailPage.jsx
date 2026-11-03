@@ -27,6 +27,7 @@ import DuplicateToYearModal from '../../../components/ui/DuplicateToYearModal';
 import PlanAcknowledgments, { acknowledgmentRatio } from '../components/PlanAcknowledgments';
 import { TermBadge, termLabel } from '../terms';
 import { INSTRUMENT_LABELS } from '../instruments';
+import { weekendError } from '../../../utils/weekdays';
 import {
   ContentRefsEditor,
   CriteriaEditor,
@@ -500,10 +501,16 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
           ? `Excede lo disponible: el plan quedaría en ${Math.round((100 - remaining + typed) * 100) / 100}%.`
           : null;
   const afterSave = typed && !weightError ? Math.round((100 - remaining + typed) * 100) / 100 : null;
+  // Sin evaluaciones en sábado ni domingo (el backend también responde 400).
+  const plannedDateError = weekendError(form.plannedDate);
+  const sectionDateErrors = detailed
+    ? plan.sections.map((sec) => weekendError(dForm.sectionDates[sec.id]) && `Sección ${sec.name}: ${weekendError(dForm.sectionDates[sec.id])}`).filter(Boolean)
+    : [];
+  const dateError = Boolean(plannedDateError || sectionDateErrors.length);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (weightError) return;
+    if (weightError || dateError) return;
     let extra = {};
     if (detailed) {
       const result = detailedBody(dForm);
@@ -601,8 +608,8 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
           </Field>
           <Field
             label="Fecha estimada"
-            error={fieldErrors.plannedDate}
-            hint={termStart && termEnd ? `Dentro del lapso: ${formatDay(termStart)} – ${formatDay(termEnd)}` : 'Opcional.'}
+            error={plannedDateError || fieldErrors.plannedDate}
+            hint={termStart && termEnd ? `Dentro del lapso, de lunes a viernes: ${formatDay(termStart)} – ${formatDay(termEnd)}` : 'Opcional. De lunes a viernes.'}
           >
             <Input
               type="date"
@@ -610,6 +617,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
               min={termStart || undefined}
               max={termEnd || undefined}
               onChange={(e) => setForm((f) => ({ ...f, plannedDate: e.target.value }))}
+              error={Boolean(plannedDateError)}
             />
           </Field>
           <Field label="Descripción" error={fieldErrors.description} hint="Opcional: contenidos, criterios o instrucciones." full>
@@ -653,7 +661,12 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
               <Field label="Criterios e indicadores" error={fieldErrors.criteria} full>
                 <CriteriaEditor value={dForm.criteria} onChange={(criteria) => setDForm((f) => ({ ...f, criteria }))} maxScore={dForm.maxScore} locked={locked} />
               </Field>
-              <Field label="Fechas de aplicación" error={fieldErrors.sectionDates} full hint={termStart && termEnd ? `Dentro del lapso: ${formatDay(termStart)} – ${formatDay(termEnd)}` : undefined}>
+              <Field
+                label="Fechas de aplicación"
+                error={sectionDateErrors.join(' ') || fieldErrors.sectionDates}
+                full
+                hint={termStart && termEnd ? `Dentro del lapso, de lunes a viernes: ${formatDay(termStart)} – ${formatDay(termEnd)}` : 'De lunes a viernes.'}
+              >
                 <div className="section-dates">
                   {plan.sections.map((sec) => (
                     <label key={sec.id} className="section-dates__item">
@@ -665,6 +678,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
                         max={termEnd || undefined}
                         onChange={(e) => setDForm((f) => ({ ...f, sectionDates: { ...f.sectionDates, [sec.id]: e.target.value } }))}
                         aria-label={`Fecha de aplicación en la sección ${sec.name}`}
+                        error={Boolean(weekendError(dForm.sectionDates[sec.id]))}
                       />
                     </label>
                   ))}
@@ -677,7 +691,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" loading={loading} disabled={Boolean(weightError)}>
+          <Button type="submit" loading={loading} disabled={Boolean(weightError) || dateError} title={dateError ? 'Hay fechas en fin de semana' : undefined}>
             Guardar
           </Button>
         </div>
@@ -703,9 +717,11 @@ function ProjectFormModal({ planId, plan, existing, remaining, onClose, onCreate
     typed === null ? null : !(typed > 0) ? 'Debe ser mayor que 0.' : typed > remaining ? `Excede lo disponible en el plan (${remaining}%).` : null;
   const afterSave = typed && !weightError ? Math.round((100 - remaining + typed) * 100) / 100 : null;
 
+  const plannedDateError = weekendError(form.plannedDate);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (weightError || !typed) return;
+    if (weightError || !typed || plannedDateError) return;
     try {
       await run({
         ...(existing ? {} : { title: form.title.trim(), description: form.description.trim() }),
@@ -768,8 +784,8 @@ function ProjectFormModal({ planId, plan, existing, remaining, onClose, onCreate
           </Field>
           <Field
             label="Fecha estimada"
-            error={fieldErrors.plannedDate}
-            hint={plan.term_start && plan.term_end ? `Dentro del lapso: ${formatDay(plan.term_start)} – ${formatDay(plan.term_end)}` : 'Opcional.'}
+            error={plannedDateError || fieldErrors.plannedDate}
+            hint={plan.term_start && plan.term_end ? `Dentro del lapso, de lunes a viernes: ${formatDay(plan.term_start)} – ${formatDay(plan.term_end)}` : 'Opcional. De lunes a viernes.'}
           >
             <Input
               type="date"
@@ -777,6 +793,7 @@ function ProjectFormModal({ planId, plan, existing, remaining, onClose, onCreate
               min={plan.term_start || undefined}
               max={plan.term_end || undefined}
               onChange={(e) => setForm((f) => ({ ...f, plannedDate: e.target.value }))}
+              error={Boolean(plannedDateError)}
             />
           </Field>
           {!existing && (
@@ -814,7 +831,7 @@ function ProjectFormModal({ planId, plan, existing, remaining, onClose, onCreate
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" loading={loading} disabled={!typed || Boolean(weightError) || (!existing && !form.title.trim())}>
+          <Button type="submit" loading={loading} disabled={!typed || Boolean(weightError) || Boolean(plannedDateError) || (!existing && !form.title.trim())}>
             {existing ? 'Asignar ponderación' : 'Agregar al plan'}
           </Button>
         </div>

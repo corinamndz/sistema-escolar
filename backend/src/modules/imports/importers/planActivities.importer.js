@@ -2,6 +2,7 @@ const { z } = require('zod');
 const f = require('../fields');
 const { normalizeHeader } = require('../excel');
 const { ApiError } = require('../../../utils/ApiError');
+const { weekendDay, WEEKEND_MESSAGE } = require('../../../utils/weekdays');
 const { compareUnits } = require('../../programmatic-content/programmaticContent.service');
 const { CATEGORIES, INSTRUMENTS } = require('../../evaluation-plans/activityExcel.service');
 const planService = require('../../evaluation-plans/evaluationPlan.service');
@@ -296,6 +297,14 @@ module.exports = {
     }
     ctx.sections.forEach((s) => {
       if (outside(data.sectionDate[s.id])) errors.push({ column: s.dateKey, reason: 'fecha fuera del lapso', message: `La fecha de la sección ${s.name} debe estar dentro del ${ctx.plan.term_name}${range}.` });
+    });
+    // Sin evaluaciones en fin de semana: se marca la fila (antes de guardar nada).
+    if (weekendDay(data.plannedDate)) {
+      errors.push({ column: 'plannedDate', reason: 'fecha en fin de semana', message: `El ${dmy(data.plannedDate)} es ${weekendDay(data.plannedDate)}: ${WEEKEND_MESSAGE.toLowerCase()}` });
+    }
+    ctx.sections.forEach((s) => {
+      const d = data.sectionDate[s.id];
+      if (weekendDay(d)) errors.push({ column: s.dateKey, reason: 'fecha en fin de semana', message: `Sección ${s.name}: el ${dmy(d)} es ${weekendDay(d)}; ${WEEKEND_MESSAGE.toLowerCase()}` });
     });
 
     data.category = data.category || 'formative';

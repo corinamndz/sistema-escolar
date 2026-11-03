@@ -4,6 +4,7 @@ import Drawer from '../../../components/ui/Drawer';
 import Badge from '../../../components/ui/Badge';
 import Icon from '../../../components/ui/Icon';
 import { hueOf } from './ScheduleGrid';
+import { WeightDot, weightLevelOf } from '../weightLevels';
 
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
@@ -69,11 +70,9 @@ function EvaluationDetailModal({ evaluation: e, section, onClose }) {
               <Icon name={status.icon} size={12} /> {status.label}
             </Badge>
             <Badge variant="neutral">{e.category_label}</Badge>
-            {e.heavy && (
-              <Badge variant="danger">
-                <span className="evalcal__heavy-dot" /> Pesada
-              </Badge>
-            )}
+            <span className={`weight-badge weight-badge--${weightLevelOf(e)}`}>
+              <WeightDot level={weightLevelOf(e)} label />
+            </span>
             {e.plan_status === 'closed' && <Badge variant="neutral">Plan cerrado</Badge>}
           </div>
         </div>

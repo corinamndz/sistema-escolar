@@ -8,7 +8,8 @@ const evaluationPlansApi = {
 
   // Opciones para crear planes: el docente recibe solo lo de su carga del período activo.
   listPeriodOptions: () => axiosClient.get('/evaluation-plans/options/school-periods').then((r) => r.data),
-  listSectionOptions: () => axiosClient.get('/evaluation-plans/options/sections').then((r) => r.data),
+  /** Secciones de un año escolar (sin `schoolPeriodId`: el año en curso). */
+  listSectionOptions: (schoolPeriodId) => axiosClient.get('/evaluation-plans/options/sections', { params: schoolPeriodId ? { schoolPeriodId } : undefined }).then((r) => r.data),
   getSectionAssignment: (sectionId) => axiosClient.get(`/evaluation-plans/options/sections/${sectionId}/assignment`).then((r) => r.data),
 
   list: (params) => axiosClient.get('/evaluation-plans', { params }).then((r) => r.data),

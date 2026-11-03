@@ -16,10 +16,11 @@ const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleSt
  * Egresado / Retirado), promedio y la boleta por materia y lapso. Los años
  * cerrados muestran la boleta congelada al momento de la promoción.
  * `data` viene de GET /students/:id/academic-history o /portal/students/:id/history.
+ * `initiallyOpen`: todos los años desplegados (impresión, "Expandir todo").
  */
-function AcademicHistory({ data }) {
+function AcademicHistory({ data, initiallyOpen = false }) {
   // Años CERRADOS por defecto: la cabecera resume cada uno (grado, resultado, promedio); se abre el que se quiere ver.
-  const [open, setOpen] = useState(() => new Set());
+  const [open, setOpen] = useState(() => new Set(initiallyOpen ? (data?.years || []).map((y) => y.enrollment_id) : []));
   if (!data?.years?.length) {
     return (
       <div className="empty-state">

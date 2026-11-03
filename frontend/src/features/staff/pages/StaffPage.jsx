@@ -46,6 +46,15 @@ const STATUS_FILTERS = [
   ['inactive', 'Inactivos'],
 ];
 
+// Acceso al sistema (misma regla que "Con portal / Sin portal" en Representantes):
+// con usuario activo · sin usuario creado. Un usuario desactivado no cuenta en ninguno.
+const ACCESS_FILTERS = [
+  ['', 'Todos'],
+  ['active', 'Con acceso'],
+  ['none', 'Sin acceso'],
+];
+const accessKey = (r) => (r.access_status === 'active' ? 'active' : !r.access_username ? 'none' : null);
+
 const fullName = (r) => `${r.first_name} ${r.last_name}`;
 const initialsOf = (r) => `${r.first_name?.[0] || ''}${r.last_name?.[0] || ''}`.toUpperCase();
 const formatDate = (v) => (v ? new Date(v).toLocaleDateString('es', { timeZone: 'UTC' }) : null);
@@ -68,10 +77,11 @@ function StatusBadge({ status }) {
   );
 }
 
-function StatusFilter({ value, onChange, counts, total }) {
+/** Pastillas de filtro con contador (estado o acceso), con el estilo de los demás filtros del sistema. */
+function PillFilter({ options, value, onChange, counts, total, ariaLabel }) {
   return (
-    <div className="level-filter" role="group" aria-label="Filtrar por estado">
-      {STATUS_FILTERS.map(([code, label]) => (
+    <div className="level-filter" role="group" aria-label={ariaLabel}>
+      {options.map(([code, label]) => (
         <button
           key={code || 'all'}
           type="button"
@@ -175,6 +185,7 @@ function StaffPage() {
   const { data: rows, loading, error, refetch } = useFetch(() => staffApi.list(), []);
   const [staffType, setStaffType] = useState('');
   const [status, setStatus] = useState('');
+  const [access, setAccess] = useState('');
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [managingAccess, setManagingAccess] = useState(null);
@@ -196,23 +207,30 @@ function StaffPage() {
   const canManageAccess = can('staff', 'update') && (can('roles', 'update') || Boolean(coordinator?.level));
   const all = rows || [];
 
-  // Filtros acumulativos: tipo + estado (+ búsqueda de texto).
+  // Filtros acumulativos: tipo + estado + acceso al sistema (+ búsqueda de texto).
   const matches = (r, skip) =>
     (skip === 'type' || !staffType || r.staff_type === staffType) &&
-    (skip === 'status' || !status || r.status === status);
+    (skip === 'status' || !status || r.status === status) &&
+    (skip === 'access' || !access || accessKey(r) === access);
 
   const forStatus = all.filter((r) => matches(r, 'status'));
+  const forAccess = all.filter((r) => matches(r, 'access'));
   const visible = all.filter((r) => matches(r));
 
   const statusCounts = {
     active: forStatus.filter((r) => r.status === 'active').length,
     inactive: forStatus.filter((r) => r.status === 'inactive').length,
   };
+  const accessCounts = {
+    active: forAccess.filter((r) => accessKey(r) === 'active').length,
+    none: forAccess.filter((r) => accessKey(r) === 'none').length,
+  };
 
-  const anyFilter = Boolean(staffType || status);
+  const anyFilter = Boolean(staffType || status || access);
   const clearFilters = () => {
     setStaffType('');
     setStatus('');
+    setAccess('');
   };
 
   const filtered = useMemo(() => {
@@ -347,10 +365,11 @@ function StaffPage() {
     </div>
   );
 
-  // Pastillas de estado debajo.
+  // Pastillas de estado y de acceso al sistema debajo (como Con portal / Sin portal en Representantes).
   const filters = (
     <div className="filter-bar">
-      <StatusFilter value={status} onChange={setStatus} counts={statusCounts} total={forStatus.length} />
+      <PillFilter options={STATUS_FILTERS} value={status} onChange={setStatus} counts={statusCounts} total={forStatus.length} ariaLabel="Filtrar por estado" />
+      <PillFilter options={ACCESS_FILTERS} value={access} onChange={setAccess} counts={accessCounts} total={forAccess.length} ariaLabel="Filtrar por acceso al sistema" />
     </div>
   );
 

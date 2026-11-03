@@ -5,6 +5,7 @@ const acknowledgments = require('../portal/planAcknowledgment.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const teacherScope = require('../access/teacherScope');
 const { ApiError } = require('../../utils/ApiError');
+const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 const academicService = require('../academics/academic.service');
 const assignmentService = require('../academics/assignment.service');
 
@@ -22,8 +23,20 @@ const listPeriodOptions = asyncHandler(async (req, res) => {
 });
 
 /** GET /evaluation-plans/options/sections — secciones (docente: solo las suyas). */
+/**
+ * GET /evaluation-plans/options/sections?schoolPeriodId= — secciones para el
+ * formulario de nuevo plan, de UN año escolar: el indicado o, si no se indica,
+ * el año en curso (misma regla que los selectores de año). Así no se mezclan
+ * las de otros años (p. ej. el siguiente ya preparado).
+ */
 const listSectionOptions = asyncHandler(async (req, res) => {
-  const rows = await academicService.listSections(req.db, req.tenantId, {});
+  const requested = z.string().uuid({ message: 'El año escolar no es válido.' }).optional().parse(req.query.schoolPeriodId || undefined);
+  const period = requested
+    ? await req.db('school_periods').where({ id: requested, tenant_id: req.tenantId }).first('id')
+    : await req.db('school_periods').where({ tenant_id: req.tenantId }).orderByRaw(currentPeriodOrder()).first('id');
+  if (requested && !period) throw ApiError.notFound('Año escolar no encontrado.');
+  if (!period) return res.status(200).json([]);
+  const rows = await academicService.listSections(req.db, req.tenantId, { schoolPeriodId: period.id });
   const scope = await teacherScope.getAccessScope(req);
   res.status(200).json(scope ? rows.filter((s) => teacherScope.coversSection(scope, s.id)) : rows);
 });

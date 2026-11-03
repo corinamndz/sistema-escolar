@@ -7,11 +7,11 @@ import { useMutation } from '../../../hooks/useMutation';
 import RequirePermission from '../../../components/RequirePermission';
 import PageHeader from '../../../components/ui/PageHeader';
 import Card from '../../../components/ui/Card';
-import Table from '../../../components/ui/Table';
 import Button from '../../../components/ui/Button';
 import Drawer from '../../../components/ui/Drawer';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
+import Icon from '../../../components/ui/Icon';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { LevelBadge, STAFF_ROLES } from '../levels';
 import TeacherAssignmentModal from '../components/TeacherAssignmentModal';
@@ -88,6 +88,89 @@ function SectionTeachersCard({ sectionId, onAssign }) {
   );
 }
 
+const initialsOf = (r) => `${r.first_name?.[0] || ''}${r.last_name?.[0] || ''}`.toUpperCase();
+
+/**
+ * Panel derecho del detalle: el cupo (compacto) y los alumnos inscritos en una
+ * lista con scroll propio, que toma el alto de la columna izquierda (personal
+ * docente y materias). Con muchos alumnos aparece un buscador.
+ */
+function SectionRosterPanel({ section, roster, loading, error, onEnroll, onWithdraw }) {
+  const [query, setQuery] = useState('');
+  const occupied = roster?.length || 0;
+  const capacity = section.max_students || 0;
+  const free = Math.max(0, capacity - occupied);
+  const pct = capacity ? Math.min(100, Math.round((occupied / capacity) * 100)) : 0;
+  const tone = occupied >= capacity ? 'is-full' : pct >= 90 ? 'is-high' : '';
+  const q = query.trim().toLowerCase();
+  const rows = (roster || []).filter((r) => !q || `${r.first_name} ${r.last_name}`.toLowerCase().includes(q));
+
+  return (
+    <Card
+      className="section-roster"
+      title={
+        <>
+          Alumnos inscritos <span className="data-table__count">{occupied}</span>
+        </>
+      }
+      actions={
+        <RequirePermission module="academics" action="update">
+          <Button size="sm" icon="plus" onClick={onEnroll} disabled={occupied >= capacity} title={occupied >= capacity ? 'La sección no tiene cupos libres' : undefined}>
+            Inscribir
+          </Button>
+        </RequirePermission>
+      }
+    >
+      {/* Cupo */}
+      <div className={`section-capacity ${tone}`}>
+        <div className="section-capacity__numbers">
+          <span>
+            <strong>{occupied}</strong> de {capacity} alumnos
+          </span>
+          <span className="section-capacity__free">{free === 0 ? 'Sin cupos libres' : `${free} ${free === 1 ? 'cupo libre' : 'cupos libres'}`}</span>
+        </div>
+        <div className="progress-bar" role="progressbar" aria-valuenow={occupied} aria-valuemin={0} aria-valuemax={capacity} aria-label="Cupo de la sección">
+          <div className="progress-bar__fill" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+
+      <Alert>{error}</Alert>
+      {occupied > 8 && (
+        <div className="input-group section-roster__search">
+          <Icon name="search" size={16} className="input-group__icon" />
+          <input className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar alumno…" aria-label="Buscar alumno inscrito" />
+        </div>
+      )}
+
+      {loading ? (
+        <Spinner />
+      ) : occupied === 0 ? (
+        <div className="section-roster__empty">
+          <Icon name="users" size={22} />
+          <span>Aún no hay alumnos inscritos.</span>
+        </div>
+      ) : (
+        <ul className="section-roster__list">
+          {rows.map((r) => (
+            <li key={r.enrollment_id} className="section-roster__item">
+              <span className="avatar avatar--sm">{initialsOf(r)}</span>
+              <Link to={`/students/${r.student_id}`} className="section-roster__name">
+                {r.last_name}, {r.first_name}
+              </Link>
+              <RequirePermission module="academics" action="update">
+                <button type="button" className="row-action row-action--delete" onClick={() => onWithdraw(r.enrollment_id)} title="Retirar de la sección" aria-label={`Retirar a ${r.first_name} ${r.last_name}`}>
+                  <Icon name="logout" size={15} />
+                </button>
+              </RequirePermission>
+            </li>
+          ))}
+          {rows.length === 0 && <li className="section-roster__none text-sm text-muted">Ningún alumno coincide con «{query}».</li>}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 function SectionDetailPage() {
   const { id } = useParams();
   const { data: section, loading: loadingSection, error, refetch } = useFetch(() => academicsApi.getSection(id), [id]);
@@ -120,24 +203,6 @@ function SectionDetailPage() {
   if (error) return <Alert>{error}</Alert>;
   if (!section) return null;
 
-  const rosterColumns = [
-    { key: 'name', header: 'Alumno', render: (r) => <Link to={`/students/${r.student_id}`}>{r.first_name} {r.last_name}</Link> },
-    {
-      key: 'actions',
-      header: '',
-      align: 'right',
-      render: (r) => (
-        <RequirePermission module="academics" action="update">
-          <Button size="sm" variant="danger" onClick={() => handleWithdraw(r.enrollment_id)}>
-            Retirar
-          </Button>
-        </RequirePermission>
-      ),
-    },
-  ];
-
-  const occupied = roster?.length || 0;
-
   return (
     <div>
       <PageHeader
@@ -156,32 +221,20 @@ function SectionDetailPage() {
         }
       />
 
-      <div className="grid grid--2">
+      {/* 2/3: personal docente y materias · 1/3: cupo y alumnos inscritos (lista con scroll al alto de la izquierda). */}
+      <div className="section-layout">
         <SectionTeachersCard key={teachersVersion} sectionId={id} onAssign={() => setAssigning(true)} />
-        <Card title="Cupo">
-          <div className="progress-bar">
-            <div
-              className="progress-bar__fill"
-              style={{ width: `${Math.min(100, (occupied / section.max_students) * 100)}%` }}
-            />
-          </div>
-          <p style={{ marginTop: 8 }}>{occupied} de {section.max_students} alumnos inscritos</p>
-        </Card>
+        <div className="section-layout__side">
+          <SectionRosterPanel
+            section={section}
+            roster={roster}
+            loading={loadingRoster}
+            error={withdrawError}
+            onEnroll={() => setShowEnroll(true)}
+            onWithdraw={handleWithdraw}
+          />
+        </div>
       </div>
-
-      <Card
-        title="Alumnos inscritos"
-        actions={
-          <RequirePermission module="academics" action="update">
-            <Button size="sm" onClick={() => setShowEnroll(true)} disabled={occupied >= section.max_students}>
-              + Inscribir alumno
-            </Button>
-          </RequirePermission>
-        }
-      >
-        <Alert>{withdrawError}</Alert>
-        {loadingRoster ? <Spinner /> : <Table columns={rosterColumns} rows={roster} emptyMessage="Sin alumnos inscritos." />}
-      </Card>
 
       {assigning && (
         <TeacherAssignmentModal

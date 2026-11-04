@@ -109,7 +109,10 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
     .join('sections as sec', 'sec.id', 'e.section_id')
     .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
     .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId })
-    .distinct('sp.id', 'sp.name', 'sp.start_date', 'sp.is_active', 'sp.passing_grade')
+    // GROUP BY (no DISTINCT): con DISTINCT, Postgres exige que la expresión
+    // del ORDER BY esté en el SELECT (error 42P10).
+    .select('sp.id', 'sp.name', 'sp.start_date', 'sp.is_active', 'sp.passing_grade')
+    .groupBy('sp.id')
     .orderByRaw(currentPeriodOrder('sp')); // el en curso primero: es el que se abre por defecto
 
   const base = { student, scale: GRADE_SCALE, passing_grade: PASSING_GRADE, periods, school_period: null, terms: [], subjects: [] };

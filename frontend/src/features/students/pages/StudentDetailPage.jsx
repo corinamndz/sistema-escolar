@@ -18,6 +18,7 @@ import Card from '../../../components/ui/Card';
 import AcademicHistory from '../components/AcademicHistory';
 import { useAuth } from '../../../context/AuthContext';
 import StudentSanctions from '../../discipline/components/StudentSanctions';
+import StudentFeeCard from '../../payments/components/StudentFeeCard';
 
 function StudentDetailPage() {
   const { id } = useParams();
@@ -101,6 +102,9 @@ function StudentDetailPage() {
           <p>Estado: {student.status}</p>
         </Card>
       </div>
+
+      {/* Mensualidad: tarifa del nivel o tarifa especial (beca, convenio). Solo quien ve pagos; la cambia quien los administra. */}
+      {can('payments', 'read') && <StudentFeeCard studentId={id} canEdit={can('payments', 'update')} />}
 
       <Card title="Historial académico" subtitle="Años escolares cursados, resultado y boleta de cada año">
         <HistoryLoader studentId={id} />

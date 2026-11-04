@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const controller = require('./payment.controller');
 const batches = require('./paymentBatch.controller');
+const feePlans = require('./feePlan.controller');
 const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 const { requirePermission } = require('../../middlewares/permission.middleware');
@@ -73,6 +74,14 @@ router.get('/tuition/fees', requirePermission('payments', 'read'), controller.li
 router.put('/tuition/fees', requirePermission('payments', 'update'), controller.upsertFee);
 router.delete('/tuition/fees/:id', requirePermission('payments', 'update'), controller.deleteFee);
 router.post('/tuition/generate', requirePermission('payments', 'create'), controller.generateTuition);
+
+// ---- Tarifas especiales (becas, convenios) y tarifa de cada alumno ----
+router.get('/fee-plans', requirePermission('payments', 'read'), feePlans.list);
+router.post('/fee-plans', requirePermission('payments', 'update'), feePlans.create);
+router.put('/fee-plans/:id', requirePermission('payments', 'update'), feePlans.update);
+router.delete('/fee-plans/:id', requirePermission('payments', 'update'), feePlans.remove);
+router.get('/students/:id/fee', requirePermission('payments', 'read'), feePlans.studentFee);
+router.put('/students/:id/fee-plan', requirePermission('payments', 'update'), feePlans.assignStudentFee);
 
 // ---- Datos de otros módulos para los formularios (rutas fijas antes de "/:id") ----
 // Bajo el permiso de Pagos: el rol Finanzas no necesita permisos de Alumnos ni Académico.

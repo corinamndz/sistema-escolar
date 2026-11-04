@@ -24,6 +24,9 @@ import { LEVEL_CODES, LevelBadge, LevelFilter } from '../../academics/levels';
 import StudentGroups, { sectionLabel } from '../components/StudentGroups';
 import AcademicHistoryDrawer from '../components/AcademicHistoryDrawer';
 import LinksField, { linksChanged } from '../components/LinksField';
+import paymentsApi from '../../../api/endpoints/payments.api';
+import { formatMoney } from '../../payments/paymentStatus';
+import { GENERAL_FEE_LABEL, describeFeePlan, effectiveFee, isExempt } from '../../payments/feePlans';
 
 const STATUS_LABELS = { active: ['Activo', 'success'], inactive: ['Inactivo', 'neutral'], graduated: ['Egresado', 'primary'], withdrawn: ['Retirado', 'danger'] };
 const STATUS_FILTERS = [
@@ -50,8 +53,12 @@ function readView() {
   }
 }
 
-/** Filtro rápido por estado, con el mismo estilo de "pastillas" que el filtro por nivel. */
-function StatusFilter({ value, onChange, counts, total }) {
+/**
+ * Filtro rápido por estado, con el mismo estilo de "pastillas" que el filtro por nivel.
+ * `children`: pastillas complementarias en el MISMO bloque, tras un divisor
+ * (ej. «Tarifa especial»), para que todos los filtros quepan en una línea.
+ */
+function StatusFilter({ value, onChange, counts, total, children }) {
   return (
     <div className="level-filter" role="group" aria-label="Filtrar por estado">
       {STATUS_FILTERS.map(([code, label]) => (
@@ -66,7 +73,34 @@ function StatusFilter({ value, onChange, counts, total }) {
           <span className="level-filter__count">{code ? counts[code] || 0 : total}</span>
         </button>
       ))}
+      {children && (
+        <>
+          <span className="level-filter__divider" aria-hidden="true" />
+          {children}
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * Filtro rápido de tarifa: pastilla que alterna «solo alumnos con tarifa
+ * especial» (beca, convenio: students.fee_plan_id); sin marcar, se ven todos.
+ * Va dentro del bloque de estados (StatusFilter), con su mismo estilo.
+ */
+function FeePill({ active, onChange, count }) {
+  return (
+    <button
+      type="button"
+      className={`level-filter__item ${active ? 'level-filter__item--active' : ''}`}
+      onClick={() => onChange(!active)}
+      aria-pressed={active}
+      aria-label={`Solo alumnos con tarifa especial (${count})`}
+      title="Alumnos con una tarifa distinta a la general de su nivel (becas, convenios)"
+    >
+      Tarifa especial
+      <span className="level-filter__count">{count}</span>
+    </button>
   );
 }
 
@@ -89,6 +123,8 @@ function StudentsPage() {
   const [level, setLevel] = useState('');
   const [gradeId, setGradeId] = useState('');
   const [section, setSection] = useState(''); // nombre de la sección ("A"): sin grado, filtra la A de todos los grados
+  const [specialFee, setSpecialFee] = useState(false); // solo alumnos con tarifa especial
+  const canSeeFees = can('payments', 'read');
   const [editing, setEditing] = useState(null); // null = cerrado, {} = crear, {...} = editar
   const [view, setView] = useState(readView);
   const [query, setQuery] = useState('');
@@ -111,9 +147,11 @@ function StudentsPage() {
     (skip === 'status' || !status || r.status === status) &&
     (skip === 'level' || !level || r.level_code === level) &&
     (skip === 'grade' || !gradeId || r.grade_id === gradeId) &&
-    (skip === 'section' || !section || r.section_name === section);
+    (skip === 'section' || !section || r.section_name === section) &&
+    (skip === 'fee' || !specialFee || Boolean(r.fee_plan_id));
   const forStatus = all.filter((r) => matches(r, 'status'));
   const forLevel = all.filter((r) => matches(r, 'level'));
+  const specialFeeCount = all.filter((r) => matches(r, 'fee') && r.fee_plan_id).length;
   const statusCounts = countBy(forStatus, 'status');
   const levelCounts = countBy(forLevel, 'level_code');
   const visible = all.filter((r) => matches(r));
@@ -144,8 +182,9 @@ function StudentsPage() {
   useEffect(() => {
     if (section && !sectionOptions.includes(section)) setSection('');
   }, [section, sectionOptions]);
-  const anyFilter = Boolean(status || level || gradeId || section);
+  const anyFilter = Boolean(status || level || gradeId || section || specialFee);
   const clearFilters = () => {
+    setSpecialFee(false);
     setStatus('');
     setLevel('');
     setGradeId('');
@@ -282,10 +321,14 @@ function StudentsPage() {
         )}
       </div>
   );
-  // Fila de abajo: pastillas de estado y nivel.
+  // Fila de abajo: pastillas de estado (+ tarifa especial) y nivel, en una sola línea
+  // flexible (filter-bar: flex + wrap; --compact ajusta el espaciado para que quepan).
   const filters = (
-    <div className="filter-bar">
-      <StatusFilter value={status} onChange={setStatus} counts={statusCounts} total={forStatus.length} />
+    <div className="filter-bar filter-bar--compact">
+      <StatusFilter value={status} onChange={setStatus} counts={statusCounts} total={forStatus.length}>
+        {/* Dato financiero: solo para quien ve Pagos. */}
+        {canSeeFees && <FeePill active={specialFee} onChange={setSpecialFee} count={specialFeeCount} />}
+      </StatusFilter>
       <LevelFilter value={level} onChange={setLevel} counts={levelCounts} total={forLevel.length} />
     </div>
   );
@@ -459,7 +502,20 @@ function StudentFormModal({ initial, onClose, onSaved }) {
     birthDate: initial.birth_date ? initial.birth_date.slice(0, 10) : '',
     nationalId: initial.national_id || '',
     status: initial.status || 'active',
+    // '' = tarifa general del nivel (valor por defecto); si no, id de una tarifa especial.
+    feePlanId: initial.fee_plan_id || '',
   });
+  // Tarifa aplicable: la ve quien ve Pagos y la cambia quien los administra (el backend lo exige igual).
+  const canSeeFees = can('payments', 'read');
+  const canEditFee = can('payments', 'update');
+  const { data: feePlans } = useFetch(() => (canSeeFees ? paymentsApi.listFeePlans() : Promise.resolve([])), [canSeeFees]);
+  // Al editar: tarifa base de su nivel en el año en curso (para mostrar el monto de cada opción).
+  const { data: currentFee } = useFetch(
+    () => (isEdit && canSeeFees ? paymentsApi.studentFee(initial.id) : Promise.resolve(null)),
+    [initial.id, canSeeFees]
+  );
+  const baseFee = currentFee?.base?.amount ?? null;
+  const originalFeePlanId = initial.fee_plan_id || '';
   const { run, loading, error, fieldErrors } = useMutation(
     isEdit ? (data) => studentsApi.update(initial.id, data) : studentsApi.create
   );
@@ -477,13 +533,20 @@ function StudentFormModal({ initial, onClose, onSaved }) {
       nationalId: form.nationalId || undefined,
       ...(isEdit ? { status: form.status } : {}),
     };
+    // Tarifa: solo si cambió (null = volver a la tarifa general del nivel).
+    if (canEditFee && form.feePlanId !== originalFeePlanId) data.feePlanId = form.feePlanId || null;
     // Representantes: lista completa, solo si cambió (el backend aplica la diferencia).
     if (canLinkGuardians && links && (isEdit ? linksChanged(originalLinks, links) : links.length > 0)) {
       data.guardians = links.map((l) => ({ guardianId: l.id, relationship: l.relationship || null, isPrimary: l.isPrimary }));
     }
     try {
-      await run(data);
-      toast.success(isEdit ? 'Cambios guardados' : 'Alumno registrado', `${form.firstName} ${form.lastName}`);
+      const saved = await run(data);
+      const a = saved?.fee_applied;
+      const recalculated = a ? a.updated + a.cancelled + a.reactivated : 0;
+      toast.success(
+        isEdit ? 'Cambios guardados' : 'Alumno registrado',
+        `${form.firstName} ${form.lastName}${recalculated ? ` · tarifa aplicada a ${recalculated === 1 ? '1 mensualidad pendiente' : `${recalculated} mensualidades pendientes`}` : ''}`
+      );
       onSaved();
       onClose();
     } catch {
@@ -516,6 +579,36 @@ function StudentFormModal({ initial, onClose, onSaved }) {
                     {label}
                   </option>
                 ))}
+              </Select>
+            </Field>
+          )}
+          {canSeeFees && (
+            <Field
+              label="Tarifa aplicable"
+              error={fieldErrors.feePlanId}
+              hint={
+                !canEditFee
+                  ? 'Solo quien administra Pagos puede cambiarla.'
+                  : form.feePlanId !== originalFeePlanId && isEdit
+                    ? 'Se aplicará a sus mensualidades pendientes desde el mes en curso.'
+                    : isEdit
+                      ? 'Para una beca o convenio, elige la tarifa especial.'
+                      : 'Por defecto paga la tarifa de su nivel al inscribirse.'
+              }
+            >
+              <Select name="feePlanId" value={form.feePlanId} onChange={handleChange} disabled={!canEditFee}>
+                <option value="">
+                  {GENERAL_FEE_LABEL}
+                  {baseFee !== null ? ` (${formatMoney(baseFee, 'USD')})` : ''}
+                </option>
+                {(feePlans || []).map((p) => {
+                  const amount = effectiveFee(baseFee, p);
+                  return (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — {isExempt(p) ? 'exonerado' : amount !== null && p.kind === 'percentage' ? `${describeFeePlan(p)} (${formatMoney(amount, 'USD')})` : describeFeePlan(p)}
+                    </option>
+                  );
+                })}
               </Select>
             </Field>
           )}

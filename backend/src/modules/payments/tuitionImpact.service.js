@@ -85,20 +85,45 @@ async function familyStudents(trx, tenantId, guardianId, schoolPeriodId) {
     })
     .join('sections as sec', 'sec.id', 'e.section_id')
     .join('grades as g', 'g.id', 'sec.grade_id')
+    .leftJoin('fee_plans as fp', 'fp.id', 's.fee_plan_id')
     .where({ 'sg.guardian_id': guardianId, 's.tenant_id': tenantId, 'sec.school_period_id': schoolPeriodId })
-    .select('s.id as student_id', 's.first_name', 's.last_name', 'g.name as grade_name', 'sec.name as section_name', 'g.level_code', 'g.sort_order')
+    .select(
+      's.id as student_id', 's.first_name', 's.last_name', 'g.name as grade_name', 'sec.name as section_name', 'g.level_code', 'g.sort_order',
+      // Tarifa especial (beca, convenio): cambia el monto de ese alumno.
+      'fp.name as fee_plan_name', 'fp.kind as fee_plan_kind', 'fp.percentage as fee_plan_percentage', 'fp.amount as fee_plan_amount'
+    )
     .orderBy([{ column: 'g.sort_order' }, { column: 's.first_name' }]);
 }
 
 /**
  * Mensualidad de cada alumno según la foto `table` de un aviso:
- * [{ student_id, student_name, grade_name, section_name, level_code, amount, currency, ves }]
+ * [{ student_id, student_name, grade_name, section_name, level_code, amount, currency, ves, fee_plan_name }]
+ * Con tarifa especial, el monto es el de su beca o convenio (misma regla que
+ * las mensualidades: tuition.effectiveAmountSql). Exonerados (monto 0): no se listan.
  */
 function applyFees(students, table) {
   return students
     .map((r) => {
       const fee = table.fees.find((f) => f.level_code === r.level_code);
       if (!fee) return null;
+      if (r.fee_plan_kind) {
+        const amount =
+          r.fee_plan_kind === 'fixed' ? Number(r.fee_plan_amount) : round2((fee.amount * (100 - Number(r.fee_plan_percentage))) / 100);
+        if (!(amount > 0)) return null;
+        // Las tarifas especiales son en USD, como las de los niveles: el equivalente en Bs es proporcional.
+        const ves = fee.ves === null || !fee.amount ? null : round2((fee.ves * amount) / fee.amount);
+        return {
+          student_id: r.student_id,
+          student_name: `${r.first_name} ${r.last_name}`,
+          grade_name: r.grade_name,
+          section_name: r.section_name,
+          level_code: r.level_code,
+          amount,
+          currency: fee.currency,
+          ves,
+          fee_plan_name: r.fee_plan_name,
+        };
+      }
       return {
         student_id: r.student_id,
         student_name: `${r.first_name} ${r.last_name}`,
@@ -156,7 +181,7 @@ function summaryText(table) {
 /** Desglose de la familia, una línea por alumno (cuerpo del correo). */
 function familyText(items) {
   if (!items?.length) return '';
-  const lines = items.map((s) => `• ${s.student_name} (${s.grade_name} ${s.section_name}): ${money(s.amount, s.currency)} = ${bs(s.ves)}`);
+  const lines = items.map((s) => `• ${s.student_name} (${s.grade_name} ${s.section_name})${s.fee_plan_name ? ` · ${s.fee_plan_name}` : ''}: ${money(s.amount, s.currency)} = ${bs(s.ves)}`);
   const total = items.every((s) => s.ves !== null) ? round2(items.reduce((acc, s) => acc + s.ves, 0)) : null;
   return `Mensualidad con esta tasa:\n${lines.join('\n')}${items.length > 1 && total !== null ? `\nTotal mensual: ${bs(total)}` : ''}`;
 }

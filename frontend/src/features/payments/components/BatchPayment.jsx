@@ -28,8 +28,51 @@ const localToday = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/** ¿La cuota se puede incluir en un pago agrupado? Exigible y aún sin reportar. */
-export const isBatchable = (p) => ['overdue', 'pending'].includes(p.display_status);
+/**
+ * ¿La cuota se puede incluir en un pago agrupado? Exigible y aún sin reportar,
+ * o una mensualidad de un mes próximo (pago adelantado).
+ */
+export const isBatchable = (p) => ['overdue', 'pending', 'scheduled'].includes(p.display_status);
+/** Exigible hoy (vencida o por pagar): lo que entra en «Pagar todo junto». */
+export const isDue = (p) => ['overdue', 'pending'].includes(p.display_status);
+/** Mensualidad de un mes próximo, pagada por adelantado. */
+export const isAdvance = (p) => p.display_status === 'scheduled';
+
+const monthOf = (p) => String(p.billing_month || p.due_date || '').slice(0, 10);
+
+/**
+ * Selección en orden para adelantar meses (misma regla que el backend):
+ *  - al marcar un mes próximo se marcan también las mensualidades anteriores
+ *    pendientes de ese alumno (no se adelanta enero debiendo diciembre);
+ *  - al desmarcar una mensualidad se desmarcan los meses próximos posteriores.
+ * `available`: cuotas seleccionables; devuelve la nueva selección (Map id → cuota)
+ * y cuántas se agregaron o quitaron además de `p`.
+ */
+export function toggleInOrder(current, p, available) {
+  const next = new Map(current);
+  const sameStudentTuition = (q) => q.student_id === p.student_id && q.kind === 'tuition' && p.kind === 'tuition';
+  let extra = 0;
+  if (next.has(p.id)) {
+    next.delete(p.id);
+    [...next.values()].forEach((q) => {
+      if (sameStudentTuition(q) && isAdvance(q) && monthOf(q) > monthOf(p)) {
+        next.delete(q.id);
+        extra += 1;
+      }
+    });
+  } else {
+    next.set(p.id, p);
+    if (isAdvance(p)) {
+      available.forEach((q) => {
+        if (!next.has(q.id) && sameStudentTuition(q) && monthOf(q) < monthOf(p)) {
+          next.set(q.id, q);
+          extra += 1;
+        }
+      });
+    }
+  }
+  return { next, extra, added: next.has(p.id) };
+}
 
 export const BATCH_STATUS = {
   reported: { label: 'En revisión', variant: 'warning' },
@@ -47,6 +90,7 @@ export function BatchCartBar({ selected, onClear, onPay }) {
   if (!selected.length) return null;
   const students = new Set(selected.map((p) => p.student_id)).size;
   const ref = refTotal(selected);
+  const advance = selected.filter(isAdvance).length;
   return (
     <div className="batch-cart" role="region" aria-label="Pago agrupado">
       <div className="batch-cart__info">
@@ -55,6 +99,7 @@ export function BatchCartBar({ selected, onClear, onPay }) {
           <strong>
             {selected.length === 1 ? 'cuota seleccionada' : 'cuotas seleccionadas'}
             {students > 1 && ` · ${students} alumnos`}
+            {advance > 0 && <span className="batch-cart__advance">{advance === 1 ? '1 mes adelantado' : `${advance} meses adelantados`}</span>}
           </strong>
           <div className="batch-cart__total">
             Total: <strong>{formatAmounts(totalsOf(selected))}</strong>
@@ -67,7 +112,7 @@ export function BatchCartBar({ selected, onClear, onPay }) {
           Quitar selección
         </Button>
         <Button icon="wallet" onClick={onPay}>
-          Pagar seleccionadas
+          {advance > 0 ? 'Pagar meses seleccionados' : 'Pagar seleccionadas'}
         </Button>
       </div>
     </div>
@@ -138,7 +183,8 @@ export function BatchPaymentDrawer({ payments, onClose, onDone }) {
       if (!map.has(key)) map.set(key, { name: `${p.student_first_name} ${p.student_last_name}`, items: [] });
       map.get(key).items.push(p);
     });
-    return [...map.values()];
+    // Cada alumno, sus cuotas por mes (no en el orden en que se marcaron).
+    return [...map.values()].map((s) => ({ ...s, items: [...s.items].sort((a, b) => String(a.due_date).localeCompare(String(b.due_date))) }));
   }, [payments]);
 
   const handleSubmit = async (e) => {
@@ -165,7 +211,12 @@ export function BatchPaymentDrawer({ payments, onClose, onDone }) {
   };
 
   return (
-    <Drawer title="Pagar varias cuotas" onClose={onClose} size="lg">
+    <Drawer title={payments.some(isAdvance) ? 'Pagar meses seleccionados' : 'Pagar varias cuotas'} onClose={onClose} size="lg">
+      {payments.some(isAdvance) && (
+        <Alert variant="info">
+          Incluye meses por adelantado: se pagan con su monto en USD de hoy y, al aprobarse, quedan pagados aunque aún no se hayan emitido.
+        </Alert>
+      )}
       {currencies.length > 1 && (
         <Alert variant="warning">Las cuotas elegidas están en monedas distintas ({currencies.join(', ')}): págalas en pagos separados, una moneda por pago.</Alert>
       )}
@@ -183,6 +234,7 @@ export function BatchPaymentDrawer({ payments, onClose, onDone }) {
                     <small className={p.display_status === 'overdue' ? 'text-danger' : 'text-muted'}>
                       {p.display_status === 'overdue' ? ' · vencida' : ''} · vence el {formatDate(p.due_date, false)}
                     </small>
+                    {isAdvance(p) && <span className="batch-summary__advance">Adelantado</span>}
                   </span>
                   <strong>{formatMoney(p.amount, p.currency)}</strong>
                 </li>

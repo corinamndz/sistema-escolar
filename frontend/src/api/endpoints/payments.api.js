@@ -65,6 +65,18 @@ const paymentsApi = {
   upsertFee: (data) => axiosClient.put('/payments/tuition/fees', data).then((r) => r.data),
   deleteFee: (id) => axiosClient.delete(`/payments/tuition/fees/${id}`).then((r) => r.data),
   generateTuition: (schoolPeriodId) => post('/payments/tuition/generate', { schoolPeriodId }),
+  // ---- Tarifas especiales (becas, convenios) ----
+  /** [{ id, name, kind: 'percentage'|'fixed', percentage, amount, description, student_count }] */
+  listFeePlans: () => get('/payments/fee-plans'),
+  /** { name, kind, percentage?, amount?, description? } */
+  createFeePlan: (data) => post('/payments/fee-plans', data),
+  /** → { plan, recalculated: null | { students, updated, cancelled, reactivated } } */
+  updateFeePlan: (id, data) => axiosClient.put(`/payments/fee-plans/${id}`, data).then((r) => r.data),
+  deleteFeePlan: (id) => axiosClient.delete(`/payments/fee-plans/${id}`).then((r) => r.data),
+  /** Mensualidad vigente del alumno: { plan, plan_label, note, enrollment, base, effective_amount, upcoming_months } */
+  studentFee: (studentId) => get(`/payments/students/${studentId}/fee`),
+  /** { feePlanId: uuid | null (tarifa general del nivel), note } → { fee, applied: { updated, cancelled, created, reactivated } } */
+  assignStudentFeePlan: (studentId, data) => axiosClient.put(`/payments/students/${studentId}/fee-plan`, data).then((r) => r.data),
 
   /** Catálogo de monedas + activas del colegio ({ base, default_currency, catalog: [{ code, name, enabled, … }] }). */
   listCurrencies: () => get('/payments/currencies'),

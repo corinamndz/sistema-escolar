@@ -9,9 +9,13 @@ const { ApiError } = require('../../utils/ApiError');
  *  - Mes normal: emisión el día 1, vencimiento el día `due_day` (5 por defecto).
  *  - Primer mes de una inscripción hecha a mitad de mes: se emite el día de la
  *    inscripción y vence `due_day` días después (para que no nazca vencida).
- *  - Monto: tarifa del nivel del grado en ese año escolar o, si no hay, la
- *    tarifa general del año. El monto se copia al pago (un cambio de tarifa
- *    posterior no altera cobros ya generados).
+ *  - Monto: primero la TARIFA ESPECIAL del alumno (students.fee_plan_id, ver
+ *    fee_plans: beca/descuento en % o monto fijo); si no tiene, la tarifa de su
+ *    nivel en ese año escolar o, si no hay, la tarifa general del año. El monto
+ *    se copia al pago (un cambio de tarifa del nivel no altera cobros ya
+ *    generados; un cambio de tarifa especial sí recalcula los meses pendientes
+ *    desde el mes en curso: applyStudentFeePlan).
+ *  - Beca total (100 %): no se generan mensualidades.
  *  - Responsable: el representante principal del alumno (o el primero).
  *  - Idempotente: el índice único (alumno, año, mes) impide duplicados; volver
  *    a generar solo crea lo que falta y reactiva meses anulados.
@@ -58,6 +62,18 @@ const FEE_LATERAL = `
   ORDER BY tf.level_code NULLS LAST
   LIMIT 1`;
 
+/**
+ * Monto a cobrar: la tarifa especial del alumno (alias `fp`, LEFT JOIN a
+ * fee_plans) sobre la tarifa base del nivel (`base`). Sin tarifa especial, la base.
+ * Puede dar 0 (beca total): esos meses no se cobran.
+ */
+const effectiveAmountSql = (base = 'f.amount', fp = 'fp') => `
+  CASE ${fp}.kind
+    WHEN 'fixed' THEN ${fp}.amount
+    WHEN 'percentage' THEN round(${base} * (100 - ${fp}.percentage) / 100, 2)
+    ELSE ${base}
+  END`;
+
 const GUARDIAN_LATERAL = `
   SELECT sg.guardian_id
   FROM student_guardians sg
@@ -76,8 +92,11 @@ async function generateTuition(trx, tenantId, scope = {}) {
     `
     WITH candidates AS (
       SELECT e.id AS enrollment_id, e.student_id, e.enrolled_at, sp.id AS school_period_id,
-             sp.start_date, sp.end_date, f.amount, f.currency, f.due_day, gd.guardian_id
+             sp.start_date, sp.end_date, f.currency, f.due_day, gd.guardian_id,
+             f.amount AS base_amount, fp.id AS fee_plan_id, ${effectiveAmountSql()} AS amount
       FROM enrollments e
+      JOIN students st ON st.id = e.student_id
+      LEFT JOIN fee_plans fp ON fp.id = st.fee_plan_id
       JOIN sections sec ON sec.id = e.section_id
       JOIN grades g ON g.id = sec.grade_id
       JOIN school_periods sp ON sp.id = sec.school_period_id
@@ -98,7 +117,7 @@ async function generateTuition(trx, tenantId, scope = {}) {
     )
     INSERT INTO payments (
       tenant_id, student_id, guardian_id, kind, enrollment_id, school_period_id,
-      billing_month, issue_date, due_date, period_label, amount, currency
+      billing_month, issue_date, due_date, period_label, amount, currency, base_amount, fee_plan_id
     )
     SELECT ?, student_id, guardian_id, 'tuition', enrollment_id, school_period_id,
            billing_month, issue_date,
@@ -107,19 +126,24 @@ async function generateTuition(trx, tenantId, scope = {}) {
                 ELSE GREATEST(billing_month + (due_day - 1), issue_date + due_day)
            END,
            'Mensualidad ' || ${MONTH_NAMES_SQL}[EXTRACT(MONTH FROM billing_month)::int] || ' ' || EXTRACT(YEAR FROM billing_month)::int,
-           amount, currency
+           amount, currency, base_amount, fee_plan_id
     FROM months
+    WHERE amount > 0 -- beca total: nada que cobrar
     ON CONFLICT (student_id, school_period_id, billing_month) WHERE kind = 'tuition'
     DO UPDATE SET
-      status = 'pending', cancelled_at = NULL,
+      status = 'pending', cancelled_at = NULL, cancel_reason = NULL,
+      base_amount = EXCLUDED.base_amount, fee_plan_id = EXCLUDED.fee_plan_id,
       guardian_id = EXCLUDED.guardian_id, enrollment_id = EXCLUDED.enrollment_id,
       issue_date = EXCLUDED.issue_date, due_date = EXCLUDED.due_date,
       amount = EXCLUDED.amount, currency = EXCLUDED.currency
     -- Solo se reactiva lo anulado bajo OTRA inscripción (retiro → reinscripción).
     -- Una anulación manual del administrador conserva la misma inscripción y se
     -- respeta: sin esta condición, cada consulta del estado de cuenta la deshacía.
+    -- También vuelven los meses anulados por una beca total que se le quitó,
+    -- solo desde el mes en curso (los meses ya transcurridos con beca no se cobran).
     WHERE payments.status = 'cancelled'
-      AND payments.enrollment_id IS DISTINCT FROM EXCLUDED.enrollment_id
+      AND (payments.enrollment_id IS DISTINCT FROM EXCLUDED.enrollment_id
+           OR (payments.cancel_reason = 'fee_plan' AND payments.billing_month >= date_trunc('month', current_date)))
     RETURNING (xmax = 0) AS inserted
     `,
     [...scopeBindings(tenantId, scope), tenantId]
@@ -178,6 +202,56 @@ async function cancelFutureTuition(trx, tenantId, enrollmentId) {
   return cancelled;
 }
 
+/**
+ * Aplica la tarifa especial ACTUAL del alumno a sus mensualidades que aún se
+ * pueden cambiar: pendientes, desde el mes en curso, que la familia no haya
+ * reportado como pagadas ni incluido en un pago agrupado. Los meses pagados,
+ * reportados o ya transcurridos conservan su monto (historial contable).
+ *  - Monto nuevo > 0: se actualiza.
+ *  - Beca total (0): el mes se anula con cancel_reason = 'fee_plan'.
+ * Al final se generan los meses que falten y vuelven los anulados por una beca
+ * total que ya no tiene (ver generateTuition).
+ */
+async function applyStudentFeePlan(trx, tenantId, studentId) {
+  const { rows } = await trx.raw(
+    `
+    WITH calc AS (
+      SELECT p.id, f.amount AS base_amount, fp.id AS fee_plan_id, ${effectiveAmountSql()} AS new_amount
+      FROM payments p
+      JOIN enrollments e ON e.id = p.enrollment_id
+      JOIN sections sec ON sec.id = e.section_id
+      JOIN grades g ON g.id = sec.grade_id
+      JOIN school_periods sp ON sp.id = p.school_period_id
+      JOIN students st ON st.id = p.student_id
+      LEFT JOIN fee_plans fp ON fp.id = st.fee_plan_id
+      JOIN LATERAL (${FEE_LATERAL}) f ON true
+      WHERE p.tenant_id = ? AND p.student_id = ? AND p.kind = 'tuition' AND p.status = 'pending'
+        AND p.reported_at IS NULL AND p.batch_id IS NULL
+        AND p.billing_month >= date_trunc('month', current_date)
+    )
+    UPDATE payments p SET
+      amount        = CASE WHEN c.new_amount > 0 THEN c.new_amount ELSE p.amount END,
+      base_amount   = c.base_amount,
+      fee_plan_id   = c.fee_plan_id,
+      status        = CASE WHEN c.new_amount > 0 THEN p.status ELSE 'cancelled' END,
+      cancelled_at  = CASE WHEN c.new_amount > 0 THEN p.cancelled_at ELSE now() END,
+      cancel_reason = CASE WHEN c.new_amount > 0 THEN p.cancel_reason ELSE 'fee_plan' END
+    FROM calc c
+    WHERE p.id = c.id
+      AND (c.new_amount <= 0 OR c.new_amount IS DISTINCT FROM p.amount OR c.fee_plan_id IS DISTINCT FROM p.fee_plan_id)
+    RETURNING (c.new_amount > 0) AS kept
+    `,
+    [tenantId, studentId]
+  );
+  const { created, reactivated } = await generateTuition(trx, tenantId, { studentId });
+  return {
+    updated: rows.filter((r) => r.kept).length,
+    cancelled: rows.filter((r) => !r.kept).length,
+    created,
+    reactivated,
+  };
+}
+
 // ---------- Tarifas ----------
 
 async function listFees(trx, tenantId, { schoolPeriodId } = {}) {
@@ -233,4 +307,4 @@ async function ensureTuition(trx, tenantId, scope = {}) {
   return { created, reactivated, billingIssues: skipped };
 }
 
-module.exports = { generateTuition, ensureTuition, listSkippedEnrollments, cancelFutureTuition, listFees, upsertFee, deleteFee };
+module.exports = { effectiveAmountSql, FEE_LATERAL, applyStudentFeePlan, generateTuition, ensureTuition, listSkippedEnrollments, cancelFutureTuition, listFees, upsertFee, deleteFee };

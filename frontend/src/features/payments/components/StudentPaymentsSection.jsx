@@ -95,10 +95,13 @@ function Equivalent({ payment: p }) {
 
 /**
  * Columnas de las cuotas exigibles (vencidas / por pagar) y de las próximas.
- * `selection`: casilla del pago agrupado (solo cuotas exigibles y sin reportar).
+ * `selection`: casilla del pago agrupado: cuotas exigibles sin reportar y, en
+ * «Próximas», los meses que se quieran pagar por adelantado (se marcan en orden:
+ * ver toggleInOrder en BatchPayment.jsx).
  */
 function dueColumns({ list, selection, onReport, upcoming = false }) {
-  const pickable = upcoming || !selection ? [] : list.filter((p) => ['overdue', 'pending'].includes(p.display_status));
+  const canPick = (p) => (upcoming ? p.display_status === 'scheduled' : ['overdue', 'pending'].includes(p.display_status));
+  const pickable = !selection ? [] : list.filter(canPick);
   const allPicked = pickable.length > 0 && pickable.every((p) => selection.ids.has(p.id));
   const togglePickAll = () => pickable.forEach((p) => (allPicked ? selection.ids.has(p.id) : !selection.ids.has(p.id)) && selection.toggle(p));
 
@@ -107,7 +110,10 @@ function dueColumns({ list, selection, onReport, upcoming = false }) {
       ? [
           {
             key: 'pick',
-            header: (
+            // En «Próximas» no hay «marcar todas»: los meses se adelantan uno a uno y en orden.
+            header: upcoming ? (
+              <span className="sr-only">Adelantar</span>
+            ) : (
               <input
                 type="checkbox"
                 className="pay-pick"
@@ -118,13 +124,13 @@ function dueColumns({ list, selection, onReport, upcoming = false }) {
               />
             ),
             render: (p) =>
-              ['overdue', 'pending'].includes(p.display_status) ? (
+              canPick(p) ? (
                 <input
                   type="checkbox"
                   className="pay-pick"
                   checked={selection.ids.has(p.id)}
                   onChange={() => selection.toggle(p)}
-                  aria-label={`Incluir ${p.period_label} en el pago agrupado`}
+                  aria-label={upcoming ? `Pagar por adelantado ${p.period_label}` : `Incluir ${p.period_label} en el pago agrupado`}
                 />
               ) : null,
           },
@@ -281,7 +287,22 @@ export function StudentPaymentsSection({ group, onReport, selection = null }) {
         ) : tab === 'paid' ? (
           <Table key="paid" columns={paidColumns} rows={list} />
         ) : tab === 'upcoming' ? (
-          <Table key="upcoming" columns={dueColumns({ list, upcoming: true })} rows={list} searchable={false} pageSize={6} />
+          <>
+            {selection && (
+              <p className="pay-advance-hint">
+                <Icon name="calendar" size={14} />
+                ¿Quieres adelantar? Marca los meses que desees pagar ahora: se suman al total de abajo y se pagan con un solo comprobante. Se marcan en orden, junto con los meses anteriores pendientes.
+              </p>
+            )}
+            <Table
+              key="upcoming"
+              columns={dueColumns({ list, selection, upcoming: true })}
+              rows={list}
+              searchable={false}
+              pageSize={12}
+              rowClassName={(p) => (selection?.ids.has(p.id) ? 'is-selected' : undefined)}
+            />
+          </>
         ) : (
           <Table
             key={tab}

@@ -15,7 +15,8 @@ import { StudentPaymentsSection, groupByStudent, refTotal, totalsOf } from '../c
 import { ViewCurrencySelect } from '../currency';
 import { useViewCurrency } from '../useViewCurrency';
 import Button from '../../../components/ui/Button';
-import { BatchCartBar, BatchPaymentDrawer, MyBatches, isBatchable } from '../components/BatchPayment';
+import { BatchCartBar, BatchPaymentDrawer, MyBatches, isBatchable, isDue, toggleInOrder } from '../components/BatchPayment';
+import { useToast } from '../../../components/ui/Toast';
 
 /**
  * Vista de padres: los pagos del representante agrupados por alumno. El
@@ -27,7 +28,9 @@ import { BatchCartBar, BatchPaymentDrawer, MyBatches, isBatchable } from '../com
  *
  * Pago agrupado: la familia marca varias cuotas (de uno o varios hijos), ve el
  * total en la barra inferior y las paga en una sola operación con un
- * comprobante (BatchPayment.jsx); administración lo aprueba completo.
+ * comprobante (BatchPayment.jsx); administración lo aprueba completo. En
+ * «Próximas» también puede marcar meses futuros para pagarlos por adelantado
+ * (en orden: toggleInOrder; el backend aplica la misma regla).
  */
 function MyPaymentsPage() {
   const { data: rates, refetch: refetchRates } = useFetch(() => paymentsApi.currentRate(), []);
@@ -49,6 +52,7 @@ function MyPaymentsPage() {
   // Selección para el pago agrupado: id → cuota (de cualquier alumno).
   const [picked, setPicked] = useState(() => new Map());
   const [payingBatch, setPayingBatch] = useState(false);
+  const toast = useToast();
 
   const groups = useMemo(() => groupByStudent(rows || [], portal?.students || []), [rows, portal]);
   // Al recargar, la selección se queda solo con cuotas que siguen disponibles (con sus montos al día).
@@ -59,18 +63,27 @@ function MyPaymentsPage() {
   const selection = useMemo(
     () => ({
       ids: new Set(selected.map((p) => p.id)),
-      toggle: (p) =>
-        setPicked((m) => {
-          const next = new Map(m);
-          if (next.has(p.id)) next.delete(p.id);
-          else next.set(p.id, p);
-          return next;
-        }),
+      // En orden: marcar un mes próximo marca los anteriores pendientes; desmarcar quita los posteriores.
+      toggle: (p) => {
+        const { next, extra, added } = toggleInOrder(new Map(selected.map((q) => [q.id, q])), p, (rows || []).filter(isBatchable));
+        setPicked(next);
+        if (extra > 0) {
+          toast.info(
+            added ? 'Se agregaron los meses anteriores' : 'Se quitaron los meses siguientes',
+            added
+              ? `Para adelantar ${p.period_label} se incluyen también ${extra === 1 ? 'la mensualidad anterior pendiente' : `las ${extra} mensualidades anteriores pendientes`}.`
+              : `Los meses adelantados posteriores a ${p.period_label} también se quitaron.`
+          );
+        }
+      },
     }),
-    [selected]
+    [selected, rows, toast]
   );
-  const batchable = (rows || []).filter(isBatchable);
-  const selectAllDue = () => setPicked(new Map(batchable.map((p) => [p.id, p])));
+  // «Pagar todo junto» = lo exigible hoy (vencido y por pagar); los meses próximos se eligen aparte.
+  const batchable = (rows || []).filter(isDue);
+  const allDuePicked = batchable.length > 0 && batchable.every((p) => selection.ids.has(p.id));
+  // Marca todo lo exigible y conserva los meses adelantados ya elegidos.
+  const selectAllDue = () => setPicked(new Map([...selected, ...batchable].map((p) => [p.id, p])));
   const refreshAll = () => {
     refetch();
     refetchBatches();
@@ -120,15 +133,15 @@ function MyPaymentsPage() {
           </div>
         </div>
         {batchable.length > 1 && (
-          <Button variant="secondary" icon="layers" className="pay-banner__action" onClick={selected.length === batchable.length ? () => setPicked(new Map()) : selectAllDue}>
-            {selected.length === batchable.length ? 'Quitar selección' : `Pagar todo junto (${batchable.length})`}
+          <Button variant="secondary" icon="layers" className="pay-banner__action" onClick={allDuePicked ? () => setPicked(new Map()) : selectAllDue}>
+            {allDuePicked ? 'Quitar selección' : `Pagar todo junto (${batchable.length})`}
           </Button>
         )}
       </div>
 
       {batchable.length > 1 && !selected.length && (
         <p className="batch-hint">
-          <Icon name="info" size={14} /> Puedes marcar varias cuotas, de uno o varios de tus representados, y pagarlas en una sola operación con un solo comprobante.
+          <Icon name="info" size={14} /> Puedes marcar varias cuotas, de uno o varios de tus representados, y pagarlas en una sola operación con un solo comprobante. También puedes adelantar meses desde la pestaña «Próximas».
         </p>
       )}
 

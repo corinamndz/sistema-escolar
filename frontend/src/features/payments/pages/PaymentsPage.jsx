@@ -30,6 +30,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { BatchReviewDrawer, PendingBatches } from '../components/BatchReview';
 import { currentPeriod } from '../../../lib/schoolPeriods';
 import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
+import FeePlansSection from '../components/FeePlansSection';
 
 const FILTERS = [
   { key: 'due', label: 'Por cobrar' },
@@ -453,7 +454,7 @@ function TuitionFeesModal({ periods, onClose }) {
       <p style={{ marginTop: -6 }}>
         Las mensualidades se configuran en <strong>dólares</strong> y cada familia las paga en la moneda que elija (bolívares, pesos, soles…) con la <strong>tasa del día</strong> de esa moneda.
         Se cobra una mensualidad por cada mes del año escolar. Cada nivel usa su tarifa propia o, si no tiene, la <strong>tarifa general</strong>.
-        Cambiar una tarifa no modifica mensualidades ya generadas.
+        Cambiar una tarifa del nivel no modifica mensualidades ya generadas. Los alumnos con una <strong>tarifa especial</strong> (abajo) pagan la suya.
       </p>
       <Field label="Año escolar">
         <Select sorted value={schoolPeriodId} onChange={(e) => setSchoolPeriodId(e.target.value)}>
@@ -487,6 +488,7 @@ function TuitionFeesModal({ periods, onClose }) {
           </div>
         )
       )}
+      <FeePlansSection />
       <div className="form-actions">
         <Button type="button" onClick={onClose}>
           Listo

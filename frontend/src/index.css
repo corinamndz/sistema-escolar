@@ -3154,6 +3154,99 @@ a.cell-person__name:hover {
   .fee-row__title { grid-column: 1 / -1; }
 }
 
+/* ---------- Tarifas especiales (becas, convenios) ---------- */
+
+.fee-plans { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--color-border); }
+.fee-plans__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.fee-plans__title { margin: 0 0 4px; font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--color-text); }
+.fee-plans__intro { margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-text-secondary); }
+.fee-plans__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.fee-plans__empty {
+  padding: 18px; border: 1px dashed var(--color-border); border-radius: 12px;
+  font-size: 13px; color: var(--color-text-muted); text-align: center;
+}
+.fee-plan {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--color-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(15, 23, 42, 0.05);
+}
+.fee-plan__icon {
+  display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px;
+  background: var(--color-primary-soft); color: var(--color-primary-text); font-weight: 800; font-size: 15px;
+}
+.fee-plan__icon--fixed { background: var(--color-success-soft); color: var(--color-success-text); }
+.fee-plan__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.fee-plan__name { font-size: 14px; color: var(--color-text); }
+.fee-plan__meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12.5px; color: var(--color-text-muted); }
+.fee-plan__value { font-weight: 600; color: var(--color-text-secondary); }
+.fee-plan__value.is-exempt { color: var(--color-success-text); }
+.fee-plan__desc { font-size: 12.5px; color: var(--color-text-muted); }
+
+.fee-plan-form {
+  display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 12px;
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
+  box-shadow: 0 0 0 1px var(--color-border-active);
+}
+.fee-plan-form__kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fee-plan-form__kind {
+  display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 10px;
+  background: var(--color-surface); font: inherit; text-align: left; cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.fee-plan-form__kind strong { font-size: 13.5px; color: var(--color-text); }
+.fee-plan-form__kind span { font-size: 12px; line-height: 1.4; color: var(--color-text-muted); }
+.fee-plan-form__kind:hover { border-color: var(--color-border-active); }
+.fee-plan-form__kind.is-active { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-softer); }
+.fee-plan-form__kind:focus-visible { outline: 2px solid var(--color-border-active); outline-offset: 2px; }
+.fee-plan-form__grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 12px; }
+.fee-plan-form__actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 560px) {
+  .fee-plan-form__kinds, .fee-plan-form__grid { grid-template-columns: 1fr; }
+  .fee-plans__head { flex-direction: column; }
+}
+
+/* Campo con prefijo ($ / %). */
+.input-affix { position: relative; }
+.input-affix__label {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  font-weight: 600; color: var(--color-text-muted); pointer-events: none;
+}
+.input-affix input { padding-left: 30px; }
+
+/* Ficha del alumno → Mensualidad */
+.student-fee { display: flex; flex-direction: column; gap: 12px; }
+.student-fee__summary {
+  display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 12px;
+  background: var(--color-surface-muted);
+}
+.student-fee__summary.is-special { background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface)); }
+.student-fee__icon {
+  display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px;
+  background: var(--color-surface); color: var(--color-primary); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.student-fee__amounts { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.student-fee__amount { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--color-text); line-height: 1.1; }
+.student-fee__amount small { font-size: 13px; font-weight: 500; color: var(--color-text-muted); }
+.student-fee__amount--none { font-size: 16px; color: var(--color-text-muted); }
+.student-fee__base { font-size: 12.5px; color: var(--color-text-muted); }
+.student-fee__tag {
+  flex-shrink: 0; max-width: 45%; padding: 4px 10px; border-radius: 999px; background: var(--color-surface);
+  font-size: 12px; font-weight: 600; color: var(--color-text-secondary); box-shadow: 0 0 0 1px var(--color-border);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.student-fee__tag--special { background: var(--color-primary); color: #fff; box-shadow: none; }
+.student-fee__meta { margin: 0; font-size: 13px; color: var(--color-text-secondary); }
+.student-fee__editor { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+.student-fee__preview {
+  display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 10px;
+  background: var(--color-info-soft); color: var(--color-info-text); font-size: 13px; line-height: 1.45;
+}
+.student-fee__preview .icon { flex-shrink: 0; margin-top: 1px; }
+.student-fee__actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 560px) {
+  .student-fee__summary { flex-wrap: wrap; }
+  .student-fee__tag { max-width: 100%; }
+}
+
 /* ---------- Acceso al portal ---------- */
 
 .portal-section {
@@ -7627,6 +7720,14 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
 
 /* Barra de filtros rápidos de las tablas (estado, nivel…): varios grupos de "pastillas" en una fila. */
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+/* Varios grupos de pastillas en una línea (Alumnos: estado + tarifa especial + nivel):
+   espaciado algo más ajustado para que no salten de línea en pantallas medianas y grandes. */
+.filter-bar--compact { gap: 8px 10px; }
+.filter-bar--compact .level-filter { gap: 2px; padding: 3px; }
+.filter-bar--compact .level-filter__item { gap: 5px; padding: 0 8px; }
+.filter-bar--compact .level-filter__count { min-width: 18px; padding: 0 5px; }
+/* Divisor entre pastillas de un mismo bloque (estados | tarifa especial). */
+.level-filter__divider { align-self: center; width: 1px; height: 18px; margin: 0 2px; background: var(--color-border); }
 .filter-bar__selects { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .filter-bar__selects select { width: auto; min-width: 170px; }
 @media (max-width: 640px) { .filter-bar__selects, .filter-bar__selects select { width: 100%; } }
@@ -8689,6 +8790,20 @@ body.is-printing-boleta { overflow: hidden; }
   background: var(--color-primary); color: #fff; font-family: var(--font-display); font-size: 16px; font-weight: 800;
 }
 .batch-cart__total { font-size: 13.5px; }
+/* Pago adelantado de meses próximos */
+.batch-cart__advance {
+  display: inline-flex; align-items: center; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+  background: var(--color-primary-soft); color: var(--color-primary-text); font-size: 11.5px; font-weight: 600; vertical-align: 1px;
+}
+.batch-summary__advance {
+  margin-left: 6px; padding: 0 7px; border-radius: 999px; background: var(--color-primary-soft);
+  color: var(--color-primary-text); font-size: 11px; font-weight: 600;
+}
+.pay-advance-hint {
+  display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px; padding: 9px 12px; border-radius: 10px;
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface)); color: var(--color-text-secondary); font-size: 13px; line-height: 1.45;
+}
+.pay-advance-hint .icon { flex-shrink: 0; margin-top: 2px; color: var(--color-primary); }
 .batch-cart__actions { display: flex; gap: 8px; margin-left: auto; }
 
 /* Resumen de cuotas por alumno (pagar y revisar) */

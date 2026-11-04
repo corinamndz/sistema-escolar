@@ -137,7 +137,7 @@ function assertSameCurrency(rows) {
 }
 
 /**
- * Cuotas del representante, exigibles y libres para agruparse. 404 si alguna no
+ * Cuotas del representante (exigibles o meses próximos) libres para agruparse. 404 si alguna no
  * es suya (no se revela que existe); 409 si ya está pagada, anulada o reportada.
  */
 async function ownDuePayments(trx, tenantId, guardianId, paymentIds, { forQuote = false } = {}) {
@@ -153,7 +153,43 @@ async function ownDuePayments(trx, tenantId, guardianId, paymentIds, { forQuote 
 }
 
 /**
- * POST /payments/batches — la familia reporta un pago por varias cuotas:
+ * Pago adelantado: se pueden incluir mensualidades de meses próximos (aún no
+ * emitidas, issue_date futura), pero EN ORDEN. Para adelantar un mes, todas las
+ * mensualidades anteriores de ese alumno deben ir en este mismo pago o estar ya
+ * reportadas / pagadas (así nadie paga enero debiendo noviembre). 422 con los
+ * meses que faltan.
+ */
+async function assertAdvanceInOrder(trx, tenantId, rows) {
+  // "Hoy" según la base: el mismo criterio que DISPLAY_STATUS_SQL usa para 'scheduled'.
+  const { rows: [{ today }] } = await trx.raw('SELECT current_date::text AS today');
+  const advance = rows.filter((p) => p.kind === 'tuition' && p.issue_date && toDateStr(p.issue_date) > today);
+  if (!advance.length) return;
+  const ids = new Set(rows.map((p) => p.id));
+  const missing = new Map(); // id → mensualidad anterior que falta
+  for (const p of advance) {
+    const earlier = await trx('payments')
+      .where({ tenant_id: tenantId, student_id: p.student_id, kind: 'tuition', status: 'pending' })
+      .whereNull('reported_at')
+      .whereNull('batch_id')
+      .where('billing_month', '<', p.billing_month)
+      .select('id', 'period_label', 'billing_month');
+    earlier.filter((e) => !ids.has(e.id)).forEach((e) => missing.set(e.id, e));
+  }
+  if (missing.size) {
+    const list = [...missing.values()].sort((a, b) => String(toDateStr(a.billing_month)).localeCompare(String(toDateStr(b.billing_month))));
+    throw ApiError.unprocessable(
+      `Para adelantar meses, incluye primero las mensualidades anteriores pendientes: ${list.map((e) => `«${e.period_label}»`).join(', ')}.`,
+      [{ path: 'paymentIds', message: 'Faltan meses anteriores.' }]
+    );
+  }
+}
+
+/** Fecha DATE (pg la entrega como 'YYYY-MM-DD', ver config/database) → 'YYYY-MM-DD'. */
+const toDateStr = (value) => String(value).slice(0, 10);
+
+/**
+ * POST /payments/batches — la familia reporta un pago por varias cuotas
+ * (exigibles y, si quiere, meses próximos por adelantado: assertAdvanceInOrder):
  * { paymentIds, method, reference?, paidOn, note?, currency? } + comprobante opcional.
  */
 async function createBatch(trx, tenantId, userId, data, proof = null) {
@@ -161,6 +197,7 @@ async function createBatch(trx, tenantId, userId, data, proof = null) {
   const guardian = await payments.getGuardianForUser(trx, tenantId, userId);
   const rows = await ownDuePayments(trx, tenantId, guardian.id, data.paymentIds);
   if (rows.length > MAX_ITEMS) throw ApiError.badRequest(`Como máximo ${MAX_ITEMS} cuotas por pago agrupado.`);
+  await assertAdvanceInOrder(trx, tenantId, rows);
 
   // Total estimado en la moneda en que pagó (si falta la tasa, se reporta igual: se aplica al aprobar).
   let quote = null;

@@ -50,7 +50,8 @@ function PortalSubjectProgram({ studentId, subjectId, schoolPeriodId }) {
     () => portalApi.getStudentSubjectProgram(studentId, subjectId, schoolPeriodId ? { schoolPeriodId } : undefined),
     [studentId, subjectId, schoolPeriodId]
   );
-  const [closed, setClosed] = useState(() => new Set());
+  // Unidades ABIERTAS: todas empiezan contraídas; la familia despliega la que quiere ver.
+  const [opened, setOpened] = useState(() => new Set());
 
   if (loading) return <Spinner label="Cargando contenido…" />;
   if (error) return <Alert>{error}</Alert>;
@@ -58,7 +59,7 @@ function PortalSubjectProgram({ studentId, subjectId, schoolPeriodId }) {
 
   const evaluationCount = data.units.reduce((n, u) => n + u.items.reduce((m, i) => m + i.evaluations.length, 0), 0) + data.other_evaluations.length;
   const toggle = (unit) =>
-    setClosed((s) => {
+    setOpened((s) => {
       const next = new Set(s);
       if (next.has(unit)) next.delete(unit);
       else next.add(unit);
@@ -88,7 +89,7 @@ function PortalSubjectProgram({ studentId, subjectId, schoolPeriodId }) {
       {data.content_status === 'empty' && <Alert variant="info">El colegio aún no ha cargado el contenido programático de {data.subject.name}.</Alert>}
 
       {data.units.map((u) => {
-        const open = !closed.has(u.unit);
+        const open = opened.has(u.unit);
         const evals = u.items.reduce((n, i) => n + i.evaluations.length, 0);
         return (
           <section key={u.unit} className="pp-unit">

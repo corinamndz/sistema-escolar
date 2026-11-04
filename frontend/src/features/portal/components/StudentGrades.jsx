@@ -233,7 +233,7 @@ function StudentGrades({ studentId }) {
             />
           )}
           {subjectTab === 'program' && UUID.test(selectedSubject.key) ? (
-            <PortalSubjectProgram studentId={studentId} subjectId={selectedSubject.key} schoolPeriodId={data.school_period?.id} />
+            <PortalSubjectProgram key={selectedSubject.key} studentId={studentId} subjectId={selectedSubject.key} schoolPeriodId={data.school_period?.id} />
           ) : (
             <SubjectDetail subject={selectedSubject} scale={scale} passing={passing} showTerm={!termId} termName={termName} />
           )}

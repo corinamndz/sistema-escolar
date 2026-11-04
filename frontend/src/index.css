@@ -7099,21 +7099,48 @@ button.club-card__main:focus-visible { outline: 2px solid var(--color-primary-ri
 .nc__day-title {
   margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted);
 }
-.nc__day ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.nc__day ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+/* Tarjeta de aviso: sin borde, sombra ligera y esquinas amplias (estilo feed). */
 .nc-item {
-  display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--color-border);
-  border-radius: var(--radius-md); background: var(--color-surface);
+  position: relative; display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px 16px 20px; border: 0;
+  border-radius: 14px; background: var(--color-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(15, 23, 42, 0.04);
+  transition: box-shadow var(--transition-fast), background var(--transition-fast);
 }
-.nc-item.is-unread { border-color: var(--color-border-active); background: var(--color-primary-softer); }
+.nc-item:hover { box-shadow: 0 6px 18px -8px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(15, 23, 42, 0.05); }
+/* No leída: fondo apenas tintado con el color del colegio + barra lateral. */
+.nc-item.is-unread { background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface)); }
+.nc-item.is-unread::before {
+  content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0; background: var(--color-primary);
+}
+.nc-item .notif-item__icon { width: 40px; height: 40px; border-radius: 12px; }
 .nc-item__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.nc-item__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); }
+.nc-item__meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 2px; font-size: 12px; color: var(--color-text-muted); }
+.nc-item__category { font-family: var(--font-display); font-size: 14px; font-weight: 700; color: var(--color-text); }
 .nc-item__new {
-  padding: 1px 7px; border-radius: 999px; background: var(--color-primary); color: #fff; font-size: 10.5px; font-weight: 700;
+  align-self: center; padding: 1px 8px; border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary-text); font-size: 10.5px; font-weight: 700;
 }
-.nc-item__title { font-size: 14px; }
-.nc-item__text { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--color-text); }
-.nc-item.is-unread .nc-item__text { font-weight: 600; }
-.nc-item__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.nc-item__title { font-size: 13.5px; font-weight: 600; color: var(--color-text); }
+.nc-item__text { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--color-text-secondary); }
+.nc-item.is-unread .nc-item__text { color: var(--color-text); }
+.nc-item__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; align-self: center; }
+/* Acción del aviso: enlace con flecha, discreto. */
+.nc-item__link {
+  display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border: 0; border-radius: 8px; background: none;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--color-primary-text); cursor: pointer; white-space: nowrap;
+  transition: background var(--transition-fast);
+}
+.nc-item__link:hover { background: var(--color-primary-softer); }
+.nc-item__link .icon { transition: transform var(--transition-fast); }
+.nc-item__link:hover .icon { transform: translateX(2px); }
+/* Marcar como leída: botón redondo integrado. */
+.nc-item__read {
+  display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--color-border); border-radius: 50%;
+  background: var(--color-surface); color: var(--color-text-muted); cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.nc-item__read:hover { border-color: var(--color-success-border); background: var(--color-success-soft); color: var(--color-success-text); }
+.nc-item__link:focus-visible, .nc-item__read:focus-visible { outline: 2px solid var(--color-border-active); outline-offset: 2px; }
 .nc__empty { border: none; background: none; }
 .nc__pager { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--color-border); }
 .nc__pager-buttons { display: flex; gap: 8px; }
@@ -8821,8 +8848,9 @@ body.is-printing-boleta { overflow: hidden; }
 .nc-item--recognition .notif-item__icon { background: linear-gradient(145deg, #fbbf24, #f59e0b); color: #fff; box-shadow: 0 0 0 2px #fde68a; }
 .notif-item--recognition { background: linear-gradient(90deg, #fffbeb, transparent 70%); }
 .notif-item--recognition.is-unread { background: linear-gradient(90deg, #fef3c7, var(--color-primary-softer)); }
-.nc-item--recognition { border-color: #fcd34d; background: linear-gradient(100deg, #fffbeb, #fff 60%); }
-.nc-item--recognition.is-unread { border-color: #f59e0b; background: linear-gradient(100deg, #fef3c7, #fffbeb 60%); }
+.nc-item--recognition { background: linear-gradient(100deg, #fffbeb, #fff 60%); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 1px #fde68a; }
+.nc-item--recognition.is-unread { background: linear-gradient(100deg, #fef3c7, #fffbeb 60%); }
+.nc-item--recognition.is-unread::before { background: #f59e0b; }
 .nc-item--recognition .nc-item__title { color: #92400e; }
 
 /* Gestión: tabla, formulario y vista previa */

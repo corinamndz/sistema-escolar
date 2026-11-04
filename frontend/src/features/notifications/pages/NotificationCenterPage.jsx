@@ -242,9 +242,9 @@ function NotificationCenterPage() {
                       </span>
                       {/* Clic en el aviso: su detalle (y, para Administración, quién lo leyó). */}
                       <button type="button" className="nc-item__body" onClick={() => showDetail(n)}>
+                        {/* Categoría como encabezado (Tasa BCV, Pagos vencidos…), con la hora y la marca de nueva. */}
                         <span className="nc-item__meta">
-                          <span>{NOTIFICATION_TYPE_LABELS[n.type] || 'Aviso'}</span>
-                          <span aria-hidden="true">·</span>
+                          <span className="nc-item__category">{NOTIFICATION_TYPE_LABELS[n.type] || 'Aviso'}</span>
                           <time dateTime={n.created_at}>{timeOf(n.created_at)}</time>
                           {!n.read && <span className="nc-item__new">Nueva</span>}
                         </span>
@@ -252,15 +252,15 @@ function NotificationCenterPage() {
                         <span className="nc-item__text">{n.body}</span>
                       </button>
                       <div className="nc-item__actions">
-                        {!n.read && (
-                          <button type="button" className="row-action row-action--view" onClick={() => markRead(n)} title="Marcar como leída" aria-label="Marcar como leída">
-                            <Icon name="check" size={16} />
+                        {n.link && (
+                          <button type="button" className="nc-item__link" onClick={() => open(n)}>
+                            {n.data?.link_label || 'Ver detalle'} <Icon name="arrowRight" size={14} />
                           </button>
                         )}
-                        {n.link && (
-                          <Button size="sm" variant="secondary" onClick={() => open(n)}>
-                            {n.data?.link_label || 'Ver detalle'} <Icon name="arrowRight" size={14} />
-                          </Button>
+                        {!n.read && (
+                          <button type="button" className="nc-item__read" onClick={() => markRead(n)} title="Marcar como leída" aria-label="Marcar como leída">
+                            <Icon name="check" size={15} />
+                          </button>
                         )}
                       </div>
                     </li>

@@ -4,8 +4,15 @@ const { ApiError } = require('../../utils/ApiError');
  * Mensualidades automáticas.
  *
  * Reglas:
- *  - Se factura cada mes del año escolar, desde el mes de inicio (o el de la
- *    inscripción, si el alumno entró más tarde) hasta el mes de fin.
+ *  - Mensualidades regulares: cada mes del año escolar (septiembre a julio),
+ *    desde el mes de inicio (o el de la inscripción, si el alumno entró más
+ *    tarde) hasta el mes de fin. Agosto NUNCA es un mes regular.
+ *  - Agosto (migración 072): se cobra junto con el mes regular que la
+ *    administración indique por año escolar (school_periods.august_charge_month).
+ *    Es una mensualidad propia («Mensualidad Agosto 2027 · se cobra con Julio
+ *    2027») con la emisión y el vencimiento de ese mes. Sin configurar, no se
+ *    genera (el panel de Tarifas lo advierte). Si se cambia el mes, el agosto
+ *    pendiente y sin reportar se reprograma.
  *  - Mes normal: emisión el día 1, vencimiento el día `due_day` (5 por defecto).
  *  - Primer mes de una inscripción hecha a mitad de mes: se emite el día de la
  *    inscripción y vence `due_day` días después (para que no nazca vencida).
@@ -87,12 +94,21 @@ const GUARDIAN_LATERAL = `
  * alcance indicado. Devuelve cuántas se crearon, cuántas se reactivaron y qué
  * inscripciones se omitieron y por qué.
  */
-async function generateTuition(trx, tenantId, scope = {}) {
-  const { rows } = await trx.raw(
-    `
-    WITH candidates AS (
+/**
+ * Plan de mensualidades del alcance (CTE `dated`), común a la generación y a la
+ * reprogramación de agosto. Una fila por alumno y mes a cobrar:
+ *  - regulares: cada mes del año escolar (septiembre a julio) EXCEPTO agosto,
+ *    desde el mes de inicio (o el de la inscripción) hasta el de fin;
+ *  - agosto: si el año escolar tiene `august_charge_month`, una mensualidad con
+ *    billing_month = agosto del año en que termina y la emisión / vencimiento del
+ *    mes elegido (charge_month). Sin configurar, agosto no se genera.
+ * Columnas: las de candidates + billing_month, charge_month, issue_date, due_date, period_label.
+ */
+function tuitionPlanSql() {
+  return `
+    candidates AS (
       SELECT e.id AS enrollment_id, e.student_id, e.enrolled_at, sp.id AS school_period_id,
-             sp.start_date, sp.end_date, f.currency, f.due_day, gd.guardian_id,
+             sp.start_date, sp.end_date, sp.august_charge_month, f.currency, f.due_day, gd.guardian_id,
              f.amount AS base_amount, fp.id AS fee_plan_id, ${effectiveAmountSql()} AS amount
       FROM enrollments e
       JOIN students st ON st.id = e.student_id
@@ -107,52 +123,101 @@ async function generateTuition(trx, tenantId, scope = {}) {
         AND sp.start_date IS NOT NULL AND sp.end_date IS NOT NULL
     ),
     months AS (
-      SELECT c.*, m::date AS billing_month, GREATEST(m::date, c.enrolled_at) AS issue_date
+      -- Regulares: los meses del año escolar, sin agosto.
+      SELECT c.*, m::date AS billing_month, m::date AS charge_month
       FROM candidates c
       CROSS JOIN LATERAL generate_series(
         date_trunc('month', GREATEST(c.start_date, c.enrolled_at)),
         date_trunc('month', c.end_date),
         interval '1 month'
       ) AS m
-    )
+      WHERE EXTRACT(MONTH FROM m) <> 8
+      UNION ALL
+      -- Agosto: junto con el mes regular que indicó la administración.
+      SELECT c.*, make_date(EXTRACT(YEAR FROM c.end_date)::int, 8, 1), c.august_charge_month
+      FROM candidates c
+      WHERE c.august_charge_month IS NOT NULL
+        AND c.enrolled_at < make_date(EXTRACT(YEAR FROM c.end_date)::int, 9, 1)
+    ),
+    issued AS (
+      SELECT mo.*, GREATEST(mo.charge_month, mo.enrolled_at) AS issue_date FROM months mo
+    ),
+    dated AS (
+      SELECT i.*,
+             -- Mes normal: vence el día due_day. Emitido a mitad de mes (inscripción
+             -- tardía): vence due_day días después, para que no nazca vencido.
+             CASE WHEN i.issue_date = i.charge_month
+                  THEN i.charge_month + (i.due_day - 1)
+                  ELSE GREATEST(i.charge_month + (i.due_day - 1), i.issue_date + i.due_day)
+             END AS due_date,
+             'Mensualidad ' || ${MONTH_NAMES_SQL}[EXTRACT(MONTH FROM i.billing_month)::int] || ' ' || EXTRACT(YEAR FROM i.billing_month)::int
+               || CASE WHEN i.charge_month <> i.billing_month
+                       THEN ' · se cobra con ' || ${MONTH_NAMES_SQL}[EXTRACT(MONTH FROM i.charge_month)::int] || ' ' || EXTRACT(YEAR FROM i.charge_month)::int
+                       ELSE '' END AS period_label
+      FROM issued i
+    )`;
+}
+
+/**
+ * Genera (o completa) las mensualidades de las inscripciones activas en el
+ * alcance indicado. Devuelve cuántas se crearon, cuántas se reactivaron,
+ * cuántas de agosto se reprogramaron y qué inscripciones se omitieron y por qué.
+ */
+async function generateTuition(trx, tenantId, scope = {}) {
+  const { rows } = await trx.raw(
+    `
+    WITH ${tuitionPlanSql()}
     INSERT INTO payments (
       tenant_id, student_id, guardian_id, kind, enrollment_id, school_period_id,
       billing_month, issue_date, due_date, period_label, amount, currency, base_amount, fee_plan_id
     )
     SELECT ?, student_id, guardian_id, 'tuition', enrollment_id, school_period_id,
-           billing_month, issue_date,
-           CASE WHEN issue_date = billing_month
-                THEN billing_month + (due_day - 1)
-                ELSE GREATEST(billing_month + (due_day - 1), issue_date + due_day)
-           END,
-           'Mensualidad ' || ${MONTH_NAMES_SQL}[EXTRACT(MONTH FROM billing_month)::int] || ' ' || EXTRACT(YEAR FROM billing_month)::int,
+           billing_month, issue_date, due_date, period_label,
            amount, currency, base_amount, fee_plan_id
-    FROM months
+    FROM dated
     WHERE amount > 0 -- beca total: nada que cobrar
     ON CONFLICT (student_id, school_period_id, billing_month) WHERE kind = 'tuition'
     DO UPDATE SET
       status = 'pending', cancelled_at = NULL, cancel_reason = NULL,
       base_amount = EXCLUDED.base_amount, fee_plan_id = EXCLUDED.fee_plan_id,
       guardian_id = EXCLUDED.guardian_id, enrollment_id = EXCLUDED.enrollment_id,
-      issue_date = EXCLUDED.issue_date, due_date = EXCLUDED.due_date,
+      issue_date = EXCLUDED.issue_date, due_date = EXCLUDED.due_date, period_label = EXCLUDED.period_label,
       amount = EXCLUDED.amount, currency = EXCLUDED.currency
     -- Solo se reactiva lo anulado bajo OTRA inscripción (retiro → reinscripción).
     -- Una anulación manual del administrador conserva la misma inscripción y se
     -- respeta: sin esta condición, cada consulta del estado de cuenta la deshacía.
     -- También vuelven los meses anulados por una beca total que se le quitó,
-    -- solo desde el mes en curso (los meses ya transcurridos con beca no se cobran).
+    -- solo los que aún no se emitían (los meses ya transcurridos con beca no se cobran).
     WHERE payments.status = 'cancelled'
       AND (payments.enrollment_id IS DISTINCT FROM EXCLUDED.enrollment_id
-           OR (payments.cancel_reason = 'fee_plan' AND payments.billing_month >= date_trunc('month', current_date)))
+           OR (payments.cancel_reason = 'fee_plan' AND EXCLUDED.issue_date >= date_trunc('month', current_date)))
     RETURNING (xmax = 0) AS inserted
     `,
     [...scopeBindings(tenantId, scope), tenantId]
   );
 
+  // Agosto ya generado y el colegio cambió el mes con que se cobra: se reprograma
+  // (emisión, vencimiento y texto) si sigue pendiente, sin reportar y fuera de un pago agrupado.
+  const { rowCount: augustRescheduled } = await trx.raw(
+    `
+    WITH ${tuitionPlanSql()}
+    UPDATE payments p
+    SET issue_date = d.issue_date, due_date = d.due_date, period_label = d.period_label
+    FROM dated d
+    WHERE p.kind = 'tuition'
+      AND p.student_id = d.student_id AND p.school_period_id = d.school_period_id AND p.billing_month = d.billing_month
+      AND EXTRACT(MONTH FROM d.billing_month) = 8
+      AND p.status = 'pending' AND p.reported_at IS NULL AND p.batch_id IS NULL
+      AND (p.issue_date, p.due_date, p.period_label) IS DISTINCT FROM (d.issue_date, d.due_date, d.period_label)
+    `,
+    scopeBindings(tenantId, scope)
+  );
+
   const created = rows.filter((r) => r.inserted).length;
   const reactivated = rows.length - created;
   const skipped = await listSkippedEnrollments(trx, tenantId, scope);
-  return { created, reactivated, skipped };
+  const august = scope.schoolPeriodId ? await augustStatus(trx, tenantId, scope.schoolPeriodId) : null;
+  return { created, reactivated, skipped, augustRescheduled, august };
 }
 
 /** Inscripciones activas del alcance a las que no se les pudo generar mensualidades, con el motivo. */
@@ -227,7 +292,7 @@ async function applyStudentFeePlan(trx, tenantId, studentId) {
       JOIN LATERAL (${FEE_LATERAL}) f ON true
       WHERE p.tenant_id = ? AND p.student_id = ? AND p.kind = 'tuition' AND p.status = 'pending'
         AND p.reported_at IS NULL AND p.batch_id IS NULL
-        AND p.billing_month >= date_trunc('month', current_date)
+        AND COALESCE(p.issue_date, p.billing_month) >= date_trunc('month', current_date)
     )
     UPDATE payments p SET
       amount        = CASE WHEN c.new_amount > 0 THEN c.new_amount ELSE p.amount END,
@@ -250,6 +315,78 @@ async function applyStudentFeePlan(trx, tenantId, studentId) {
     created,
     reactivated,
   };
+}
+
+// ---------- Agosto ----------
+
+const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const monthLabel = (iso) => `${MONTHS_ES[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
+const isoMonth = (y, m) => `${y}-${String(m).padStart(2, '0')}-01`;
+
+/** Meses regulares (sin agosto) de un año escolar, como 'YYYY-MM-01': las opciones para cobrar agosto. */
+function regularMonths(period) {
+  if (!period.start_date || !period.end_date) return [];
+  const start = String(period.start_date).slice(0, 10);
+  const end = String(period.end_date).slice(0, 10);
+  const out = [];
+  let y = Number(start.slice(0, 4));
+  let m = Number(start.slice(5, 7));
+  const endKey = end.slice(0, 7);
+  for (let guard = 0; guard < 24; guard += 1) {
+    const key = `${y}-${String(m).padStart(2, '0')}`;
+    if (m !== 8) out.push(isoMonth(y, m));
+    if (key >= endKey) break;
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Configuración de agosto de un año escolar: { school_period_id, august_month,
+ * charge_month (o null), options: [{ value, label }], generated }.
+ */
+async function augustStatus(trx, tenantId, schoolPeriodId) {
+  const period = await trx('school_periods').where({ id: schoolPeriodId, tenant_id: tenantId }).first('id', 'name', 'start_date', 'end_date', 'august_charge_month');
+  if (!period) throw ApiError.notFound('Año escolar no encontrado.');
+  const augustMonth = period.end_date ? isoMonth(String(period.end_date).slice(0, 4), 8) : null;
+  const generated = augustMonth
+    ? Number((await trx('payments').where({ tenant_id: tenantId, school_period_id: period.id, kind: 'tuition', billing_month: augustMonth }).whereNot('status', 'cancelled').count('id as n').first()).n)
+    : 0;
+  const charge = period.august_charge_month ? String(period.august_charge_month).slice(0, 10) : null;
+  return {
+    school_period_id: period.id,
+    school_period_name: period.name,
+    august_month: augustMonth,
+    august_label: augustMonth ? monthLabel(augustMonth) : null,
+    charge_month: charge,
+    charge_label: charge ? monthLabel(charge) : null,
+    configured: Boolean(charge),
+    options: regularMonths(period).map((value) => ({ value, label: monthLabel(value) })),
+    generated,
+  };
+}
+
+/**
+ * Indica con qué mes regular se cobra agosto (`chargeMonth` 'YYYY-MM-01') y
+ * aplica el cambio: genera agosto donde falte y reprograma el agosto pendiente.
+ * `chargeMonth` null quita la configuración solo si aún no se generó ningún agosto.
+ */
+async function setAugustChargeMonth(trx, tenantId, schoolPeriodId, chargeMonth) {
+  const status = await augustStatus(trx, tenantId, schoolPeriodId);
+  if (chargeMonth === null) {
+    if (status.generated > 0) {
+      throw ApiError.conflict(`Ya hay ${status.generated} mensualidad(es) de agosto generadas: elige con qué mes se cobra en lugar de quitarlo.`);
+    }
+  } else if (!status.options.some((o) => o.value === chargeMonth)) {
+    throw ApiError.badRequest('Elige uno de los meses regulares del año escolar (septiembre a julio).', [{ path: 'chargeMonth', message: 'Mes inválido.' }]);
+  }
+  await trx('school_periods').where({ id: schoolPeriodId, tenant_id: tenantId }).update({ august_charge_month: chargeMonth });
+  const result = chargeMonth ? await generateTuition(trx, tenantId, { schoolPeriodId }) : null;
+  return { ...(await augustStatus(trx, tenantId, schoolPeriodId)), created: result?.created ?? 0, rescheduled: result?.augustRescheduled ?? 0 };
 }
 
 // ---------- Tarifas ----------
@@ -307,4 +444,4 @@ async function ensureTuition(trx, tenantId, scope = {}) {
   return { created, reactivated, billingIssues: skipped };
 }
 
-module.exports = { effectiveAmountSql, FEE_LATERAL, applyStudentFeePlan, generateTuition, ensureTuition, listSkippedEnrollments, cancelFutureTuition, listFees, upsertFee, deleteFee };
+module.exports = { augustStatus, setAugustChargeMonth, regularMonths, effectiveAmountSql, FEE_LATERAL, applyStudentFeePlan, generateTuition, ensureTuition, listSkippedEnrollments, cancelFutureTuition, listFees, upsertFee, deleteFee };

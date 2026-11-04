@@ -165,7 +165,7 @@ async function getStudentFee(trx, tenantId, studentId) {
     .where({ tenant_id: tenantId, student_id: studentId, kind: 'tuition', status: 'pending' })
     .whereNull('reported_at')
     .whereNull('batch_id')
-    .whereRaw("billing_month >= date_trunc('month', current_date)")
+    .whereRaw("COALESCE(issue_date, billing_month) >= date_trunc('month', current_date)")
     .count('id as n')
     .first();
 

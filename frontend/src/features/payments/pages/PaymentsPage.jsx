@@ -31,6 +31,7 @@ import { BatchReviewDrawer, PendingBatches } from '../components/BatchReview';
 import { currentPeriod } from '../../../lib/schoolPeriods';
 import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 import FeePlansSection from '../components/FeePlansSection';
+import AugustSetting from '../components/AugustSetting';
 
 const FILTERS = [
   { key: 'due', label: 'Por cobrar' },
@@ -453,7 +454,7 @@ function TuitionFeesModal({ periods, onClose }) {
     <Drawer title="Tarifas de mensualidad" onClose={onClose} size="lg">
       <p style={{ marginTop: -6 }}>
         Las mensualidades se configuran en <strong>dólares</strong> y cada familia las paga en la moneda que elija (bolívares, pesos, soles…) con la <strong>tasa del día</strong> de esa moneda.
-        Se cobra una mensualidad por cada mes del año escolar. Cada nivel usa su tarifa propia o, si no tiene, la <strong>tarifa general</strong>.
+        Se cobra una mensualidad por cada mes del año escolar (septiembre a julio); agosto se cobra junto con el mes que indiques abajo. Cada nivel usa su tarifa propia o, si no tiene, la <strong>tarifa general</strong>.
         Cambiar una tarifa del nivel no modifica mensualidades ya generadas. Los alumnos con una <strong>tarifa especial</strong> (abajo) pagan la suya.
       </p>
       <Field label="Año escolar">
@@ -488,6 +489,7 @@ function TuitionFeesModal({ periods, onClose }) {
           </div>
         )
       )}
+      {schoolPeriodId && <AugustSetting key={schoolPeriodId} schoolPeriodId={schoolPeriodId} />}
       <FeePlansSection />
       <div className="form-actions">
         <Button type="button" onClick={onClose}>

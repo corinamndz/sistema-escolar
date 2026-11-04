@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { regularMonths } = require('../payments/tuition.service');
 
 /**
  * Transición de año escolar: copia la estructura académica de un año a otro
@@ -313,6 +314,17 @@ async function copyTuition(trx, tenantId, source, target) {
   const fees = await trx('tuition_fees').where({ tenant_id: tenantId, school_period_id: source.id });
   if (fees.length) {
     await trx('tuition_fees').insert(fees.map((f) => ({ tenant_id: tenantId, school_period_id: target.id, level_code: f.level_code, amount: f.amount, currency: f.currency, due_day: f.due_day })));
+  }
+  // Agosto: el mismo criterio un año después (ej. «con Julio 2027» → «con Julio 2028»),
+  // si ese mes cae dentro de los meses regulares del año nuevo.
+  const src = await trx('school_periods').where({ id: source.id }).first('august_charge_month');
+  if (src?.august_charge_month) {
+    const d = String(src.august_charge_month).slice(0, 10);
+    const next = `${Number(d.slice(0, 4)) + 1}${d.slice(4)}`;
+    const tgt = await trx('school_periods').where({ id: target.id }).first('start_date', 'end_date', 'august_charge_month');
+    if (tgt && !tgt.august_charge_month && regularMonths(tgt).includes(next)) {
+      await trx('school_periods').where({ id: target.id }).update({ august_charge_month: next });
+    }
   }
   return fees.length;
 }

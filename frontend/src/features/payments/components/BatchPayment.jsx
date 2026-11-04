@@ -38,7 +38,8 @@ export const isDue = (p) => ['overdue', 'pending'].includes(p.display_status);
 /** Mensualidad de un mes próximo, pagada por adelantado. */
 export const isAdvance = (p) => p.display_status === 'scheduled';
 
-const monthOf = (p) => String(p.billing_month || p.due_date || '').slice(0, 10);
+// Orden por vencimiento (igual que el backend): agosto va junto al mes con que se cobra.
+const monthOf = (p) => String(p.due_date || p.billing_month || '').slice(0, 10);
 
 /**
  * Selección en orden para adelantar meses (misma regla que el backend):

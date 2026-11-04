@@ -171,12 +171,12 @@ async function assertAdvanceInOrder(trx, tenantId, rows) {
       .where({ tenant_id: tenantId, student_id: p.student_id, kind: 'tuition', status: 'pending' })
       .whereNull('reported_at')
       .whereNull('batch_id')
-      .where('billing_month', '<', p.billing_month)
-      .select('id', 'period_label', 'billing_month');
+      .where('due_date', '<', p.due_date) // por vencimiento: agosto va con el mes en que se cobra
+      .select('id', 'period_label', 'due_date');
     earlier.filter((e) => !ids.has(e.id)).forEach((e) => missing.set(e.id, e));
   }
   if (missing.size) {
-    const list = [...missing.values()].sort((a, b) => String(toDateStr(a.billing_month)).localeCompare(String(toDateStr(b.billing_month))));
+    const list = [...missing.values()].sort((a, b) => String(toDateStr(a.due_date)).localeCompare(String(toDateStr(b.due_date))));
     throw ApiError.unprocessable(
       `Para adelantar meses, incluye primero las mensualidades anteriores pendientes: ${list.map((e) => `«${e.period_label}»`).join(', ')}.`,
       [{ path: 'paymentIds', message: 'Faltan meses anteriores.' }]

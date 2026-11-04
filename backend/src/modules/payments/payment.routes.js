@@ -74,6 +74,9 @@ router.get('/tuition/fees', requirePermission('payments', 'read'), controller.li
 router.put('/tuition/fees', requirePermission('payments', 'update'), controller.upsertFee);
 router.delete('/tuition/fees/:id', requirePermission('payments', 'update'), controller.deleteFee);
 router.post('/tuition/generate', requirePermission('payments', 'create'), controller.generateTuition);
+// Agosto: con qué mensualidad regular se cobra (por año escolar).
+router.get('/tuition/august', requirePermission('payments', 'read'), controller.augustStatus);
+router.put('/tuition/august', requirePermission('payments', 'update'), controller.setAugust);
 
 // ---- Tarifas especiales (becas, convenios) y tarifa de cada alumno ----
 router.get('/fee-plans', requirePermission('payments', 'read'), feePlans.list);

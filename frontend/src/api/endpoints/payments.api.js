@@ -65,6 +65,10 @@ const paymentsApi = {
   upsertFee: (data) => axiosClient.put('/payments/tuition/fees', data).then((r) => r.data),
   deleteFee: (id) => axiosClient.delete(`/payments/tuition/fees/${id}`).then((r) => r.data),
   generateTuition: (schoolPeriodId) => post('/payments/tuition/generate', { schoolPeriodId }),
+  /** Agosto del año escolar: { charge_month, charge_label, configured, options: [{ value, label }], generated, august_label } */
+  augustStatus: (schoolPeriodId) => get('/payments/tuition/august', { schoolPeriodId }),
+  /** Con qué mes regular se cobra agosto: chargeMonth 'YYYY-MM-01' → estado + { created, rescheduled } */
+  setAugust: (schoolPeriodId, chargeMonth) => axiosClient.put('/payments/tuition/august', { schoolPeriodId, chargeMonth }).then((r) => r.data),
   // ---- Tarifas especiales (becas, convenios) ----
   /** [{ id, name, kind: 'percentage'|'fixed', percentage, amount, description, student_count }] */
   listFeePlans: () => get('/payments/fee-plans'),

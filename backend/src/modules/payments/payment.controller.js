@@ -138,6 +138,23 @@ const generateTuition = asyncHandler(async (req, res) => {
   res.status(200).json(await tuition.generateTuition(req.db, req.tenantId, { schoolPeriodId }));
 });
 
+/** GET /payments/tuition/august?schoolPeriodId= — con qué mes se cobra agosto y las opciones (septiembre a julio). */
+const augustStatus = asyncHandler(async (req, res) => {
+  const { schoolPeriodId } = z.object({ schoolPeriodId: z.string().uuid('Año escolar inválido.') }).parse(req.query);
+  res.status(200).json(await tuition.augustStatus(req.db, req.tenantId, schoolPeriodId));
+});
+
+/** PUT /payments/tuition/august { schoolPeriodId, chargeMonth: 'YYYY-MM-01' | null } */
+const setAugust = asyncHandler(async (req, res) => {
+  const { schoolPeriodId, chargeMonth } = z
+    .object({
+      schoolPeriodId: z.string().uuid('Año escolar inválido.'),
+      chargeMonth: z.string().regex(/^\d{4}-\d{2}-01$/, 'Mes inválido.').nullable(),
+    })
+    .parse(req.body);
+  res.status(200).json(await tuition.setAugustChargeMonth(req.db, req.tenantId, schoolPeriodId, chargeMonth));
+});
+
 /** Vista de padres: un representante autenticado ve solo los pagos de sus propios hijos. */
 const listMine = asyncHandler(async (req, res) => {
   const { currency } = z.object({ currency: currencyCode }).parse(req.query);
@@ -366,4 +383,6 @@ module.exports = {
   upsertFee,
   deleteFee,
   generateTuition,
+  augustStatus,
+  setAugust,
 };

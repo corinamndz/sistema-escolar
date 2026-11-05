@@ -72,6 +72,8 @@ const NAV_SECTIONS = [
       { moduleCode: 'roles', label: 'Roles y permisos', icon: 'shield', path: '/roles' },
       { moduleCode: 'tenant_settings', label: 'Configuración', icon: 'settings', path: '/tenant/settings' },
       // Historial de correos, avisos de la campana, credenciales y comprobantes, con reenvío.
+      // Comunicados: avisos con formato a todo el colegio, niveles, grados, secciones o personas.
+      { moduleCode: 'announcements', label: 'Comunicados', icon: 'megaphone', path: '/notifications/announcements', blockTeacher: true },
       { moduleCode: 'tenant_settings', label: 'Log de notificaciones', icon: 'inbox', path: '/notifications/log', blockTeacher: true },
       // Bitácora de actividad: exclusiva del Administrador (rol de sistema), no depende de permisos de módulo.
       { moduleCode: 'audit', label: 'Auditoría', icon: 'eye', path: '/audit', adminOnly: true },

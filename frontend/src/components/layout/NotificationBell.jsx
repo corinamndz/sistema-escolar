@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import notificationsApi from '../../api/endpoints/notifications.api';
 import Icon from '../ui/Icon';
 import Drawer from '../ui/Drawer';
+import RichTextView from '../ui/RichTextView';
 import { formatRate } from '../../features/payments/currency';
 import { formatDate } from '../../features/payments/paymentStatus';
 import { SOURCE_LABELS, timeAgo } from '../../features/payments/components/BcvRateCard';
@@ -29,6 +30,7 @@ export const NOTIFICATION_ICONS = {
   payment_overdue: 'alertCircle',
   review_request: 'clipboard',
   review_result: 'checkCircle',
+  announcement: 'megaphone',
 };
 /** Categoría visible de cada tipo de aviso (aviso al iniciar sesión, Centro de notificaciones). */
 export const NOTIFICATION_TYPE_LABELS = {
@@ -45,6 +47,7 @@ export const NOTIFICATION_TYPE_LABELS = {
   payment_overdue: 'Pagos vencidos',
   review_request: 'Revisión académica',
   review_result: 'Revisión académica',
+  announcement: 'Comunicado',
 };
 
 /**
@@ -201,7 +204,7 @@ function NotificationDetail({ notification: n, onClose }) {
           <span className="notif-item__icon">
             <Icon name={NOTIFICATION_ICONS[n.type] || 'bell'} size={18} />
           </span>
-          <p>{n.body}</p>
+          {n.body_html ? <RichTextView html={n.body_html} /> : <p>{n.body}</p>}
         </div>
         <p className="text-sm text-muted">{new Date(n.created_at).toLocaleString('es-VE', { dateStyle: 'medium', timeStyle: 'short' })}</p>
         <div className="form-actions">

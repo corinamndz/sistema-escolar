@@ -146,4 +146,32 @@ function supportUpload(req, res, next) {
   });
 }
 
-module.exports = { logoUpload, MAX_LOGO_BYTES, proofUpload, MAX_PROOF_BYTES, importUpload, MAX_IMPORT_BYTES, supportUpload };
+// ---------------------------------------------------------------------------
+// Imagen de un comunicado (campo `image`): PNG, JPG, GIF o WebP de hasta 3 MB.
+// En memoria para validar la firma binaria antes de escribir en disco
+// (ver services/storage/announcementImageStorage.js).
+// ---------------------------------------------------------------------------
+
+const MAX_ANNOUNCEMENT_IMAGE_BYTES = 3 * 1024 * 1024;
+const announcementImageMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_ANNOUNCEMENT_IMAGE_BYTES, files: 1, fields: 5 },
+  fileFilter: (req, file, cb) => {
+    if (['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'].includes(file.mimetype)) return cb(null, true);
+    return cb(ApiError.badRequest('La imagen debe ser PNG, JPG, GIF o WebP.', [{ path: 'image', message: 'Formato no permitido.' }]));
+  },
+}).single('image');
+
+function announcementImageUpload(req, res, next) {
+  announcementImageMulter(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof ApiError) return next(err);
+    if (err instanceof multer.MulterError) {
+      const message = err.code === 'LIMIT_FILE_SIZE' ? 'La imagen no puede pesar más de 3 MB.' : 'No se pudo procesar la imagen.';
+      return next(ApiError.badRequest(message, [{ path: 'image', message }]));
+    }
+    return next(err);
+  });
+}
+
+module.exports = { logoUpload, MAX_LOGO_BYTES, proofUpload, MAX_PROOF_BYTES, importUpload, MAX_IMPORT_BYTES, supportUpload, announcementImageUpload };

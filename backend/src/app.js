@@ -37,6 +37,20 @@ app.use(
   })
 );
 
+// Imágenes de los comunicados (públicas, nombre UUID no adivinable; ver announcementImageStorage.js).
+app.use(
+  '/storage/announcements',
+  express.static(path.join(__dirname, '..', 'storage', 'announcements'), {
+    index: false,
+    dotfiles: 'deny',
+    maxAge: '30d',
+    setHeaders: (res) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    },
+  })
+);
+
 app.get('/health', (req, res) => res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 app.use('/api', require('./routes'));

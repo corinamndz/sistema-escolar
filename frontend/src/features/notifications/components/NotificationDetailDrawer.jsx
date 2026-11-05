@@ -13,6 +13,7 @@ import RateTuitionImpact from '../../payments/components/RateTuitionImpact';
 import { RecognitionCelebration } from '../../recognitions/components/RecognitionCard';
 import { CertificateModal } from '../../recognitions/components/RecognitionCertificate';
 import portalApi from '../../../api/endpoints/portal.api';
+import RichTextView, { ANNOUNCEMENT_CATEGORIES } from '../../../components/ui/RichTextView';
 
 const fullDate = (v) => new Date(v).toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const shortDate = (v) => new Date(v).toLocaleString('es-VE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -53,12 +54,26 @@ function NotificationDetailDrawer({ notification: n, canAudit, onClose, onOpenLi
         <div className="nd__message">
           <div className="nd__meta">
             <Badge variant="neutral">{NOTIFICATION_TYPE_LABELS[n.type] || 'Aviso'}</Badge>
+            {/* Comunicado: su categoría (Urgente en rojo). */}
+            {n.category && ANNOUNCEMENT_CATEGORIES[n.category] && (
+              <Badge variant={n.category === 'urgent' ? 'danger' : 'primary'}>{ANNOUNCEMENT_CATEGORIES[n.category].label}</Badge>
+            )}
             <span>
               <Icon name="clock" size={13} /> Emitida el {fullDate(n.created_at)}
             </span>
           </div>
           {/* Reconocimiento: la tarjeta de celebración reemplaza al texto plano. */}
-          {n.type === 'recognition' && n.data?.title ? <RecognitionCelebration recognition={n.data} /> : <p className="nd__body">{n.body}</p>}
+          {n.type === 'recognition' && n.data?.title ? (
+            <RecognitionCelebration recognition={n.data} />
+          ) : n.body_html ? (
+            // Comunicado con formato (saneado en el servidor) y quién lo envió.
+            <>
+              <RichTextView html={n.body_html} className="nd__rich" />
+              {n.data?.sender_name && <p className="text-sm text-muted">Enviado por {n.data.sender_name}</p>}
+            </>
+          ) : (
+            <p className="nd__body">{n.body}</p>
+          )}
           {n.type === 'bcv_rate' && <RateTuitionImpact data={n.data} />}
           {isRecognition && (
             <Button size="sm" variant="secondary" icon="file" onClick={() => setCertificate(true)}>

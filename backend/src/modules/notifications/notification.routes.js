@@ -7,6 +7,10 @@ const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 const { requirePermission } = require('../../middlewares/permission.middleware');
 const teacherScope = require('../access/teacherScope');
 const log = require('./notificationLog.service');
+const announcements = require('./announcement.service');
+const { announcementImageUpload } = require('../../middlewares/upload.middleware');
+const { saveAnnouncementImage } = require('../../services/storage/announcementImageStorage');
+const { ApiError } = require('../../utils/ApiError');
 
 // Sin requirePermission: cada usuario ve solo las notificaciones de su público
 // (administración de pagos y/o representante); el servicio lo filtra.
@@ -32,6 +36,63 @@ router.post(
     const id = z.string().uuid().parse(req.params.id);
     res.status(200).json(await log.resend(req.db, req.tenantId, { source, id, userId: req.user.id }));
   })
+);
+
+// ---- Comunicados de la administración (migración 076): módulo «Comunicados» ----
+const uuidList = z.array(z.string().uuid()).max(2000).default([]);
+const scopeSchema = z.object({
+  scope: z.enum(['school', 'levels', 'grades', 'sections', 'people'], { errorMap: () => ({ message: 'Alcance inválido.' }) }),
+  levelCodes: z.array(z.enum(['initial', 'primary', 'secondary'])).max(3).default([]),
+  gradeIds: uuidList,
+  sectionIds: uuidList,
+  guardianIds: uuidList,
+  staffIds: uuidList,
+  groups: z.object({ guardians: z.boolean().default(false), teachers: z.boolean().default(false), staff: z.boolean().default(false) }).default({}),
+});
+const broadcastSchema = scopeSchema.extend({
+  title: z.string().trim().min(3, 'Escribe el asunto (mínimo 3 caracteres).').max(150, 'Máximo 150 caracteres.'),
+  category: z.enum(['academic', 'administrative', 'urgent', 'event'], { errorMap: () => ({ message: 'Elige la categoría.' }) }),
+  html: z.string().max(120000, 'El mensaje es demasiado largo.'),
+});
+const senderOf = async (req) => {
+  const u = await req.db('users').where({ id: req.user.id }).first('full_name');
+  return { id: req.user.id, name: u?.full_name || null };
+};
+router.get(
+  '/broadcast/options',
+  requirePermission('announcements', 'create'),
+  teacherScope.denyTeachers,
+  asyncHandler(async (req, res) => res.status(200).json(await announcements.options(req.db, req.tenantId)))
+);
+router.post(
+  '/broadcast/preview',
+  requirePermission('announcements', 'create'),
+  teacherScope.denyTeachers,
+  asyncHandler(async (req, res) => res.status(200).json(await announcements.preview(req.db, req.tenantId, req.user.id, scopeSchema.parse(req.body))))
+);
+/** POST /notifications/broadcast — { title, category, html, scope, levelCodes?, gradeIds?, sectionIds?, guardianIds?, staffIds?, groups } */
+router.post(
+  '/broadcast',
+  requirePermission('announcements', 'create'),
+  teacherScope.denyTeachers,
+  asyncHandler(async (req, res) => res.status(201).json(await announcements.send(req.db, req.tenantId, await senderOf(req), broadcastSchema.parse(req.body))))
+);
+/** POST /notifications/broadcast/images (multipart, campo `image`) → { url } para insertar en el mensaje. */
+router.post(
+  '/broadcast/images',
+  requirePermission('announcements', 'create'),
+  teacherScope.denyTeachers,
+  announcementImageUpload,
+  asyncHandler(async (req, res) => {
+    if (!req.file) throw ApiError.badRequest('Elige una imagen.', [{ path: 'image', message: 'Requerido.' }]);
+    res.status(201).json({ url: await saveAnnouncementImage(req.tenantId, req.file.buffer) });
+  })
+);
+router.get(
+  '/broadcast',
+  requirePermission('announcements', 'read'),
+  teacherScope.denyTeachers,
+  asyncHandler(async (req, res) => res.status(200).json(await announcements.listSent(req.db, req.tenantId)))
 );
 
 // Conteo de no leídas (aviso al iniciar sesión): más liviano que la lista completa.

@@ -25,6 +25,7 @@ import ClubsPage from '../features/clubs/pages/ClubsPage';
 import EventsPage from '../features/events/pages/EventsPage';
 import AppointmentsPage from '../features/appointments/pages/AppointmentsPage';
 import NotificationLogPage from '../features/notifications/pages/NotificationLogPage';
+import AnnouncementsPage from '../features/notifications/pages/AnnouncementsPage';
 import NotificationCenterPage from '../features/notifications/pages/NotificationCenterPage';
 import RecognitionsPage from '../features/recognitions/pages/RecognitionsPage';
 import PortalViewGate from '../components/layout/PortalViewGate';
@@ -104,6 +105,7 @@ function App() {
             </Route>
             <Route element={<PermissionRoute module="tenant_settings" blockTeacher />}>
               <Route path="notifications/log" element={<NotificationLogPage />} />
+              <Route path="notifications/announcements" element={<AnnouncementsPage />} />
             </Route>
             <Route element={<PermissionRoute adminOnly />}>
               <Route path="audit" element={<AuditPage />} />

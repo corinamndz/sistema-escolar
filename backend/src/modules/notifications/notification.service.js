@@ -121,7 +121,7 @@ async function listForUser(trx, tenantId, userId) {
   const who = await audiencesOf(trx, tenantId, userId);
   const { audiences } = who;
   const rows = await visibleQuery(trx, tenantId, userId, who)
-    .select('n.id', 'n.type', 'n.title', 'n.body', 'n.data', 'n.audience', 'n.created_at', 'r.read_at')
+    .select('n.id', 'n.type', 'n.title', 'n.body', 'n.body_html', 'n.category', 'n.data', 'n.audience', 'n.created_at', 'r.read_at')
     .orderBy('n.created_at', 'desc')
     .limit(LIMIT);
   const unread = await visibleQuery(trx, tenantId, userId, who).whereNull('r.read_at').count('* as n').first();
@@ -131,7 +131,8 @@ async function listForUser(trx, tenantId, userId) {
 /** Fila → aviso para el cliente: sin los enlaces internos, con el que corresponde a quien mira. */
 function toItem(n, audiences) {
   const { links, ...data } = n.data || {};
-  return { id: n.id, type: n.type, title: n.title, body: n.body, data, link: linkFor(n, audiences), created_at: n.created_at, read: Boolean(n.read_at), read_at: n.read_at || null };
+  // body_html: comunicados con formato (076), ya saneado en el servidor al enviarse.
+  return { id: n.id, type: n.type, title: n.title, body: n.body, body_html: n.body_html || null, category: n.category || null, data, link: linkFor(n, audiences), created_at: n.created_at, read: Boolean(n.read_at), read_at: n.read_at || null };
 }
 
 /**
@@ -177,7 +178,7 @@ async function history(trx, tenantId, userId, { status = 'all', from = null, to 
     });
 
   const rows = await filtered()
-    .select('n.id', 'n.type', 'n.title', 'n.body', 'n.data', 'n.audience', 'n.created_at', 'r.read_at', trx.raw('COUNT(*) OVER () AS total'))
+    .select('n.id', 'n.type', 'n.title', 'n.body', 'n.body_html', 'n.category', 'n.data', 'n.audience', 'n.created_at', 'r.read_at', trx.raw('COUNT(*) OVER () AS total'))
     .orderBy([{ column: 'n.created_at', order: 'desc' }, { column: 'n.id', order: 'desc' }])
     .limit(pageSize)
     .offset((page - 1) * pageSize);

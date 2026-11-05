@@ -17,6 +17,22 @@ const notificationsApi = {
   audit: (id) => axiosClient.get(`/notifications/${id}/audit`).then((r) => r.data),
   markRead: (id) => axiosClient.post(`/notifications/${id}/read`).then((r) => r.data),
   markAllRead: () => axiosClient.post('/notifications/read-all').then((r) => r.data),
+
+  // ---- Comunicados de la administración ----
+  /** { categories, levels, grades, sections, guardians, staff } para armar el alcance. */
+  broadcastOptions: () => axiosClient.get('/notifications/broadcast/options').then((r) => r.data),
+  /** Alcance → { total, by_group, without_access, scope_label, sample } (no envía nada). */
+  broadcastPreview: (scope) => axiosClient.post('/notifications/broadcast/preview', scope).then((r) => r.data),
+  /** { title, category, html, scope, levelCodes?, gradeIds?, sectionIds?, guardianIds?, staffIds?, groups } → { id, recipients, scope_label } */
+  broadcast: (data) => axiosClient.post('/notifications/broadcast', data).then((r) => r.data),
+  /** Sube una imagen para el mensaje (PNG, JPG, GIF o WebP, hasta 3 MB) → { url } */
+  uploadBroadcastImage: (file) => {
+    const form = new FormData();
+    form.append('image', file);
+    return axiosClient.post('/notifications/broadcast/images', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data);
+  },
+  /** Comunicados enviados con destinatarios y lecturas. */
+  broadcastHistory: () => axiosClient.get('/notifications/broadcast').then((r) => r.data),
 };
 
 export default notificationsApi;

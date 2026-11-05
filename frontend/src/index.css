@@ -5933,6 +5933,39 @@ button.link-icon:disabled { opacity: 0.6; cursor: progress; }
 @media (max-width: 480px) { .slots-generator__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .slots-table tr.is-break td { background: var(--color-surface-muted); }
 
+/* Jornadas por nivel (editor de bloques) */
+/* En el cuerpo del panel (columna flexible) la tabla, con overflow propio, no debe encogerse. */
+.slots-table-wrap { flex-shrink: 0; }
+.slots-intro { margin: -4px 0 14px; font-size: 13.5px; line-height: 1.5; color: var(--color-text-secondary); }
+.slots-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; padding: 4px; border-radius: var(--radius-md); background: var(--color-surface-muted); }
+.slots-tabs__tab {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: var(--radius-sm);
+  background: none; color: var(--color-text-muted); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.slots-tabs__tab:hover { color: var(--color-text); background: var(--color-surface); }
+.slots-tabs__tab.is-active { background: var(--color-surface); color: var(--color-primary-text); box-shadow: var(--shadow-sm); }
+.slots-tabs__badge { padding: 0 6px; border-radius: 999px; background: var(--color-border); color: var(--color-text-muted); font-size: 10.5px; font-weight: 700; }
+.slots-tabs__badge.is-own { background: var(--color-primary-soft); color: var(--color-primary-text); }
+.slots-uses-general {
+  display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 12px;
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface)); box-shadow: 0 0 0 1px var(--color-border);
+}
+.slots-uses-general > .icon { flex-shrink: 0; color: var(--color-primary); }
+.slots-uses-general > div { flex: 1; min-width: 0; }
+.slots-uses-general p { margin: 2px 0 0; }
+.slots-generator__fields--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.slots-breaks { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.slots-breaks__title { font-size: 12.5px; font-weight: 600; color: var(--color-text-secondary); }
+.slots-breaks__row { display: grid; grid-template-columns: minmax(0, 1.4fr) auto auto auto; align-items: center; gap: 8px; width: 100%; }
+.slots-breaks__field { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--color-text-muted); white-space: nowrap; }
+.slots-breaks__field input { width: 72px; }
+.slots-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 8px; }
+.slots-actions__summary { margin-left: auto; }
+@media (max-width: 560px) {
+  .slots-uses-general { flex-direction: column; align-items: flex-start; }
+  .slots-breaks__row { grid-template-columns: 1fr 1fr; }
+}
+
 @media (max-width: 900px) {
   .schedule-board { grid-template-columns: minmax(0, 1fr); }
   .schedule-bank { position: static; }

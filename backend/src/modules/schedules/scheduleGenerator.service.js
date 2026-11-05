@@ -26,6 +26,10 @@ const { solve } = require('./scheduleSolver');
 
 const hhmm = (t) => String(t).slice(0, 5);
 const dayName = (d) => scheduleService.DAYS.find((x) => x.day === Number(d))?.name || '';
+const toMinutes = (t) => {
+  const [h, m] = String(t).slice(0, 5).split(':').map(Number);
+  return h * 60 + m;
+};
 const cellLabel = (day, slot) => `${dayName(day).toLowerCase()} ${hhmm(slot.start_time)}–${hhmm(slot.end_time)}`;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -44,8 +48,11 @@ async function loadInputs(trx, tenantId, periodId, { sectionIds = null, mode }) 
   const period = await scheduleService.loadPeriod(trx, tenantId, periodId);
   if (period.closed_at) throw ApiError.unprocessable(`El año escolar ${period.name} está finalizado: su horario es de solo lectura.`);
 
+  // Todas las jornadas del año (general + propias de cada nivel, migración 074).
   const allSlots = await scheduleService.listSlots(trx, tenantId, periodId);
   const slots = allSlots.filter((s) => !s.is_break);
+  const structures = await scheduleService.listStructures(trx, tenantId, periodId);
+  const gridOfLevel = new Map(structures.levels.map((l) => [l.code, l.effective.filter((x) => !x.is_break).map((x) => x.id)]));
   const days = scheduleService.DAYS.map((d) => d.day);
 
   const sectionRows = await trx('sections as sec')
@@ -60,6 +67,8 @@ async function loadInputs(trx, tenantId, periodId, { sectionIds = null, mode }) 
     const foreign = sectionIds.filter((id) => !known.has(id));
     if (foreign.length) throw ApiError.badRequest('Hay secciones que no pertenecen a este año escolar.', [{ path: 'sectionIds', message: 'Sección de otro año.' }]);
   }
+  // Bloques de clase que puede usar cada sección: los de la jornada de su nivel.
+  sectionRows.forEach((s) => (s.slot_ids = gridOfLevel.get(s.level_code) || []));
   const scope = sectionIds?.length ? sectionRows.filter((s) => sectionIds.includes(s.id)) : sectionRows;
   const scopeIds = new Set(scope.map((s) => s.id));
 
@@ -179,7 +188,10 @@ async function generate(trx, tenantId, periodId, { sectionIds = null, mode = 'fi
   }
 
   // ---- Imposibles por capacidad (antes de buscar) ----
+  // Cada sección cuenta los bloques de SU jornada; un docente, los de la jornada más amplia en que enseña.
   const C = days.length * slots.length;
+  const capOf = (sec) => days.length * sec.slot_ids.length;
+  const sectionById = new Map(sectionRows.map((x) => [x.id, x]));
   const unavailableBy = new Map();
   unavailable.forEach((u) => unavailableBy.set(u.staff_id, (unavailableBy.get(u.staff_id) || 0) + 1));
   const sectionDemand = new Map();
@@ -187,12 +199,12 @@ async function generate(trx, tenantId, periodId, { sectionIds = null, mode = 'fi
   for (const sec of scope) {
     const fixedHere = fixed.filter((f) => f.sectionId === sec.id).length;
     const need = (sectionDemand.get(sec.id) || 0) + fixedHere;
-    if (need > C) {
+    if (need > capOf(sec)) {
       conflicts.push({
         type: 'section_capacity',
         severity: 'error',
         section_id: sec.id,
-        message: `${sectionLabel(sec)} necesita ${need} horas semanales y solo hay ${C} bloques de clase (${days.length} días × ${slots.length} bloques). Reduce horas del plan o agrega bloques.`,
+        message: `${sectionLabel(sec)} necesita ${need} horas semanales y solo hay ${capOf(sec)} bloques de clase en la jornada de su nivel (${days.length} días × ${sec.slot_ids.length} bloques). Reduce horas del plan o agrega bloques.`,
       });
     }
   }
@@ -200,7 +212,8 @@ async function generate(trx, tenantId, periodId, { sectionIds = null, mode = 'fi
   groups.forEach((g) => teacherDemand.set(g.teacherId, (teacherDemand.get(g.teacherId) || 0) + g.hours));
   for (const [teacherId, demand] of teacherDemand) {
     const busy = fixed.filter((f) => f.teacherId === teacherId).length;
-    const capacity = C - (unavailableBy.get(teacherId) || 0) - busy;
+    const widest = Math.max(0, ...groups.filter((g) => g.teacherId === teacherId).map((g) => capOf(sectionById.get(g.sectionId))));
+    const capacity = Math.min(C, widest || C) - (unavailableBy.get(teacherId) || 0) - busy;
     if (demand > capacity) {
       conflicts.push({
         type: 'teacher_capacity',
@@ -215,8 +228,10 @@ async function generate(trx, tenantId, periodId, { sectionIds = null, mode = 'fi
   // ---- Búsqueda ----
   const out = solve({
     days,
-    slots: slots.map((s) => ({ id: s.id })),
-    groups,
+    // Horas reales de cada bloque: el docente y el aula no pueden estar en dos bloques que se solapen,
+    // aunque sean de jornadas distintas; cada grupo solo usa los bloques de la jornada de su sección.
+    slots: slots.map((s) => ({ id: s.id, start: toMinutes(s.start_time), end: toMinutes(s.end_time) })),
+    groups: groups.map((g) => ({ ...g, slotIds: sectionById.get(g.sectionId).slot_ids })),
     fixed,
     unavailable: unavailable.map((u) => ({ teacherId: u.staff_id, day: u.day_of_week, slotId: u.time_slot_id, reason: u.reason })),
     // Si ya se sabe que no cabe todo, no se gasta el presupuesto entero buscando.
@@ -343,7 +358,8 @@ function formatGeneration(row, { mode, data, entries, kept, conflicts, stats }) 
     school_period: { id: data.period.id, name: data.period.name },
     days: scheduleService.DAYS,
     slots: data.allSlots,
-    sections: data.scope.map((s) => ({ id: s.id, name: s.name, grade_name: s.grade_name, level_name: s.level_name, classroom_name: s.classroom_name || null })),
+    // slot_ids: los bloques de la jornada de cada sección (para dibujar su grilla en la vista previa).
+    sections: data.scope.map((s) => ({ id: s.id, name: s.name, grade_name: s.grade_name, level_name: s.level_name, level_code: s.level_code, classroom_name: s.classroom_name || null, slot_ids: s.slot_ids })),
     teachers: [...teachers.values()].sort((a, b) => a.name.localeCompare(b.name, 'es')),
     entries,
     kept,
@@ -441,7 +457,7 @@ async function saveUnavailability(trx, tenantId, periodId, staffId, cells) {
   const period = await scheduleService.loadPeriod(trx, tenantId, periodId);
   if (period.closed_at) throw ApiError.unprocessable(`El año escolar ${period.name} está finalizado.`);
   const { teacher } = await getUnavailability(trx, tenantId, periodId, staffId);
-  const slots = await trx('time_slots').where({ tenant_id: tenantId, school_period_id: periodId }).select('id', 'is_break', 'name');
+  const slots = await trx('time_slots').where({ tenant_id: tenantId, school_period_id: periodId }).select('id', 'is_break', 'name', 'start_time', 'end_time');
   const slotById = new Map(slots.map((s) => [s.id, s]));
   for (const c of cells) {
     const s = slotById.get(c.timeSlotId);
@@ -455,15 +471,22 @@ async function saveUnavailability(trx, tenantId, periodId, staffId, cells) {
       unique.map((c) => ({ tenant_id: tenantId, staff_id: staffId, day_of_week: c.dayOfWeek, time_slot_id: c.timeSlotId, reason: c.reason?.trim() || null }))
     );
   }
+  // Clases del docente que se SOLAPAN con lo marcado (por horas: puede dar clase en jornadas de otro nivel).
   const clashes = unique.length
-    ? await trx('class_schedules as cs')
-        .join('sections as sec', 'sec.id', 'cs.section_id')
-        .join('grades as g', 'g.id', 'sec.grade_id')
-        .join('subjects as sub', 'sub.id', 'cs.subject_id')
-        .join('time_slots as ts', 'ts.id', 'cs.time_slot_id')
-        .where({ 'cs.tenant_id': tenantId, 'cs.staff_id': staffId, 'sec.school_period_id': periodId })
-        .andWhere((q) => unique.forEach((c) => q.orWhere({ 'cs.day_of_week': c.dayOfWeek, 'cs.time_slot_id': c.timeSlotId })))
-        .select('cs.day_of_week', 'ts.start_time', 'ts.end_time', 'sub.name as subject_name', 'sec.name as section_name', 'g.name as grade_name')
+    ? (
+        await trx('class_schedules as cs')
+          .join('sections as sec', 'sec.id', 'cs.section_id')
+          .join('grades as g', 'g.id', 'sec.grade_id')
+          .join('subjects as sub', 'sub.id', 'cs.subject_id')
+          .join('time_slots as ts', 'ts.id', 'cs.time_slot_id')
+          .where({ 'cs.tenant_id': tenantId, 'cs.staff_id': staffId, 'sec.school_period_id': periodId })
+          .select('cs.day_of_week', 'ts.start_time', 'ts.end_time', 'sub.name as subject_name', 'sec.name as section_name', 'g.name as grade_name')
+      ).filter((e) =>
+        unique.some((c) => {
+          const u = slotById.get(c.timeSlotId);
+          return c.dayOfWeek === e.day_of_week && toMinutes(u.start_time) < toMinutes(e.end_time) && toMinutes(e.start_time) < toMinutes(u.end_time);
+        })
+      )
     : [];
   return {
     teacher,

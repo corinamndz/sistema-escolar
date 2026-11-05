@@ -10,15 +10,19 @@ const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 /**
  * Horarios de clase.
  *
- *   Bloques (time_slots): por año escolar, compartidos por todas sus secciones.
+ *   Bloques (time_slots): por año escolar y JORNADA (migración 074). Cada nivel
+ *     (Inicial, Primaria, Secundaria) puede tener su jornada propia, con sus
+ *     bloques y todos los recreos que necesite; si no, usa la jornada general.
  *   Clase (class_schedules): sección + materia + docente + día + bloque.
  *
  * El docente de cada clase sale de la carga docente de la sección (el
  * profesor de la materia, o en Primaria el titular si la materia no tiene
  * especialista). Al colocar o mover una clase se valida, con mensajes claros,
- * que la celda esté libre y que el docente NO tenga otra clase en el mismo día
- * y bloque en otra sección; la base de datos además lo garantiza con índices
- * únicos (por si dos personas guardan a la vez).
+ * que la celda esté libre, que el bloque sea de la jornada del nivel y no un
+ * recreo, y que el docente NO tenga otra clase ese día que se SOLAPE en el
+ * tiempo (en cualquier sección y nivel, aunque las jornadas tengan horas
+ * distintas). La base de datos además lo garantiza (074) por si dos personas
+ * guardan a la vez.
  */
 
 const DAYS = [
@@ -45,21 +49,102 @@ async function loadPeriod(trx, tenantId, periodId) {
   return period;
 }
 
-function listSlots(trx, tenantId, periodId) {
+const formatSlot = (s) => ({ ...s, start_time: hhmm(s.start_time), end_time: hhmm(s.end_time) });
+/** ¿Se solapan dos intervalos [inicio, fin) de horas? */
+const overlaps = (a, b) => toMinutes(a.start_time) < toMinutes(b.end_time) && toMinutes(b.start_time) < toMinutes(a.end_time);
+
+/**
+ * Bloques de un año escolar (migración 074: jornada por nivel).
+ *   `levelCode` undefined → TODOS los bloques del año (todas las jornadas);
+ *   null                  → la jornada general;
+ *   'primary'…            → la jornada propia de ese nivel (vacía si no tiene).
+ */
+function listSlots(trx, tenantId, periodId, { levelCode } = {}) {
   return trx('time_slots')
     .where({ tenant_id: tenantId, school_period_id: periodId })
-    .orderBy('start_time')
-    .then((rows) => rows.map((s) => ({ ...s, start_time: hhmm(s.start_time), end_time: hhmm(s.end_time) })));
+    .modify((q) => {
+      if (levelCode === null) q.whereNull('level_code');
+      else if (levelCode !== undefined) q.where('level_code', levelCode);
+    })
+    .orderBy([{ column: 'level_key' }, { column: 'start_time' }])
+    .then((rows) => rows.map(formatSlot));
+}
+
+/** Jornada que usa un nivel: la propia si la tiene; si no, la general. */
+async function slotsForLevel(trx, tenantId, periodId, levelCode) {
+  if (levelCode) {
+    const own = await listSlots(trx, tenantId, periodId, { levelCode });
+    if (own.length) return own;
+  }
+  return listSlots(trx, tenantId, periodId, { levelCode: null });
 }
 
 /**
- * Reemplaza los bloques del año: actualiza los que traen id, crea los nuevos y
- * borra los que ya no vienen. Valida que no se solapen. Un bloque con clases
- * no se puede borrar ni convertir en recreo.
+ * Jornadas del año para el editor: la general y, por nivel, si tiene jornada
+ * propia y cuál usa en la práctica.
+ * → { general: [slots], levels: [{ code, name, own, slots (propios), effective }] }
  */
-async function saveSlots(trx, tenantId, periodId, slots) {
+async function listStructures(trx, tenantId, periodId) {
+  await loadPeriod(trx, tenantId, periodId);
+  const all = await listSlots(trx, tenantId, periodId);
+  const general = all.filter((s) => !s.level_code);
+  const levels = await trx('education_levels').orderBy('sort_order').select('code', 'name');
+  return {
+    general,
+    levels: levels.map((l) => {
+      const own = all.filter((s) => s.level_code === l.code);
+      return { code: l.code, name: l.name, own: own.length > 0, slots: own, effective: own.length ? own : general };
+    }),
+  };
+}
+
+/**
+ * Une varias jornadas en una sola grilla (vistas por docente o de todo el año):
+ * los bloques con las mismas horas se muestran en una fila; `alias` lleva cada
+ * bloque a la fila que lo representa. Un bloque de una sola jornada de nivel
+ * se rotula con el nivel ("Bloque 1 · Primaria") para distinguirlo.
+ */
+function mergeSlots(slots, levelNames = {}) {
+  const rows = new Map();
+  const alias = new Map();
+  [...slots]
+    .sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time) || toMinutes(a.end_time) - toMinutes(b.end_time))
+    .forEach((s) => {
+      const key = `${s.start_time}|${s.end_time}|${s.is_break}`;
+      if (!rows.has(key)) rows.set(key, { ...s, levels: new Set() });
+      const row = rows.get(key);
+      row.levels.add(s.level_code || '*');
+      alias.set(s.id, row.id);
+    });
+  const distinctStructures = new Set(slots.map((s) => s.level_code || '*')).size;
+  const out = [...rows.values()].map(({ levels, ...s }) => {
+    const only = levels.size === 1 ? [...levels][0] : null;
+    const label = distinctStructures > 1 && only && only !== '*' ? `${s.name} · ${levelNames[only] || only}` : s.name;
+    return { ...s, name: label, level_codes: [...levels].filter((l) => l !== '*') };
+  });
+  return { slots: out, alias };
+}
+
+/**
+ * Reemplaza los bloques de UNA jornada (`levelCode` null = general): actualiza
+ * los que traen id, crea los nuevos y borra los que ya no vienen. Reglas:
+ *   - dentro de la jornada, bloques y recreos (todos los que se quieran) no se
+ *     solapan: así ninguna clase cae en un recreo de su nivel;
+ *   - un bloque con clases no se puede borrar ni convertir en recreo;
+ *   - al crear (o quitar, con `slots` vacío) la jornada propia de un nivel, sus
+ *     clases pasan al bloque de la nueva jornada que empieza a la misma hora;
+ *     si alguna no tiene equivalente, no se guarda nada (409 con el detalle);
+ *   - ningún docente puede quedar con dos clases solapadas (también en la base).
+ */
+async function saveSlots(trx, tenantId, periodId, slots, { levelCode = null } = {}) {
   const period = await loadPeriod(trx, tenantId, periodId);
   if (period.closed_at) throw ApiError.unprocessable(`El año escolar ${period.name} está finalizado.`);
+  let levelName = 'la jornada general';
+  if (levelCode) {
+    const level = await trx('education_levels').where({ code: levelCode }).first('name');
+    if (!level) throw ApiError.badRequest('Nivel educativo inválido.', [{ path: 'levelCode', message: 'Nivel inválido.' }]);
+    levelName = level.name;
+  }
 
   const sorted = [...slots].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
   sorted.forEach((s, i) => {
@@ -68,36 +153,96 @@ async function saveSlots(trx, tenantId, periodId, slots) {
     }
     const prev = sorted[i - 1];
     if (prev && toMinutes(s.startTime) < toMinutes(prev.endTime)) {
-      throw ApiError.badRequest(`${prev.name} (${prev.startTime}–${prev.endTime}) y ${s.name} (${s.startTime}–${s.endTime}) se solapan.`, [
+      const what = prev.isBreak || s.isBreak ? 'Un bloque de clase no puede solaparse con un recreo' : 'Los bloques no pueden solaparse';
+      throw ApiError.badRequest(`${what}: ${prev.name} (${prev.startTime}–${prev.endTime}) y ${s.name} (${s.startTime}–${s.endTime}).`, [
         { path: `slots.${i}`, message: 'Se solapa con otro bloque.' },
       ]);
     }
   });
 
-  const existing = await trx('time_slots').where({ tenant_id: tenantId, school_period_id: periodId });
-  const used = new Set(await trx('class_schedules').whereIn('time_slot_id', existing.map((s) => s.id)).distinct().pluck('time_slot_id'));
+  const scope = (q) => (levelCode ? q.where('level_code', levelCode) : q.whereNull('level_code'));
+  const existing = await trx('time_slots').where({ tenant_id: tenantId, school_period_id: periodId }).modify(scope);
   const keep = new Set(sorted.filter((s) => s.id).map((s) => s.id));
-  for (const s of existing.filter((x) => !keep.has(x.id))) {
-    if (used.has(s.id)) throw ApiError.conflict(`${s.name} tiene clases asignadas: quítalas del horario antes de eliminar el bloque.`);
+  if (sorted.some((s) => s.id && !existing.some((x) => x.id === s.id))) {
+    throw ApiError.badRequest(`Hay bloques que no pertenecen a ${levelName} de este año escolar.`);
+  }
+  const hadOwn = Boolean(levelCode) && existing.length > 0;
+  const willHaveOwn = Boolean(levelCode) && sorted.length > 0;
+  // Al cambiar de jornada (crear o quitar la propia) las clases se reubican abajo; si no, no se borran bloques con clases.
+  const relocating = Boolean(levelCode) && hadOwn !== willHaveOwn;
+  const used = new Set(await trx('class_schedules').whereIn('time_slot_id', existing.map((s) => s.id)).distinct().pluck('time_slot_id'));
+  if (!relocating) {
+    for (const s of existing.filter((x) => !keep.has(x.id))) {
+      if (used.has(s.id)) throw ApiError.conflict(`${s.name} (${hhmm(s.start_time)}–${hhmm(s.end_time)}) tiene clases asignadas: quítalas del horario antes de eliminar el bloque.`);
+    }
   }
   for (const s of sorted.filter((x) => x.id && x.isBreak)) {
     if (used.has(s.id)) throw ApiError.conflict(`${s.name} tiene clases asignadas: no puede pasar a ser recreo.`);
   }
 
-  // El UNIQUE (año, hora de inicio) es diferible: se puede reordenar sin choques intermedios.
-  await trx('time_slots').where({ tenant_id: tenantId, school_period_id: periodId }).whereNotIn('id', [...keep]).delete();
+  // Quitar la jornada propia: sus clases vuelven primero a la general (si no, sus bloques no se pueden borrar).
+  if (relocating && !willHaveOwn) await relocateLevelClasses(trx, tenantId, periodId, levelCode, levelName, { toOwn: false });
+  await trx('time_slots').where({ tenant_id: tenantId, school_period_id: periodId }).modify(scope).whereNotIn('id', [...keep]).delete();
+  // Bloques nuevos / actualizados (el UNIQUE por jornada y hora es diferible: se puede reordenar).
   for (const [i, s] of sorted.entries()) {
     const row = { name: s.name.trim(), start_time: s.startTime, end_time: s.endTime, is_break: Boolean(s.isBreak), sort_order: i };
-    if (s.id) {
-      const n = await trx('time_slots').where({ id: s.id, tenant_id: tenantId, school_period_id: periodId }).update(row);
-      if (!n) throw ApiError.badRequest('Hay bloques que no pertenecen a este año escolar.');
-    } else {
-      await trx('time_slots').insert({ ...row, tenant_id: tenantId, school_period_id: periodId });
+    if (s.id) await trx('time_slots').where({ id: s.id, tenant_id: tenantId }).update(row);
+    else await trx('time_slots').insert({ ...row, tenant_id: tenantId, school_period_id: periodId, level_code: levelCode });
+  }
+  // Crear la jornada propia: sus clases pasan a ella.
+  if (relocating && willHaveOwn) await relocateLevelClasses(trx, tenantId, periodId, levelCode, levelName, { toOwn: true });
+
+  // TODAS las restricciones diferidas se verifican ya, dentro de la petición: si
+  // alguna fallara recién al confirmar, el cambio se revertiría en silencio.
+  try {
+    await trx.raw('SET CONSTRAINTS ALL IMMEDIATE');
+  } catch (err) {
+    if (err.code === '23P01') throw ApiError.conflict(`${dbMessage(err)} Revisa las horas: un docente que da clase en varios niveles no puede tener dos clases a la vez.`);
+    if (err.code === '23505') throw ApiError.conflict(`Hay dos bloques que empiezan a la misma hora en ${levelName}.`, [{ path: 'slots', message: 'Hora de inicio repetida.' }]);
+    throw err;
+  }
+  return listStructures(trx, tenantId, periodId);
+}
+
+/** Mensaje de una excepción de los triggers (sin el prefijo técnico). */
+const dbMessage = (err) => String(err.message || '').replace(/^.* - /, '');
+
+/**
+ * Tras crear o quitar la jornada propia de un nivel, sus clases pasan a la
+ * jornada que ahora usan sus secciones: al bloque (de clase) que empieza a la
+ * misma hora. Si alguna no tiene equivalente, se aborta con el detalle.
+ */
+async function relocateLevelClasses(trx, tenantId, periodId, levelCode, levelName, { toOwn }) {
+  const target = (await listSlots(trx, tenantId, periodId, { levelCode: toOwn ? levelCode : null })).filter((s) => !s.is_break);
+  const byStart = new Map(target.map((s) => [s.start_time, s]));
+  const targetIds = new Set(target.map((s) => s.id));
+  const classes = await trx('class_schedules as cs')
+    .join('sections as sec', 'sec.id', 'cs.section_id')
+    .join('grades as g', 'g.id', 'sec.grade_id')
+    .join('time_slots as ts', 'ts.id', 'cs.time_slot_id')
+    .join('subjects as sub', 'sub.id', 'cs.subject_id')
+    .where({ 'cs.tenant_id': tenantId, 'sec.school_period_id': periodId, 'g.level_code': levelCode })
+    .select('cs.id', 'cs.day_of_week', 'ts.start_time', 'ts.end_time', 'g.name as grade_name', 'sec.name as section_name', 'sub.name as subject_name', 'cs.time_slot_id');
+  const pending = classes.filter((c) => !targetIds.has(c.time_slot_id));
+  const orphans = pending.filter((c) => !byStart.has(hhmm(c.start_time)));
+  if (orphans.length) {
+    const sample = orphans.slice(0, 4).map((c) => `${c.grade_name} ${c.section_name}: ${c.subject_name} (${dayName(c.day_of_week).toLowerCase()} ${hhmm(c.start_time)})`);
+    throw ApiError.conflict(
+      `${orphans.length} clase${orphans.length === 1 ? '' : 's'} de ${levelName} ${orphans.length === 1 ? 'está' : 'están'} en horas que no existen en la nueva jornada: ${sample.join('; ')}${orphans.length > 4 ? '…' : ''}. ` +
+        'Agrega un bloque que empiece a esa hora o mueve esas clases antes de guardar.'
+    );
+  }
+  for (const c of pending) {
+    try {
+      await trx('class_schedules').where({ id: c.id }).update({ time_slot_id: byStart.get(hhmm(c.start_time)).id });
+    } catch (err) {
+      if (err.code === '23P01' || err.code === '23505') {
+        throw ApiError.conflict(`No se pudo pasar ${c.subject_name} de ${c.grade_name} ${c.section_name} (${dayName(c.day_of_week).toLowerCase()} ${hhmm(c.start_time)}) a la nueva jornada: ${dbMessage(err)}`);
+      }
+      throw err;
     }
   }
-  // Se verifica ya (no al confirmar la transacción, cuando la respuesta ya salió).
-  await trx.raw('SET CONSTRAINTS uq_time_slots_start IMMEDIATE');
-  return listSlots(trx, tenantId, periodId);
+  return pending.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,14 +257,20 @@ async function hasUnavailability(trx) {
   return unavailabilityReady;
 }
 
-/** Bloques no disponibles de esos docentes: [{ staff_id, day_of_week, time_slot_id, reason }]. */
-async function unavailabilityOf(trx, tenantId, staffIds, slotIds) {
-  if (!staffIds.length || !slotIds.length || !(await hasUnavailability(trx))) return [];
-  return trx('teacher_unavailability')
-    .where({ tenant_id: tenantId })
-    .whereIn('staff_id', staffIds)
-    .whereIn('time_slot_id', slotIds)
-    .select('staff_id', 'day_of_week', 'time_slot_id', 'reason');
+/**
+ * No disponibilidad de esos docentes en el año, con las horas de cada bloque
+ * (de cualquier jornada): se compara por horas contra la jornada de cada sección.
+ * → [{ staff_id, day_of_week, time_slot_id, reason, start_time, end_time }]
+ */
+async function unavailabilityInPeriod(trx, tenantId, staffIds, periodId) {
+  if (!staffIds.length || !(await hasUnavailability(trx))) return [];
+  return (
+    await trx('teacher_unavailability as u')
+      .join('time_slots as ts', 'ts.id', 'u.time_slot_id')
+      .where({ 'u.tenant_id': tenantId, 'ts.school_period_id': periodId })
+      .whereIn('u.staff_id', staffIds)
+      .select('u.staff_id', 'u.day_of_week', 'u.time_slot_id', 'u.reason', 'ts.start_time', 'ts.end_time')
+  ).map(formatSlot);
 }
 
 // ---------------------------------------------------------------------------
@@ -187,7 +338,9 @@ async function sectionSubjects(trx, tenantId, sectionId, assignment = null) {
  */
 async function getSectionSchedule(trx, tenantId, sectionId, { editable = false } = {}) {
   const section = await loadSection(trx, tenantId, sectionId);
-  const slots = await listSlots(trx, tenantId, section.school_period_id);
+  // Jornada del nivel de la sección (la propia o, si no tiene, la general).
+  const slots = await slotsForLevel(trx, tenantId, section.school_period_id, section.level_code);
+  section.own_slots = slots.some((s) => s.level_code);
   const entries = (await entriesQuery(trx, tenantId).andWhere('cs.section_id', sectionId)).map(formatEntry);
   const result = { section, days: DAYS, slots, entries, read_only: !editable || Boolean(section.period_closed_at) };
   if (!editable) return result;
@@ -206,24 +359,33 @@ async function getSectionSchedule(trx, tenantId, sectionId, { editable = false }
   const busy = teacherIds.length
     ? await entriesQuery(trx, tenantId).whereIn('cs.staff_id', teacherIds).whereNot('cs.section_id', sectionId).andWhere('sec.school_period_id', section.school_period_id)
     : [];
+  // Ocupación del docente llevada a ESTA jornada: cada clase (o bloque no
+  // disponible) de otra sección marca los bloques de la sección que se solapan
+  // en el tiempo, aunque sea de otro nivel con otras horas.
+  const classSlots = slots.filter((s) => !s.is_break);
+  const onThisGrid = (item) => classSlots.filter((s) => overlaps(s, item));
   result.teacher_busy = {};
   busy.map(formatEntry).forEach((e) => {
-    (result.teacher_busy[e.staff_id] ||= []).push({
-      day_of_week: e.day_of_week,
-      time_slot_id: e.time_slot_id,
-      where: `${e.grade_name} ${e.section_name}`,
-      subject_name: e.subject_name,
-    });
+    onThisGrid(e).forEach((s) =>
+      (result.teacher_busy[e.staff_id] ||= []).push({
+        day_of_week: e.day_of_week,
+        time_slot_id: s.id,
+        where: `${e.grade_name} ${e.section_name}`,
+        subject_name: `${e.subject_name} (${e.start_time}–${e.end_time})`,
+      })
+    );
   });
   // Bloques en que el docente no está disponible: también se marcan al arrastrar.
-  (await unavailabilityOf(trx, tenantId, teacherIds, slots.map((s) => s.id))).forEach((u) => {
-    (result.teacher_busy[u.staff_id] ||= []).push({
-      day_of_week: u.day_of_week,
-      time_slot_id: u.time_slot_id,
-      where: 'No disponible',
-      subject_name: u.reason || 'Bloque no disponible para el docente',
-      unavailable: true,
-    });
+  (await unavailabilityInPeriod(trx, tenantId, teacherIds, section.school_period_id)).forEach((u) => {
+    onThisGrid(u).forEach((s) =>
+      (result.teacher_busy[u.staff_id] ||= []).push({
+        day_of_week: u.day_of_week,
+        time_slot_id: s.id,
+        where: 'No disponible',
+        subject_name: u.reason || `No disponible (${u.start_time}–${u.end_time})`,
+        unavailable: true,
+      })
+    );
   });
   return result;
 }
@@ -255,6 +417,11 @@ async function placeEntry(trx, tenantId, sectionId, { subjectId, dayOfWeek, time
   if (!slot || slot.school_period_id !== section.school_period_id) {
     throw ApiError.badRequest('El bloque horario no pertenece al año escolar de la sección.', [{ path: 'timeSlotId', message: 'Bloque inválido.' }]);
   }
+  // Solo bloques de la jornada del nivel de la sección.
+  const grid = await slotsForLevel(trx, tenantId, section.school_period_id, section.level_code);
+  if (!grid.some((s) => s.id === slot.id)) {
+    throw ApiError.badRequest(`Ese bloque no es de la jornada de ${section.grade_name}: usa los bloques de su nivel.`, [{ path: 'timeSlotId', message: 'Bloque de otra jornada.' }]);
+  }
   if (slot.is_break) throw ApiError.unprocessable(`${slot.name} es un recreo: no admite clases.`, [{ path: 'timeSlotId', message: 'Recreo.' }]);
 
   const subject = (await sectionSubjects(trx, tenantId, sectionId)).find((s) => s.subject_id === subjectId);
@@ -279,11 +446,20 @@ async function placeEntry(trx, tenantId, sectionId, { subjectId, dayOfWeek, time
   }
   // La clase que ocupaba la celda sale (se repone en el origen si es intercambio).
   if (action) await trx('class_schedules').where({ id: occupied.id, tenant_id: tenantId }).delete();
-  const clash = await entriesQuery(trx, tenantId).where({ ...where, 'cs.staff_id': subject.teacher.id }).modify((q) => entryId && q.whereNot('cs.id', entryId)).first();
+  // Anti-cruce por HORAS (cada nivel puede tener otra jornada): cualquier clase
+  // del docente ese día que se solape con este bloque, en cualquier sección.
+  const clash = await entriesQuery(trx, tenantId)
+    .where({ 'cs.day_of_week': dayOfWeek, 'cs.staff_id': subject.teacher.id })
+    .andWhere('ts.start_time', '<', slot.end_time)
+    .andWhere('ts.end_time', '>', slot.start_time)
+    .modify((q) => entryId && q.whereNot('cs.id', entryId))
+    .first();
   if (clash) {
     throw ApiError.conflict(conflictMessage(clash), [{ path: 'teacher', message: 'Cruce de horario del docente.' }]);
   }
-  const blocked = (await unavailabilityOf(trx, tenantId, [subject.teacher.id], [timeSlotId])).find((u) => u.day_of_week === Number(dayOfWeek));
+  const blocked = (await unavailabilityInPeriod(trx, tenantId, [subject.teacher.id], section.school_period_id)).find(
+    (u) => u.day_of_week === Number(dayOfWeek) && overlaps(u, formatSlot(slot))
+  );
   if (blocked) {
     const when = `${dayName(dayOfWeek).toLowerCase()} ${hhmm(slot.start_time)}–${hhmm(slot.end_time)}`;
     throw ApiError.conflict(`El profesor ${subject.teacher.name} no está disponible el ${when}${blocked.reason ? ` (${blocked.reason})` : ''}.`, [
@@ -297,8 +473,9 @@ async function placeEntry(trx, tenantId, sectionId, { subjectId, dayOfWeek, time
     if (entryId) await trx('class_schedules').where({ id: entryId, tenant_id: tenantId }).update(row);
     else [{ id }] = await trx('class_schedules').insert({ ...row, tenant_id: tenantId, section_id: sectionId, grade_id: section.grade_id }).returning('id');
   } catch (err) {
-    // Otra persona guardó al mismo tiempo: los índices únicos lo frenan.
-    if (err.code === '23505') throw ApiError.conflict('Esa hora acaba de ocuparse (o el docente acaba de recibir otra clase a esa hora). Recarga el horario.');
+    // Otra persona guardó al mismo tiempo: los índices únicos y el anti-cruce por horas (074) lo frenan.
+    if (err.code === '23505' || err.code === '23P01') throw ApiError.conflict('Esa hora acaba de ocuparse (o el docente acaba de recibir otra clase a esa hora). Recarga el horario.');
+    if (err.code === '23514') throw ApiError.unprocessable(dbMessage(err));
     throw err;
   }
 
@@ -520,7 +697,15 @@ async function querySchedule(trx, tenantId, { schoolPeriodId = null, gradeId = n
       })
       .orderBy([{ column: 'cs.day_of_week' }, { column: 'ts.start_time' }, { column: 'g.name' }, { column: 'sec.name' }])
   ).map(formatEntry);
-  const slots = await listSlots(trx, tenantId, period.id);
+  // Grilla: la jornada del nivel si la vista es de un solo nivel (sección, grado
+  // o filtro de nivel); si mezcla niveles (docente, todo el año), la unión de
+  // las jornadas involucradas, con las clases ubicadas en la fila de su hora.
+  const singleLevel = section?.level_code || grade?.level_code || levelCode || null;
+  const grid = singleLevel
+    ? { slots: await slotsForLevel(trx, tenantId, period.id, singleLevel), alias: null }
+    : await gridForEntries(trx, tenantId, period.id, entries);
+  const slots = grid.slots;
+  if (grid.alias) entries.forEach((e) => (e.time_slot_id = grid.alias.get(e.time_slot_id) || e.time_slot_id));
 
   return {
     school_period: { id: period.id, name: period.name, closed: Boolean(period.closed_at) },
@@ -534,6 +719,27 @@ async function querySchedule(trx, tenantId, { schoolPeriodId = null, gradeId = n
     summary: summarize(DAYS, slots, entries),
   };
 }
+
+/**
+ * Grilla para clases de varios niveles: une las jornadas en uso (las de los
+ * niveles de esas clases; sin clases, la general y todas las propias).
+ * → { slots, alias } (alias: bloque → fila que lo representa).
+ */
+async function gridForEntries(trx, tenantId, periodId, entries) {
+  const structures = await listStructures(trx, tenantId, periodId);
+  const levelNames = Object.fromEntries(structures.levels.map((l) => [l.code, LEVEL_SHORT[l.code] || l.name]));
+  let slots;
+  if (entries.length) {
+    const used = new Set(entries.map((e) => e.time_slot_id));
+    const levelsUsed = structures.levels.filter((l) => l.effective.some((s) => used.has(s.id)));
+    slots = [...new Map(levelsUsed.flatMap((l) => l.effective).map((s) => [s.id, s])).values()];
+  } else {
+    const own = structures.levels.filter((l) => l.own).flatMap((l) => l.slots);
+    slots = [...structures.general, ...own];
+  }
+  return mergeSlots(slots, levelNames);
+}
+const LEVEL_SHORT = { initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria' };
 
 /** "3er Año · Sección A" → "3er-ano-seccion-a" (nombre de archivo sin acentos ni espacios). */
 const slugify = (s) =>
@@ -661,7 +867,10 @@ async function getTeacherSchedule(trx, tenantId, staffId) {
   for (const p of periods) {
     const entries = (await entriesQuery(trx, tenantId).where('cs.staff_id', staffId).andWhere('sec.school_period_id', p.id)).map(formatEntry);
     if (!entries.length) continue;
-    out.push({ school_period: { id: p.id, name: p.name }, days: DAYS, slots: await listSlots(trx, tenantId, p.id), entries });
+    // Puede dar clase en niveles con jornadas distintas: una grilla con todas sus horas.
+    const grid = await gridForEntries(trx, tenantId, p.id, entries);
+    entries.forEach((e) => (e.time_slot_id = grid.alias.get(e.time_slot_id) || e.time_slot_id));
+    out.push({ school_period: { id: p.id, name: p.name }, days: DAYS, slots: grid.slots, entries });
   }
   return { staff_id: staffId, periods: out };
 }
@@ -697,4 +906,9 @@ module.exports = {
   schedulePdf,
   evaluationCalendarPdf,
   summarize,
+  slotsForLevel,
+  listStructures,
+  mergeSlots,
+  overlaps,
+  unavailabilityInPeriod,
 };

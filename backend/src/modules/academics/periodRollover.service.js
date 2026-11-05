@@ -275,10 +275,12 @@ async function copyTimeSlots(trx, tenantId, source, target) {
   const slots = await trx('time_slots').where({ tenant_id: tenantId, school_period_id: source.id });
   if (!slots.length) return new Map();
   const inserted = await trx('time_slots')
-    .insert(slots.map((s) => ({ tenant_id: tenantId, school_period_id: target.id, name: s.name, start_time: s.start_time, end_time: s.end_time, is_break: s.is_break, sort_order: s.sort_order })))
-    .returning(['id', 'start_time']);
-  const byStart = new Map(inserted.map((s) => [String(s.start_time), s.id]));
-  const map = new Map(slots.map((s) => [s.id, byStart.get(String(s.start_time))]));
+    // Cada jornada (general o de un nivel, migración 074) se copia con su nivel.
+    .insert(slots.map((s) => ({ tenant_id: tenantId, school_period_id: target.id, level_code: s.level_code || null, name: s.name, start_time: s.start_time, end_time: s.end_time, is_break: s.is_break, sort_order: s.sort_order })))
+    .returning(['id', 'start_time', 'level_code']);
+  const keyOf = (s) => `${s.level_code || '*'}|${String(s.start_time)}`;
+  const byStart = new Map(inserted.map((s) => [keyOf(s), s.id]));
+  const map = new Map(slots.map((s) => [s.id, byStart.get(keyOf(s))]));
 
   const unavailable = await trx('teacher_unavailability')
     .where('tenant_id', tenantId)

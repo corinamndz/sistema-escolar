@@ -24,6 +24,7 @@ import ScheduleGeneratorModal from '../components/ScheduleGeneratorModal';
 import TeacherAvailabilityModal from '../components/TeacherAvailabilityModal';
 import { blobErrorMessage, saveBlob } from '../../../utils/download';
 import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
+import { mergeSlotRows } from '../slotGrid';
 
 /** Duración del desvanecimiento al quitar una clase (igual que .schedule-entry.is-removing en index.css). */
 const REMOVE_FADE_MS = 180;
@@ -360,9 +361,15 @@ function SchedulesPage() {
   const copySlotsFrom = async (source) => {
     setCopyingSlots(true);
     try {
+      // Cada jornada por separado: la general y la propia de cada nivel que la tenga.
       const slots = await schedulesApi.getSlots(source.id);
-      await schedulesApi.saveSlots(periodId, slots.map((s) => ({ name: s.name, startTime: s.start_time, endTime: s.end_time, isBreak: s.is_break })));
-      toast.success('Bloques copiados', `Se copiaron ${slots.length} bloques de ${source.name}.`);
+      const byLevel = new Map();
+      slots.forEach((s) => byLevel.set(s.level_code || null, [...(byLevel.get(s.level_code || null) || []), s]));
+      for (const level of [null, ...[...byLevel.keys()].filter(Boolean)]) {
+        if (!byLevel.has(level)) continue;
+        await schedulesApi.saveSlots(periodId, byLevel.get(level).map((s) => ({ name: s.name, startTime: s.start_time, endTime: s.end_time, isBreak: s.is_break })), level);
+      }
+      toast.success('Bloques copiados', `Se copiaron ${slots.length} bloques (${byLevel.size} jornada${byLevel.size === 1 ? '' : 's'}) de ${source.name}.`);
       refetchPeriodSlots();
       await load();
     } catch (err) {
@@ -442,10 +449,10 @@ function SchedulesPage() {
         subtitle="Arma el horario semanal de cada sección. El sistema impide que un profesor tenga dos clases a la misma hora."
         actions={
           <>
-            {/* Los bloques son de todo el colegio: el coordinador no los cambia (el backend responde 403). */}
-            {can('schedules', 'update') && !user?.coordinator && period && !period.closed_at && (
+            {/* Jornadas por nivel: el Director todas; el coordinador, solo la de su nivel (el backend lo exige igual). */}
+            {can('schedules', 'update') && (!user?.coordinator || user.coordinator.level) && period && !period.closed_at && (
               <Button variant="secondary" icon="clock" onClick={() => setEditingSlots(true)}>
-                Bloques horarios
+                {user?.coordinator ? 'Jornada de mi nivel' : 'Jornadas y bloques'}
               </Button>
             )}
             {can('schedules', 'update') && period && !period.closed_at && (
@@ -629,7 +636,7 @@ function SchedulesPage() {
                   Define las horas de clase (por ejemplo 07:00–07:45) para todas las secciones del año; luego podrás arrastrar las materias
                   a la grilla.
                 </div>
-                {user?.coordinator && <div className="text-sm text-muted">Los bloques son de todo el colegio: pídele al Director que los configure.</div>}
+                {user?.coordinator && <div className="text-sm text-muted">La jornada general es de todo el colegio: pídele al Director que la configure, o define la de tu nivel en «Jornada de mi nivel».</div>}
                 {can('schedules', 'update') && !user?.coordinator && !period.closed_at && (
                   <div className="empty-state__actions">
                     {slotSource && (
@@ -884,7 +891,9 @@ function SchedulesPage() {
       {availabilityFor && period && (
         <TeacherAvailabilityModal
           periodId={periodId}
-          slots={periodSlots || []}
+          // Todas las jornadas del año en una grilla (mismas horas = una fila): la no
+          // disponibilidad se aplica por horas en cualquier nivel.
+          slots={mergeSlotRows(periodSlots || []).slots}
           teachers={activeTeachers}
           initialTeacherId={availabilityFor.teacherId}
           onClose={() => {
@@ -897,6 +906,7 @@ function SchedulesPage() {
       {editingSlots && period && (
         <SlotsEditorModal
           period={period}
+          onlyLevel={user?.coordinator?.level || null}
           onClose={() => setEditingSlots(false)}
           onSaved={() => {
             refetchPeriodSlots();

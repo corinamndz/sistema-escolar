@@ -15,10 +15,15 @@ const schedulesApi = {
   listSections: (params) => get('/schedules/sections', params),
   /** Años escolares (módulo Horarios: sirve también a quien no tiene acceso a Académico, p. ej. el coordinador). */
   listPeriods: () => get('/schedules/periods'),
-  /** Bloques horarios del año escolar. */
+  /** Bloques horarios del año escolar: todas las jornadas (cada bloque con su `level_code`, null = general). */
   getSlots: (periodId) => get(`/schedules/periods/${periodId}/slots`),
-  /** Reemplaza los bloques del año: [{ id?, name, startTime, endTime, isBreak }]. */
-  saveSlots: (periodId, slots) => axiosClient.put(`/schedules/periods/${periodId}/slots`, { slots }).then((r) => r.data),
+  /** Jornadas del año: { general: [slots], levels: [{ code, name, own, slots, effective }] }. */
+  getStructures: (periodId) => get(`/schedules/periods/${periodId}/slot-structures`),
+  /**
+   * Reemplaza los bloques de UNA jornada: [{ id?, name, startTime, endTime, isBreak }].
+   * `levelCode` null = general; un nivel con `slots` vacío vuelve a la general. → jornadas actualizadas.
+   */
+  saveSlots: (periodId, slots, levelCode = null) => axiosClient.put(`/schedules/periods/${periodId}/slots`, { slots, levelCode }).then((r) => r.data),
   /** { section, days, slots, entries, read_only, bank?, teacher_busy? } */
   getSection: (sectionId) => get(`/schedules/sections/${sectionId}`),
   /** Coloca una materia: { subjectId, dayOfWeek, timeSlotId, onOccupied?: 'replace' }. 409 si hay cruce del docente (o celda ocupada sin onOccupied). */

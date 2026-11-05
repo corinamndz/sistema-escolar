@@ -8,6 +8,7 @@ import Select from '../../../components/ui/Select';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
 import ScheduleGrid, { hueOf } from './ScheduleGrid';
+import { mergeSlotRows } from '../slotGrid';
 
 const MODES = [
   {
@@ -215,6 +216,21 @@ function GenerationPreview({ result, error, applying, onApply, onDiscard, onRetr
     [result]
   );
   const shown = view === 'section' ? all.filter((e) => e.section_id === sectionId) : all.filter((e) => e.staff_id === teacherId);
+  // Grilla de la vista previa (jornadas por nivel): la sección ve SU jornada (bloques y
+  // recreos); el docente, la unión de las jornadas en que enseña (mismas horas = una fila).
+  const grid = useMemo(() => {
+    const byId = new Map(result.slots.map((s) => [s.id, s]));
+    if (view === 'section') {
+      const own = new Set(result.sections.find((s) => s.id === sectionId)?.slot_ids || []);
+      if (!own.size) return { slots: result.slots, entries: shown };
+      const levels = new Set([...own].map((id) => byId.get(id)?.level_code || null));
+      return { slots: result.slots.filter((s) => own.has(s.id) || (s.is_break && levels.has(s.level_code || null))), entries: shown };
+    }
+    const levels = new Set(shown.map((e) => byId.get(e.time_slot_id)?.level_code || null));
+    const merged = mergeSlotRows(levels.size ? result.slots.filter((s) => levels.has(s.level_code || null)) : result.slots);
+    return { slots: merged.slots, entries: shown.map((e) => ({ ...e, time_slot_id: merged.alias.get(e.time_slot_id) || e.time_slot_id })) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, view, sectionId, teacherId, shown.length]);
   const sectionName = (id) => {
     const s = result.sections.find((x) => x.id === id);
     return s ? `${s.grade_name} ${s.name}` : '';
@@ -316,8 +332,8 @@ function GenerationPreview({ result, error, applying, onApply, onDiscard, onRetr
       <div className="generator-preview__grid">
         <ScheduleGrid
           days={result.days}
-          slots={result.slots}
-          entries={shown}
+          slots={grid.slots}
+          entries={grid.entries}
           colorOf={(e) => hueOf(e.subject_id)}
           entryText={(e) => ({
             title: e.subject_name,

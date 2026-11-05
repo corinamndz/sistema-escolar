@@ -34,6 +34,12 @@ async function tenantMiddleware(req, res, next) {
   if (!req.user || !req.user.tenantId) {
     return next(ApiError.unauthorized('No se pudo determinar el tenant del usuario.'));
   }
+  // Una sola transacción por petición. Algunos routers se montan en '/' y aplican
+  // este middleware a todo lo que pasa por ellos (ver routes/index.js): sin esta
+  // guarda, las rutas montadas después abrían una SEGUNDA transacción y el
+  // envoltorio externo respondía 200 aunque el COMMIT de la interna fallara
+  // (cambios revertidos con "guardado" en pantalla).
+  if (req.db) return next();
 
   let trx;
   let schemaName = null;

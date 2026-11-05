@@ -26,6 +26,7 @@ router.get('/pdf', admin('read'), controller.downloadPdf);
 router.get('/sections', admin('read'), controller.listSections);
 router.get('/periods', admin('read'), controller.listPeriods);
 router.get('/periods/:periodId/slots', admin('read'), controller.listSlots);
+router.get('/periods/:periodId/slot-structures', admin('read'), controller.listStructures);
 router.put('/periods/:periodId/slots', admin('update'), controller.saveSlots);
 router.post('/sections/:id/entries', admin('update'), controller.placeEntry);
 router.put('/entries/:id', admin('update'), controller.moveEntry);

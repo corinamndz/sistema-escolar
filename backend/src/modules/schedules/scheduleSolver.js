@@ -6,6 +6,13 @@
  * Modelo
  * ------
  *   Celda   = (día, bloque de clase). C = días × bloques (los recreos no cuentan).
+ *   Jornadas por nivel (migración 074): los bloques pueden ser de jornadas
+ *             distintas, con horas distintas. Cada grupo solo usa los bloques
+ *             de la jornada de su sección (`slotIds`), y una clase ocupa al
+ *             docente y al aula en TODOS los bloques que se solapan en el
+ *             tiempo (aunque sean de otra jornada). Por eso la ocupación se
+ *             cuenta (contadores), no se marca: deshacer una colocación no
+ *             libera un bloque que otra clase solapada sigue ocupando.
  *   Grupo   = una materia de una sección con su docente: necesita `hours` celdas.
  *   Fijas   = clases que ya existen y no se mueven (otras secciones del año, o las
  *             ya colocadas en modo "completar"): ocupan sección, docente y aula.
@@ -50,8 +57,10 @@ function rng(seed) {
 /**
  * @param {object} input
  *   days:   [1..5]
- *   slots:  [{ id }] bloques de clase en orden
- *   groups: [{ key, sectionId, teacherId, roomId|null, hours }]
+ *   slots:  [{ id, start?, end? }] bloques de clase en orden (start/end en minutos:
+ *           sin ellos, cada bloque solo choca consigo mismo)
+ *   groups: [{ key, sectionId, teacherId, roomId|null, hours, slotIds? }]
+ *           slotIds: bloques que puede usar (la jornada de su sección); sin él, todos
  *   fixed:  [{ sectionId, teacherId, roomId|null, day, slotId, label }]
  *   unavailable: [{ teacherId, day, slotId, reason }]
  *   options: { timeMs = 6000, maxNodesPerAttempt = 60000, seed = 1 }
@@ -69,11 +78,15 @@ function solve(input) {
   const cellOf = (day, slotId) => dayIndex.get(day) * S + slotIndex.get(slotId);
   const dayOfCell = (c) => Math.floor(c / S);
   const slotOfCell = (c) => c % S;
+  // Bloques que se solapan en el tiempo (incluido él mismo) y, por celda, las celdas del mismo día que ocupa.
+  const timed = slots.every((x) => Number.isFinite(x.start) && Number.isFinite(x.end));
+  const overlapIdx = slots.map((a, i) => slots.map((b, j) => j).filter((j) => j === i || (timed && a.start < slots[j].end && slots[j].start < a.end)));
+  const spread = Array.from({ length: C }, (_, c) => overlapIdx[c % S].map((j) => Math.floor(c / S) * S + j));
 
   // ---- Recursos (sección, docente, aula) → ocupación base (clases fijas) ----
-  const base = new Map(); // `s:<id>` | `t:<id>` | `r:<id>` → Uint8Array(C)
+  const base = new Map(); // `s:<id>` | `t:<id>` | `r:<id>` → Uint16Array(C) (clases que ocupan cada celda)
   const busyOf = (key) => {
-    if (!base.has(key)) base.set(key, new Uint8Array(C));
+    if (!base.has(key)) base.set(key, new Uint16Array(C));
     return base.get(key);
   };
   const fixedAt = new Map(); // `${key}|${c}` → etiqueta de la clase fija (para el diagnóstico)
@@ -81,8 +94,10 @@ function solve(input) {
     if (!dayIndex.has(f.day) || !slotIndex.has(f.slotId)) continue;
     const c = cellOf(f.day, f.slotId);
     for (const key of [`s:${f.sectionId}`, `t:${f.teacherId}`, f.roomId ? `r:${f.roomId}` : null].filter(Boolean)) {
-      busyOf(key)[c] = 1;
-      if (!fixedAt.has(`${key}|${c}`)) fixedAt.set(`${key}|${c}`, f.label || '');
+      for (const x of spread[c]) {
+        busyOf(key)[x] += 1;
+        if (!fixedAt.has(`${key}|${x}`)) fixedAt.set(`${key}|${x}`, f.label || '');
+      }
     }
   }
   const unavail = new Map(); // teacherId → Uint8Array(C)
@@ -90,20 +105,30 @@ function solve(input) {
   for (const u of unavailable) {
     if (!dayIndex.has(u.day) || !slotIndex.has(u.slotId)) continue;
     if (!unavail.has(u.teacherId)) unavail.set(u.teacherId, new Uint8Array(C));
-    const c = cellOf(u.day, u.slotId);
-    unavail.get(u.teacherId)[c] = 1;
-    if (u.reason) unavailReason.set(`${u.teacherId}|${c}`, u.reason);
+    // No disponible a esa hora: también en los bloques solapados de otras jornadas.
+    for (const c of spread[cellOf(u.day, u.slotId)]) {
+      unavail.get(u.teacherId)[c] = 1;
+      if (u.reason) unavailReason.set(`${u.teacherId}|${c}`, u.reason);
+    }
   }
 
   const G = groups.length;
-  const gs = groups.map((g, i) => ({
-    ...g,
-    i,
-    sKey: `s:${g.sectionId}`,
-    tKey: `t:${g.teacherId}`,
-    rKey: g.roomId ? `r:${g.roomId}` : null,
-    capStrict: Math.min(S, Math.max(1, Math.ceil(g.hours / D))),
-  }));
+  const gs = groups.map((g, i) => {
+    const own = g.slotIds ? new Set(g.slotIds) : null;
+    const allowed = new Uint8Array(C);
+    for (let c = 0; c < C; c += 1) allowed[c] = !own || own.has(slots[slotOfCell(c)].id) ? 1 : 0;
+    const gS = own ? slots.filter((x) => own.has(x.id)).length : S; // bloques por día de su jornada
+    return {
+      ...g,
+      i,
+      sKey: `s:${g.sectionId}`,
+      tKey: `t:${g.teacherId}`,
+      rKey: g.roomId ? `r:${g.roomId}` : null,
+      allowed,
+      gS,
+      capStrict: Math.min(gS, Math.max(1, Math.ceil(g.hours / D))),
+    };
+  });
   // Vecinos: grupos que comparten sección, docente o aula.
   const byResource = new Map();
   gs.forEach((g) => [g.sKey, g.tKey, g.rKey].filter(Boolean).forEach((k) => (byResource.get(k) || byResource.set(k, []).get(k)).push(g.i)));
@@ -114,10 +139,10 @@ function solve(input) {
   /** Un intento completo de búsqueda con una semilla y un tope diario. */
   function attempt(seed, relaxed, deadline) {
     const rand = rng(seed);
-    const busy = new Map([...base.entries()].map(([k, v]) => [k, Uint8Array.from(v)]));
-    const res = (k) => busy.get(k) || busy.set(k, new Uint8Array(C)).get(k);
+    const busy = new Map([...base.entries()].map(([k, v]) => [k, Uint16Array.from(v)]));
+    const res = (k) => busy.get(k) || busy.set(k, new Uint16Array(C)).get(k);
     gs.forEach((g) => [g.sKey, g.tKey, g.rKey].filter(Boolean).forEach(res));
-    const cap = gs.map((g) => Math.min(S, g.capStrict + (relaxed ? 1 : 0)));
+    const cap = gs.map((g) => Math.min(g.gS, g.capStrict + (relaxed ? 1 : 0)));
     const placed = gs.map(() => []); // celdas por grupo, en orden creciente
     const perDay = gs.map(() => new Uint8Array(D));
     const jitter = gs.map(() => rand());
@@ -126,6 +151,7 @@ function solve(input) {
     let best = { total: -1, placed: null };
 
     const free = (g, c) => {
+      if (!g.allowed[c]) return false;
       if (busy.get(g.sKey)[c] || busy.get(g.tKey)[c] || (g.rKey && busy.get(g.rKey)[c])) return false;
       const u = unavail.get(g.teacherId);
       if (u && u[c]) return false;
@@ -139,10 +165,14 @@ function solve(input) {
       for (let c = lastCell(g) + 1; c < C; c += 1) if (free(g, c)) n += 1;
       return n;
     };
+    // v = 1 coloca, 0 deshace: suma o resta en la celda y en las solapadas.
     const set = (g, c, v) => {
-      busy.get(g.sKey)[c] = v;
-      busy.get(g.tKey)[c] = v;
-      if (g.rKey) busy.get(g.rKey)[c] = v;
+      const d = v ? 1 : -1;
+      for (const x of spread[c]) {
+        busy.get(g.sKey)[x] += d;
+        busy.get(g.tKey)[x] += d;
+        if (g.rKey) busy.get(g.rKey)[x] += d;
+      }
     };
 
     /** Preferencia de una celda (menor = mejor): reparto en la semana y pocos huecos del docente. */
@@ -248,13 +278,14 @@ function solve(input) {
    */
   function greedy(seed, relaxed) {
     const rand = rng(seed);
-    const busy = new Map([...base.entries()].map(([k, v]) => [k, Uint8Array.from(v)]));
-    const res = (k) => busy.get(k) || busy.set(k, new Uint8Array(C)).get(k);
+    const busy = new Map([...base.entries()].map(([k, v]) => [k, Uint16Array.from(v)]));
+    const res = (k) => busy.get(k) || busy.set(k, new Uint16Array(C)).get(k);
     gs.forEach((g) => [g.sKey, g.tKey, g.rKey].filter(Boolean).forEach(res));
-    const cap = gs.map((g) => Math.min(S, g.capStrict + (relaxed ? 1 : 0)));
+    const cap = gs.map((g) => Math.min(g.gS, g.capStrict + (relaxed ? 1 : 0)));
     const placed = gs.map(() => []);
     const perDay = gs.map(() => new Uint8Array(D));
     const free = (g, c) =>
+      g.allowed[c] &&
       !busy.get(g.sKey)[c] && !busy.get(g.tKey)[c] && !(g.rKey && busy.get(g.rKey)[c]) && !(unavail.get(g.teacherId)?.[c]) && perDay[g.i][dayOfCell(c)] < cap[g.i];
     const open = new Set(gs.filter((g) => g.hours > 0).map((g) => g.i));
     let total = 0;
@@ -283,9 +314,11 @@ function solve(input) {
         return da - db;
       });
       const c = options.cells[0];
-      busy.get(chosen.sKey)[c] = 1;
-      busy.get(chosen.tKey)[c] = 1;
-      if (chosen.rKey) busy.get(chosen.rKey)[c] = 1;
+      for (const x of spread[c]) {
+        busy.get(chosen.sKey)[x] += 1;
+        busy.get(chosen.tKey)[x] += 1;
+        if (chosen.rKey) busy.get(chosen.rKey)[x] += 1;
+      }
       placed[chosen.i].push(c);
       perDay[chosen.i][dayOfCell(c)] += 1;
       total += 1;
@@ -340,14 +373,16 @@ function solve(input) {
   gs.forEach((g) => (best.placed[g.i] || []).forEach((c) => placements.push({ key: g.key, day: days[dayOfCell(c)], slotId: slots[slotOfCell(c)].id })));
 
   // Diagnóstico de cada grupo incompleto, con la ocupación FINAL.
-  const finalBusy = new Map([...base.entries()].map(([k, v]) => [k, Uint8Array.from(v)]));
-  const fres = (k) => finalBusy.get(k) || finalBusy.set(k, new Uint8Array(C)).get(k);
+  const finalBusy = new Map([...base.entries()].map(([k, v]) => [k, Uint16Array.from(v)]));
+  const fres = (k) => finalBusy.get(k) || finalBusy.set(k, new Uint16Array(C)).get(k);
   const placedBy = new Map(); // `${key}|${c}` → grupo colocado (para nombrar el choque)
   gs.forEach((g) =>
     (best.placed[g.i] || []).forEach((c) => {
       for (const k of [g.sKey, g.tKey, g.rKey].filter(Boolean)) {
-        fres(k)[c] = 1;
-        placedBy.set(`${k}|${c}`, g.key);
+        for (const x of spread[c]) {
+          fres(k)[x] += 1;
+          if (!placedBy.has(`${k}|${x}`)) placedBy.set(`${k}|${x}`, g.key);
+        }
       }
     })
   );
@@ -359,6 +394,7 @@ function solve(input) {
     const perDayFinal = new Uint8Array(D);
     (best.placed[g.i] || []).forEach((c) => (perDayFinal[dayOfCell(c)] += 1));
     for (let c = 0; c < C; c += 1) {
+      if (!g.allowed[c]) continue; // bloques de otra jornada: no cuentan para esta sección
       const cell = { day: days[dayOfCell(c)], slotId: slots[slotOfCell(c)].id };
       if (fres(g.sKey)[c]) {
         reasons.sectionFull += 1;
@@ -376,7 +412,7 @@ function solve(input) {
         reasons.roomBusy.push({ ...cell, with: fixedAt.get(`${g.rKey}|${c}`) ?? null, withGroup: placedBy.get(`${g.rKey}|${c}`) ?? null });
         continue;
       }
-      if (perDayFinal[dayOfCell(c)] >= Math.min(S, g.capStrict + 1)) {
+      if (perDayFinal[dayOfCell(c)] >= Math.min(g.gS, g.capStrict + 1)) {
         reasons.dailyCap += 1;
         continue;
       }

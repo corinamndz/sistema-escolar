@@ -66,18 +66,55 @@ const listSlots = asyncHandler(async (req, res) => {
   res.status(200).json(await service.listSlots(req.db, req.tenantId, period.id));
 });
 
-/** PUT /schedules/periods/:periodId/slots — { slots: [{ id?, name, startTime, endTime, isBreak? }] } */
+/** GET /schedules/periods/:periodId/slot-structures — jornada general y la de cada nivel (editor de jornadas). */
+const listStructures = asyncHandler(async (req, res) => {
+  res.status(200).json(await service.listStructures(req.db, req.tenantId, uuid.parse(req.params.periodId)));
+});
+
+/**
+ * PUT /schedules/periods/:periodId/slots — una jornada:
+ * { levelCode?: 'initial'|'primary'|'secondary'|null (general), slots: [{ id?, name, startTime, endTime, isBreak? }] }
+ * `slots` vacío con un nivel = quitarle la jornada propia (vuelve a la general).
+ */
 const saveSlots = asyncHandler(async (req, res) => {
-  // Los bloques horarios son de TODO el colegio (todas las secciones del año los comparten).
-  if (await coordinator.requireLevel(req)) throw ApiError.forbidden('Los bloques horarios son de todo el colegio: solo el Director puede cambiarlos.');
-  const { slots } = z
+  const { slots, levelCode } = z
     .object({
+      levelCode: z.enum(['initial', 'primary', 'secondary']).nullable().optional(),
       slots: z
         .array(z.object({ id: uuid.optional(), name: z.string().trim().min(1, 'Ponle nombre al bloque.').max(40), startTime: time, endTime: time, isBreak: z.boolean().optional() }))
-        .max(20),
+        .max(24),
     })
     .parse(req.body);
-  res.status(200).json(await service.saveSlots(req.db, req.tenantId, uuid.parse(req.params.periodId), slots));
+  // Coordinador de nivel: solo la jornada de SU nivel; la general es de todo el colegio (Director).
+  const scope = await coordinator.requireLevel(req);
+  if (scope && (levelCode || null) !== scope.level) {
+    throw ApiError.forbidden(levelCode ? 'Solo puedes cambiar la jornada de tu nivel.' : 'La jornada general es de todo el colegio: solo el Director puede cambiarla.');
+  }
+  const periodId = uuid.parse(req.params.periodId);
+  try {
+    res.status(200).json(await service.saveSlots(req.db, req.tenantId, periodId, slots, { levelCode: levelCode || null }));
+  } catch (err) {
+    // Registro para diagnosticar (sin datos personales): qué jornada, cuántos bloques y por qué falló.
+    // eslint-disable-next-line no-console
+    console.error('[horarios] No se guardó la jornada', {
+      tenantId: req.tenantId,
+      periodId,
+      levelCode: levelCode || 'general',
+      bloques: slots.filter((s) => !s.isBreak).length,
+      recreos: slots.filter((s) => s.isBreak).length,
+      status: err.statusCode || null,
+      code: err.code || null,
+      constraint: err.constraint || null,
+      message: err.message,
+    });
+    if (err instanceof ApiError) throw err;
+    // Errores de la base no traducidos por el servicio: un mensaje claro en vez de un 500 genérico.
+    const detail = String(err.message || '').replace(/^.* - /, '');
+    if (err.code === '23505') throw ApiError.conflict(`No se guardó la jornada: hay dos bloques que empiezan a la misma hora (${detail}).`);
+    if (err.code === '23P01') throw ApiError.conflict(`No se guardó la jornada: ${detail}`);
+    if (err.code === '23514' || err.code === '23503') throw ApiError.unprocessable(`No se guardó la jornada: ${detail}`);
+    throw err;
+  }
 });
 
 /** GET /schedules/sections — secciones para elegir (administración). */
@@ -321,4 +358,4 @@ const saveUnavailability = asyncHandler(async (req, res) => {
   res.status(200).json(await generator.saveUnavailability(req.db, req.tenantId, uuid.parse(req.params.periodId), uuid.parse(req.params.staffId), cells));
 });
 
-module.exports = { clearSection, listPeriods, generate, getGeneration, applyGeneration, discardGeneration, getUnavailability, saveUnavailability, listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers, listGrades, listAssignments, downloadPdf, getEvaluationCalendar, downloadEvaluationPdf };
+module.exports = { listStructures, clearSection, listPeriods, generate, getGeneration, applyGeneration, discardGeneration, getUnavailability, saveUnavailability, listSlots, saveSlots, listSections, getSectionSchedule, placeEntry, moveEntry, removeEntry, mySchedule, querySchedule, listTeachers, listGrades, listAssignments, downloadPdf, getEvaluationCalendar, downloadEvaluationPdf };

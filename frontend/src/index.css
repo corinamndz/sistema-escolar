@@ -8056,7 +8056,18 @@ body.is-printing-boleta { overflow: hidden; }
 .links-field__primary { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; cursor: pointer; }
 .links-field__remove { display: inline-flex; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; padding: 6px; border-radius: var(--radius-xs); }
 .links-field__remove:hover { background: var(--color-danger-soft); color: var(--color-danger-text); }
+/* Relación «Otro»: campo para precisarla, a lo ancho de la fila. */
+.links-field__other { grid-column: 2 / -1; height: 34px; font-size: 13.5px; }
+/* Alumno recién agregado sin relación: aviso suave. */
+.links-field__row.needs-relationship .links-field__relationship { border-color: #f59e0b; box-shadow: 0 0 0 3px color-mix(in srgb, #f59e0b 18%, transparent); }
+.links-field__missing { grid-column: 2 / -1; font-size: 12px; color: #b45309; }
+.links-field__empty {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px dashed var(--color-border); border-radius: var(--radius-sm);
+  background: var(--color-surface-muted); color: var(--color-text-secondary); font-size: 13px; line-height: 1.45;
+}
+.links-field__empty .icon { flex-shrink: 0; margin-top: 1px; color: var(--color-primary); }
 @media (max-width: 640px) {
+  .links-field__other, .links-field__missing { grid-column: 1 / -1; }
   .links-field__row { grid-template-columns: auto minmax(0, 1fr) auto; }
   .links-field__relationship { grid-column: 1 / -1; }
   .links-field__primary { grid-column: 1 / 3; }

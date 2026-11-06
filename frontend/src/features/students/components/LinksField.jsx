@@ -44,13 +44,26 @@ function LinksField({ options, links, onChange, primaryMode, placeholder, emptyT
     <div className="links-field">
       <MultiSelect options={options} value={ids} onChange={setIds} placeholder={placeholder} emptyText={emptyText} showChips={false} ariaLabel={placeholder} />
       {hint && !links.length && <span className="form-hint">{hint}</span>}
+      {/* Sin vínculos: se explica qué pasa al agregar uno (relación y principal aparecen por fila). */}
+      {!links.length && (
+        <div className="links-field__empty">
+          <Icon name={primaryMode === 'each' ? 'graduation' : 'users'} size={18} />
+          <span>
+            {primaryMode === 'each'
+              ? 'Aún no representa a ningún alumno. Búscalo arriba: al agregarlo eliges su relación (Madre, Padre, Representante Legal…) y si es su representante principal.'
+              : 'Aún no tiene representantes. Búscalos arriba: al agregarlos eliges su relación y quién es el principal.'}
+          </span>
+        </div>
+      )}
       {links.length > 0 && (
         <ul className="links-field__list">
           {links.map((l) => {
             const o = byId.get(l.id);
             const preset = RELATIONSHIPS.includes(l.relationship) || !l.relationship;
+            // «Otro» (o un texto propio como «Abuela»): se puede precisar en un campo debajo.
+            const other = l.relationship === 'Otro' || !preset;
             return (
-              <li key={l.id} className={`links-field__row ${l.isPrimary ? 'is-primary' : ''}`}>
+              <li key={l.id} className={`links-field__row ${l.isPrimary ? 'is-primary' : ''} ${!l.relationship ? 'needs-relationship' : ''}`}>
                 <span className="avatar avatar--sm">{(o?.label || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</span>
                 <span className="links-field__who">
                   <strong>{o?.label || 'Registro no disponible'}</strong>
@@ -82,6 +95,18 @@ function LinksField({ options, links, onChange, primaryMode, placeholder, emptyT
                 <button type="button" className="links-field__remove" onClick={() => setIds(ids.filter((x) => x !== l.id))} aria-label={`Quitar ${o?.label || ''}`} title="Quitar">
                   <Icon name="x" size={14} />
                 </button>
+                {other && (
+                  <input
+                    type="text"
+                    className="input links-field__other"
+                    value={l.relationship === 'Otro' ? '' : l.relationship}
+                    onChange={(e) => update(l.id, { relationship: e.target.value.trim() ? e.target.value : 'Otro' })}
+                    maxLength={30}
+                    placeholder="Especifica la relación (ej. Abuela, Tía, Padrino) — opcional"
+                    aria-label={`Relación específica con ${o?.label || ''}`}
+                  />
+                )}
+                {!l.relationship && <span className="links-field__missing">Elige la relación con {primaryMode === 'each' ? 'el alumno' : 'el representante'}.</span>}
               </li>
             );
           })}

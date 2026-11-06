@@ -152,8 +152,108 @@ function StudentFeeCard({ studentId, canEdit }) {
             )}
           </div>
         )}
+
+        <PaymentAgreement studentId={studentId} fee={fee} canEdit={canEdit} onSaved={setFee} />
       </div>
     </Card>
+  );
+}
+
+/**
+ * Plazo de pago del alumno: el estándar de su nivel (vence el día N) o un
+ * ACUERDO especial con días de gracia adicionales (1–60). El acuerdo corre la
+ * fecha límite de sus mensualidades pendientes desde el mes en curso.
+ */
+function PaymentAgreement({ studentId, fee, canEdit, onSaved }) {
+  const agreement = fee.agreement;
+  const dueDay = fee.base?.due_day || null;
+  const [editing, setEditing] = useState(false);
+  const [days, setDays] = useState(agreement?.grace_days ? String(agreement.grace_days) : '');
+  const [note, setNote] = useState(agreement?.note || '');
+  const { run, loading, error, fieldErrors } = useMutation((data) => paymentsApi.setPaymentAgreement(studentId, data));
+  const toast = useToast();
+
+  useEffect(() => {
+    setDays(agreement?.grace_days ? String(agreement.grace_days) : '');
+    setNote(agreement?.note || '');
+  }, [agreement?.grace_days, agreement?.note]);
+
+  const n = Number(days);
+  const valid = Number.isInteger(n) && n >= 1 && n <= 60;
+  const save = async (graceDays) => {
+    try {
+      const r = await run({ graceDays, note: graceDays ? note.trim() || null : null });
+      onSaved(r.fee);
+      setEditing(false);
+      toast.success(
+        graceDays ? `Acuerdo de pago: +${graceDays} días` : 'Plazo estándar restablecido',
+        r.updated ? `Se ajustó la fecha límite de ${r.updated === 1 ? '1 mensualidad pendiente' : `${r.updated} mensualidades pendientes`}.` : 'Se aplicará a las próximas mensualidades.'
+      );
+    } catch {
+      // error visible en la sección
+    }
+  };
+
+  return (
+    <div className={`fee-agreement ${agreement ? 'is-active' : ''}`}>
+      <div className="fee-agreement__head">
+        <span className="fee-agreement__icon" aria-hidden="true">
+          <Icon name={agreement ? 'calendar' : 'clock'} size={18} />
+        </span>
+        <div className="fee-agreement__text">
+          <strong>Plazo de pago</strong>
+          <span>
+            {agreement ? (
+              <>
+                Acuerdo especial: <strong>{agreement.grace_days} día{agreement.grace_days === 1 ? '' : 's'} de gracia</strong>
+                {dueDay ? ` (vence el día ${dueDay + agreement.grace_days <= 28 ? dueDay + agreement.grace_days : `${dueDay} + ${agreement.grace_days} días`} en lugar del ${dueDay})` : ''}
+                {agreement.note && <> · {agreement.note}</>}
+              </>
+            ) : dueDay ? (
+              `Estándar del nivel: vence el día ${dueDay} de cada mes.`
+            ) : (
+              'Estándar del nivel.'
+            )}
+          </span>
+        </div>
+        {agreement && <span className="fee-agreement__badge">Acuerdo de pago · +{agreement.grace_days} días</span>}
+        {canEdit && !editing && (
+          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+            {agreement ? 'Cambiar' : 'Dar plazo especial'}
+          </Button>
+        )}
+      </div>
+
+      {canEdit && editing && (
+        <div className="fee-agreement__form">
+          <Alert>{error}</Alert>
+          <div className="fee-agreement__fields">
+            <Field label="Días de gracia adicionales" error={fieldErrors.graceDays} hint={dueDay && valid ? `Vencerá ${n} día${n === 1 ? '' : 's'} después del día ${dueDay}.` : 'Entre 1 y 60 días.'}>
+              <Input type="number" min="1" max="60" step="1" value={days} onChange={(e) => setDays(e.target.value)} autoFocus />
+            </Field>
+            <Field label="Motivo o referencia" hint="Opcional. Ej.: acuerdo firmado, situación familiar." error={fieldErrors.note}>
+              <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
+            </Field>
+          </div>
+          <p className="form-hint">
+            Se corre la fecha límite de sus mensualidades pendientes desde el mes en curso (si la de este mes estaba vencida, deja de estarlo). Las pagadas y las de meses anteriores no cambian.
+          </p>
+          <div className="student-fee__actions">
+            {agreement && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => save(null)} disabled={loading} style={{ marginRight: 'auto' }}>
+                Quitar acuerdo
+              </Button>
+            )}
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={loading}>
+              Cancelar
+            </Button>
+            <Button type="button" size="sm" icon="check" loading={loading} disabled={!valid} onClick={() => save(n)}>
+              Guardar plazo
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

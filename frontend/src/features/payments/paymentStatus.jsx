@@ -82,6 +82,12 @@ export function DueDate({ payment }) {
         <Icon name="clipboard" size={13} /> {formatDate(payment.due_date)}
       </span>
       {hint && <span className="due-date__hint">{hint}</span>}
+      {/* Acuerdo de pago (077): la fecha ya incluye los días de gracia. */}
+      {payment.grace_days > 0 && (
+        <span className="agreement-chip" title="Fecha límite con plazo especial de pago">
+          Plazo especial · +{payment.grace_days} días
+        </span>
+      )}
     </div>
   );
 }

@@ -239,6 +239,12 @@ function StudentsPage() {
           {fullName(r)}
         </Link>
         {r.birth_date && <div className="cell-person__sub">Nac. {formatDate(r.birth_date)}</div>}
+        {/* Acuerdo de pago (días de gracia): dato financiero, solo para quien ve Pagos. */}
+        {canSeeFees && r.payment_grace_days && (
+          <span className="agreement-chip" title={r.payment_agreement_note || 'Acuerdo de pago especial'}>
+            <Icon name="calendar" size={12} /> Acuerdo de pago · +{r.payment_grace_days} días
+          </span>
+        )}
       </div>
     ),
     sortValue: (r) => `${r.last_name} ${r.first_name}`,

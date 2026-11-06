@@ -85,6 +85,8 @@ router.put('/fee-plans/:id', requirePermission('payments', 'update'), feePlans.u
 router.delete('/fee-plans/:id', requirePermission('payments', 'update'), feePlans.remove);
 router.get('/students/:id/fee', requirePermission('payments', 'read'), feePlans.studentFee);
 router.put('/students/:id/fee-plan', requirePermission('payments', 'update'), feePlans.assignStudentFee);
+// Acuerdo de pago (días de gracia sobre la fecha límite del nivel).
+router.put('/students/:id/payment-agreement', requirePermission('payments', 'update'), feePlans.setPaymentAgreement);
 
 // ---- Datos de otros módulos para los formularios (rutas fijas antes de "/:id") ----
 // Bajo el permiso de Pagos: el rol Finanzas no necesita permisos de Alumnos ni Académico.

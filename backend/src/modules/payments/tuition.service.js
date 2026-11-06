@@ -109,7 +109,9 @@ function tuitionPlanSql() {
     candidates AS (
       SELECT e.id AS enrollment_id, e.student_id, e.enrolled_at, sp.id AS school_period_id,
              sp.start_date, sp.end_date, sp.august_charge_month, f.currency, f.due_day, gd.guardian_id,
-             f.amount AS base_amount, fp.id AS fee_plan_id, ${effectiveAmountSql()} AS amount
+             f.amount AS base_amount, fp.id AS fee_plan_id, ${effectiveAmountSql()} AS amount,
+             -- Acuerdo de pago (077): días que se suman a la fecha límite estándar del nivel.
+             COALESCE(st.payment_grace_days, 0) AS grace_days
       FROM enrollments e
       JOIN students st ON st.id = e.student_id
       LEFT JOIN fee_plans fp ON fp.id = st.fee_plan_id
@@ -149,7 +151,7 @@ function tuitionPlanSql() {
              CASE WHEN i.issue_date = i.charge_month
                   THEN i.charge_month + (i.due_day - 1)
                   ELSE GREATEST(i.charge_month + (i.due_day - 1), i.issue_date + i.due_day)
-             END AS due_date,
+             END + i.grace_days AS due_date,
              'Mensualidad ' || ${MONTH_NAMES_SQL}[EXTRACT(MONTH FROM i.billing_month)::int] || ' ' || EXTRACT(YEAR FROM i.billing_month)::int
                || CASE WHEN i.charge_month <> i.billing_month
                        THEN ' · se cobra con ' || ${MONTH_NAMES_SQL}[EXTRACT(MONTH FROM i.charge_month)::int] || ' ' || EXTRACT(YEAR FROM i.charge_month)::int
@@ -169,11 +171,11 @@ async function generateTuition(trx, tenantId, scope = {}) {
     WITH ${tuitionPlanSql()}
     INSERT INTO payments (
       tenant_id, student_id, guardian_id, kind, enrollment_id, school_period_id,
-      billing_month, issue_date, due_date, period_label, amount, currency, base_amount, fee_plan_id
+      billing_month, issue_date, due_date, period_label, amount, currency, base_amount, fee_plan_id, grace_days
     )
     SELECT ?, student_id, guardian_id, 'tuition', enrollment_id, school_period_id,
            billing_month, issue_date, due_date, period_label,
-           amount, currency, base_amount, fee_plan_id
+           amount, currency, base_amount, fee_plan_id, grace_days
     FROM dated
     WHERE amount > 0 -- beca total: nada que cobrar
     ON CONFLICT (student_id, school_period_id, billing_month) WHERE kind = 'tuition'
@@ -181,7 +183,7 @@ async function generateTuition(trx, tenantId, scope = {}) {
       status = 'pending', cancelled_at = NULL, cancel_reason = NULL,
       base_amount = EXCLUDED.base_amount, fee_plan_id = EXCLUDED.fee_plan_id,
       guardian_id = EXCLUDED.guardian_id, enrollment_id = EXCLUDED.enrollment_id,
-      issue_date = EXCLUDED.issue_date, due_date = EXCLUDED.due_date, period_label = EXCLUDED.period_label,
+      issue_date = EXCLUDED.issue_date, due_date = EXCLUDED.due_date, grace_days = EXCLUDED.grace_days, period_label = EXCLUDED.period_label,
       amount = EXCLUDED.amount, currency = EXCLUDED.currency
     -- Solo se reactiva lo anulado bajo OTRA inscripción (retiro → reinscripción).
     -- Una anulación manual del administrador conserva la misma inscripción y se
@@ -202,7 +204,7 @@ async function generateTuition(trx, tenantId, scope = {}) {
     `
     WITH ${tuitionPlanSql()}
     UPDATE payments p
-    SET issue_date = d.issue_date, due_date = d.due_date, period_label = d.period_label
+    SET issue_date = d.issue_date, due_date = d.due_date, grace_days = d.grace_days, period_label = d.period_label
     FROM dated d
     WHERE p.kind = 'tuition'
       AND p.student_id = d.student_id AND p.school_period_id = d.school_period_id AND p.billing_month = d.billing_month
@@ -315,6 +317,31 @@ async function applyStudentFeePlan(trx, tenantId, studentId) {
     created,
     reactivated,
   };
+}
+
+/**
+ * Aplica el acuerdo de pago ACTUAL del alumno (students.payment_grace_days,
+ * migración 077) a sus mensualidades pendientes desde el mes en curso: la
+ * fecha límite se corre por la diferencia con los días ya aplicados a cada una
+ * (payments.grace_days), así cambiar o quitar el acuerdo nunca acumula días.
+ * Las pagadas y las de meses anteriores conservan su fecha (historial).
+ * Devuelve cuántas mensualidades cambiaron.
+ */
+async function applyStudentGrace(trx, tenantId, studentId) {
+  const { rowCount } = await trx.raw(
+    `
+    UPDATE payments p
+    SET due_date = p.due_date + (COALESCE(st.payment_grace_days, 0) - p.grace_days),
+        grace_days = COALESCE(st.payment_grace_days, 0)
+    FROM students st
+    WHERE st.id = p.student_id
+      AND p.tenant_id = ? AND p.student_id = ? AND p.kind = 'tuition' AND p.status = 'pending'
+      AND COALESCE(p.issue_date, p.billing_month) >= date_trunc('month', current_date)
+      AND p.grace_days IS DISTINCT FROM COALESCE(st.payment_grace_days, 0)
+    `,
+    [tenantId, studentId]
+  );
+  return rowCount;
 }
 
 // ---------- Agosto ----------
@@ -444,4 +471,4 @@ async function ensureTuition(trx, tenantId, scope = {}) {
   return { created, reactivated, billingIssues: skipped };
 }
 
-module.exports = { augustStatus, setAugustChargeMonth, regularMonths, effectiveAmountSql, FEE_LATERAL, applyStudentFeePlan, generateTuition, ensureTuition, listSkippedEnrollments, cancelFutureTuition, listFees, upsertFee, deleteFee };
+module.exports = { applyStudentGrace, augustStatus, setAugustChargeMonth, regularMonths, effectiveAmountSql, FEE_LATERAL, applyStudentFeePlan, generateTuition, ensureTuition, listSkippedEnrollments, cancelFutureTuition, listFees, upsertFee, deleteFee };

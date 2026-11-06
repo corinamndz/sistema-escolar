@@ -54,4 +54,23 @@ const assignStudentFee = asyncHandler(async (req, res) => {
   res.status(200).json(await service.assignStudentFeePlan(req.db, req.tenantId, id(req), data));
 });
 
-module.exports = { list, create, update, remove, studentFee, assignStudentFee };
+/**
+ * Acuerdo de pago del alumno: { graceDays: 1–60 | null (plazo estándar del nivel), note? }.
+ * Se aplica a la fecha límite de sus mensualidades pendientes desde el mes en curso.
+ */
+const setPaymentAgreement = asyncHandler(async (req, res) => {
+  const data = z
+    .object({
+      graceDays: z
+        .number({ invalid_type_error: 'Indica los días de gracia.' })
+        .int('Los días deben ser un número entero.')
+        .min(1, 'Mínimo 1 día.')
+        .max(60, 'Máximo 60 días.')
+        .nullable(),
+      note: z.string().trim().max(200, 'Máximo 200 caracteres.').nullable().optional(),
+    })
+    .parse(req.body);
+  res.status(200).json(await service.setPaymentAgreement(req.db, req.tenantId, id(req), data));
+});
+
+module.exports = { list, create, update, remove, studentFee, assignStudentFee, setPaymentAgreement };

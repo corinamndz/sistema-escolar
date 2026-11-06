@@ -3255,6 +3255,30 @@ a.cell-person__name:hover {
 }
 .student-fee__preview .icon { flex-shrink: 0; margin-top: 1px; }
 .student-fee__actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Acuerdo de pago (días de gracia por alumno) */
+.fee-agreement { display: flex; flex-direction: column; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--color-surface-muted); }
+.fee-agreement.is-active { background: color-mix(in srgb, #f59e0b 9%, var(--color-surface)); box-shadow: inset 3px 0 0 #f59e0b; }
+.fee-agreement__head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.fee-agreement__icon {
+  display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px;
+  background: var(--color-surface); color: var(--color-text-secondary); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.fee-agreement.is-active .fee-agreement__icon { color: #b45309; }
+.fee-agreement__text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 180px; font-size: 13px; color: var(--color-text-secondary); }
+.fee-agreement__text > strong { font-size: 14px; color: var(--color-text); }
+.fee-agreement__badge {
+  padding: 3px 10px; border-radius: 999px; background: #f59e0b; color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.fee-agreement__form { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--color-border); }
+.fee-agreement__fields { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.6fr); gap: 12px; }
+@media (max-width: 560px) { .fee-agreement__fields { grid-template-columns: 1fr; } }
+
+/* Etiqueta «Acuerdo de pago» (listado de alumnos, fecha límite de una cuota). */
+.agreement-chip {
+  display: inline-flex; align-items: center; gap: 4px; width: fit-content; margin-top: 3px; padding: 1px 8px; border-radius: 999px;
+  background: color-mix(in srgb, #f59e0b 16%, var(--color-surface)); color: #b45309; font-size: 11px; font-weight: 700; white-space: nowrap;
+}
 @media (max-width: 560px) {
   .student-fee__summary { flex-wrap: wrap; }
   .student-fee__tag { max-width: 100%; }

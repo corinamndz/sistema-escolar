@@ -124,6 +124,7 @@ async function getStudentFee(trx, tenantId, studentId) {
     .where({ 's.id': studentId, 's.tenant_id': tenantId })
     .first(
       's.id', 's.first_name', 's.last_name', 's.fee_plan_note', 's.fee_plan_assigned_at',
+      's.payment_grace_days', 's.payment_agreement_note', 's.payment_agreement_at',
       'fp.id as plan_id', 'fp.name as plan_name', 'fp.kind as plan_kind', 'fp.percentage as plan_percentage',
       'fp.amount as plan_amount', 'fp.currency as plan_currency', 'fp.description as plan_description'
     );
@@ -180,6 +181,10 @@ async function getStudentFee(trx, tenantId, studentId) {
     effective_amount: base || plan?.kind === 'fixed' ? effectiveAmount(base?.amount ?? null, plan) : null,
     currency: 'USD',
     upcoming_months: Number(upcoming.n),
+    // Acuerdo de pago (077): días de gracia sobre la fecha límite estándar del nivel (base.due_day).
+    agreement: student.payment_grace_days
+      ? { grace_days: student.payment_grace_days, note: student.payment_agreement_note, assigned_at: student.payment_agreement_at }
+      : null,
   };
 }
 
@@ -216,7 +221,37 @@ async function assignStudentFeePlan(trx, tenantId, studentId, { feePlanId = null
   return { fee, applied };
 }
 
+/**
+ * Asigna (graceDays 1–60) o quita (null) el acuerdo de pago del alumno y lo
+ * aplica a sus mensualidades pendientes desde el mes en curso.
+ */
+async function setPaymentAgreement(trx, tenantId, studentId, { graceDays = null, note = null }) {
+  const before = await getStudentFee(trx, tenantId, studentId);
+  const st = await trx('students').where({ id: studentId, tenant_id: tenantId }).first('first_name', 'last_name');
+  await trx('students')
+    .where({ id: studentId, tenant_id: tenantId })
+    .update({
+      payment_grace_days: graceDays,
+      payment_agreement_note: graceDays ? note?.trim() || null : null,
+      payment_agreement_at: graceDays ? trx.fn.now() : null,
+    });
+  const updated = await tuition.applyStudentGrace(trx, tenantId, studentId);
+  const fee = await getStudentFee(trx, tenantId, studentId);
+  const label = (a) => (a ? `+${a.grace_days} días` : 'plazo estándar');
+  await logAudit(trx, {
+    tenantId,
+    module: 'payments',
+    action: 'student_payment_agreement.set',
+    entity: 'students',
+    entityId: studentId,
+    summary: `Acuerdo de pago de ${st.first_name} ${st.last_name}: ${label(before.agreement)} → ${label(fee.agreement)}`,
+    diff: { before: before.agreement, after: fee.agreement, updated },
+  });
+  return { fee, updated };
+}
+
 module.exports = {
+  setPaymentAgreement,
   effectiveAmount,
   describePlan,
   listFeePlans,

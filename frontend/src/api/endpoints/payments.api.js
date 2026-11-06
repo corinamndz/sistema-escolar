@@ -81,6 +81,8 @@ const paymentsApi = {
   studentFee: (studentId) => get(`/payments/students/${studentId}/fee`),
   /** { feePlanId: uuid | null (tarifa general del nivel), note } → { fee, applied: { updated, cancelled, created, reactivated } } */
   assignStudentFeePlan: (studentId, data) => axiosClient.put(`/payments/students/${studentId}/fee-plan`, data).then((r) => r.data),
+  /** Acuerdo de pago: { graceDays: 1–60 | null (plazo estándar), note } → { fee, updated } */
+  setPaymentAgreement: (studentId, data) => axiosClient.put(`/payments/students/${studentId}/payment-agreement`, data).then((r) => r.data),
 
   /** Catálogo de monedas + activas del colegio ({ base, default_currency, catalog: [{ code, name, enabled, … }] }). */
   listCurrencies: () => get('/payments/currencies'),

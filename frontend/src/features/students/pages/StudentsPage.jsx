@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import studentsApi from '../../../api/endpoints/students.api';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
+import { canManageAdmissions } from '../../../components/layout/navigation';
+import { useAcademicYear } from '../../../context/AcademicYearContext';
 import { useFetch } from '../../../hooks/useFetch';
 import { useMutation } from '../../../hooks/useMutation';
 import PageHeader from '../../../components/ui/PageHeader';
@@ -23,6 +25,7 @@ import ExportButton from '../../../components/ui/ExportButton';
 import { LEVEL_CODES, LevelBadge, LevelFilter } from '../../academics/levels';
 import StudentGroups, { sectionLabel } from '../components/StudentGroups';
 import AcademicHistoryDrawer from '../components/AcademicHistoryDrawer';
+import EnrollmentFormsHistoryDrawer from '../components/EnrollmentFormsHistoryDrawer';
 import LinksField, { linksChanged } from '../components/LinksField';
 import paymentsApi from '../../../api/endpoints/payments.api';
 import { formatMoney } from '../../payments/paymentStatus';
@@ -104,6 +107,19 @@ function FeePill({ active, onChange, count }) {
   );
 }
 
+/** Planilla del año en la celda «Inscripción» (cuando aún no figura inscrito). `order`: para ordenar la columna. */
+const FORM_STATE = {
+  missing: { label: 'Sin planilla', tone: 'muted', order: 0 },
+  pending: { label: 'Planilla por llenar', tone: 'muted', order: 1 },
+  rejected: { label: 'Planilla rechazada', tone: 'danger', order: 1 },
+  changes_requested: { label: 'Planilla por corregir', tone: 'warn', order: 2 },
+  submitted: { label: 'Planilla en revisión', tone: 'warn', order: 3 },
+  approved: { label: 'Planilla aprobada', tone: 'ok', order: 4 },
+};
+
+/** Resultado de la matrícula de ese año cuando ya no está cursando (promoción, retiro). */
+const OUTCOME_LABELS = { promoted: 'Promovido', retained: 'Repite', graduated: 'Egresado', withdrawn: 'Retirado' };
+
 const countBy = (rows, key) => rows.reduce((acc, r) => (r[key] ? { ...acc, [r[key]]: (acc[r[key]] || 0) + 1 } : acc), {});
 
 /**
@@ -113,17 +129,20 @@ const countBy = (rows, key) => rows.reduce((acc, r) => (r[key] ? { ...acc, [r[ke
  * vista "Por sección" agrupa la misma lista filtrada por grado y sección.
  */
 function StudentsPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
   // Se cargan todos los alumnos: los filtros (estado, nivel, grado, sección, búsqueda) son locales y muestran sus totales.
-  const { data: rows, loading, error, refetch } = useFetch(() => studentsApi.list(), []);
+  // Año escolar GLOBAL (barra superior): grado, sección e inscripción de ese año.
+  const { periodId: yearId } = useAcademicYear();
+  const { data: rows, loading, error, refetch } = useFetch(() => studentsApi.list(yearId ? { enrollmentPeriodId: yearId } : undefined), [yearId]);
   const [status, setStatus] = useState('');
   const [level, setLevel] = useState('');
   const [gradeId, setGradeId] = useState('');
   const [section, setSection] = useState(''); // nombre de la sección ("A"): sin grado, filtra la A de todos los grados
   const [specialFee, setSpecialFee] = useState(false); // solo alumnos con tarifa especial
+  const [notEnrolled, setNotEnrolled] = useState(false); // solo alumnos NO inscritos en el año vigente
   const canSeeFees = can('payments', 'read');
   const [editing, setEditing] = useState(null); // null = cerrado, {} = crear, {...} = editar
   const [view, setView] = useState(readView);
@@ -148,10 +167,13 @@ function StudentsPage() {
     (skip === 'level' || !level || r.level_code === level) &&
     (skip === 'grade' || !gradeId || r.grade_id === gradeId) &&
     (skip === 'section' || !section || r.section_name === section) &&
-    (skip === 'fee' || !specialFee || Boolean(r.fee_plan_id));
+    (skip === 'fee' || !specialFee || Boolean(r.fee_plan_id)) &&
+    (skip === 'enroll' || !notEnrolled || r.enrollment_state !== 'enrolled');
   const forStatus = all.filter((r) => matches(r, 'status'));
   const forLevel = all.filter((r) => matches(r, 'level'));
   const specialFeeCount = all.filter((r) => matches(r, 'fee') && r.fee_plan_id).length;
+  const notEnrolledCount = all.filter((r) => matches(r, 'enroll') && r.enrollment_state !== 'enrolled').length;
+  const periodName = all[0]?.enrollment_period_name || null; // año del estatus (el mismo para todas las filas)
   const statusCounts = countBy(forStatus, 'status');
   const levelCounts = countBy(forLevel, 'level_code');
   const visible = all.filter((r) => matches(r));
@@ -182,9 +204,10 @@ function StudentsPage() {
   useEffect(() => {
     if (section && !sectionOptions.includes(section)) setSection('');
   }, [section, sectionOptions]);
-  const anyFilter = Boolean(status || level || gradeId || section || specialFee);
+  const anyFilter = Boolean(status || level || gradeId || section || specialFee || notEnrolled);
   const clearFilters = () => {
     setSpecialFee(false);
+    setNotEnrolled(false);
     setStatus('');
     setLevel('');
     setGradeId('');
@@ -220,8 +243,10 @@ function StudentsPage() {
 
   // Historial académico: para cualquiera que vea alumnos (solo lectura).
   const [historyOf, setHistoryOf] = useState(null);
+  const [formsOf, setFormsOf] = useState(null);
   const rowActions = [
     { key: 'history', icon: 'book', label: 'Historial académico', tone: 'view', onClick: (r) => setHistoryOf(r) },
+    ...(canManageAdmissions(user) ? [{ key: 'forms', icon: 'clipboard', label: 'Historial de planillas', tone: 'view', onClick: (r) => setFormsOf(r) }] : []),
     ...(canEdit
       ? [
           { key: 'withdraw', icon: 'logout', label: 'Retirar alumno', show: (r) => r.status === 'active', onClick: (r) => changeStatus(r, 'withdrawn') },
@@ -259,13 +284,55 @@ function StudentsPage() {
     },
     sortValue: (r) => r.status,
   };
+  // Inscripción en el año elegido: «Inscrito» SOLO con planilla aprobada de ese año (la matrícula sola no basta).
+  const enrollmentColumn = {
+    key: 'enrollment',
+    header: periodName ? `Inscripción ${periodName}` : 'Inscripción',
+    render: (r) => {
+      const form = FORM_STATE[r.form_status || 'missing'];
+      return (
+        <div className="enroll-cell">
+          {r.enrollment_state === 'enrolled' ? (
+            <span className="enroll-badge enroll-badge--yes" title={`Planilla de ${periodName} aprobada`}>
+              <Icon name="checkCircle" size={13} /> Inscrito
+            </span>
+          ) : (
+            <span className="enroll-badge enroll-badge--no" title={`Para figurar inscrito necesita la planilla de ${periodName} aprobada`}>
+              <Icon name="x" size={12} /> No inscrito
+            </span>
+          )}
+          {r.enrollment_state !== 'enrolled' && (
+            <span className={`enroll-cell__form enroll-cell__form--${form.tone}`}>
+              {form.label}
+              {r.period_grade_name && ` · ${r.period_grade_name}`}
+            </span>
+          )}
+        </div>
+      );
+    },
+    sortValue: (r) => (r.enrollment_state === 'enrolled' ? 9 : FORM_STATE[r.form_status || 'missing'].order),
+  };
   const listColumns = [
     nameColumn,
     documentColumn,
     {
       key: 'section',
-      header: 'Grado y sección',
-      render: (r) => (r.section_id ? `${r.grade_name} · ${sectionLabel(r.section_name)}` : <span className="text-muted">Sin inscripción</span>),
+      header: periodName ? `Grado y sección ${periodName}` : 'Grado y sección',
+      // Del año elegido. Si ese año ya cerró para el alumno (promovido, repite, retirado), se indica y a dónde pasa.
+      render: (r) =>
+        r.section_id ? (
+          <div className="grade-cell">
+            <span>{`${r.grade_name} · ${sectionLabel(r.section_name)}`}</span>
+            {r.enrollment_status && r.enrollment_status !== 'active' && (
+              <span className={`grade-cell__outcome grade-cell__outcome--${r.enrollment_status}`}>
+                {OUTCOME_LABELS[r.enrollment_status] || r.enrollment_status}
+                {r.next_grade_name && ` → ${r.next_grade_name} (${r.next_period_name})`}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-muted">{periodName ? `Sin inscripción en ${periodName}` : 'Sin inscripción'}</span>
+        ),
       sortValue: (r) => (r.section_id ? `${r.level_sort}-${String(r.grade_sort).padStart(3, '0')}-${r.grade_name}-${r.section_name}` : '~'),
     },
     {
@@ -274,6 +341,7 @@ function StudentsPage() {
       render: (r) => (r.level_code ? <LevelBadge code={r.level_code} /> : <span className="text-muted">—</span>),
       sortValue: (r) => (r.level_code ? LEVEL_CODES.indexOf(r.level_code) : 9),
     },
+    enrollmentColumn,
     statusColumn,
   ];
 
@@ -296,6 +364,7 @@ function StudentsPage() {
     { header: 'Nivel',             value: (r) => r.level_code ? { initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria' }[r.level_code] ?? r.level_code : '', width: 14 },
     { header: 'Estado',            value: (r) => STATUS_LABELS[r.status]?.[0] ?? r.status, width: 12 },
     { header: 'Año escolar',       value: (r) => r.school_period_name ?? '',        width: 16 },
+    { header: `Inscripción ${periodName || ''}`.trim(), value: (r) => (r.enrollment_state === 'enrolled' ? 'Inscrito' : `No inscrito · ${FORM_STATE[r.form_status || 'missing'].label.toLowerCase()}`), width: 30 },
     { header: 'Fecha de nacimiento', value: (r) => r.birth_date ? r.birth_date.slice(0, 10) : '', width: 18 },
   ];
   const exportButton = (
@@ -334,6 +403,16 @@ function StudentsPage() {
       <StatusFilter value={status} onChange={setStatus} counts={statusCounts} total={forStatus.length}>
         {/* Dato financiero: solo para quien ve Pagos. */}
         {canSeeFees && <FeePill active={specialFee} onChange={setSpecialFee} count={specialFeeCount} />}
+        <button
+          type="button"
+          className={`level-filter__item ${notEnrolled ? 'level-filter__item--active' : ''}`}
+          onClick={() => setNotEnrolled((v) => !v)}
+          aria-pressed={notEnrolled}
+          title={`Alumnos sin inscripción en ${periodName || 'el año vigente'}`}
+        >
+          No inscritos
+          <span className="level-filter__count">{notEnrolledCount}</span>
+        </button>
       </StatusFilter>
       <LevelFilter value={level} onChange={setLevel} counts={levelCounts} total={forLevel.length} />
     </div>
@@ -366,7 +445,7 @@ function StudentsPage() {
       {view === 'list' ? (
         <DataTable
           title="Alumnos del colegio"
-          description="El grado y la sección son los de su inscripción vigente."
+          description={`Grado, sección e inscripción del año escolar ${periodName || 'vigente'}: cada año tiene su propio registro.`}
           columns={listColumns}
           rows={visible}
           loading={loading}
@@ -455,7 +534,7 @@ function StudentsPage() {
           ) : (
             <StudentGroups
               rows={filtered}
-              columns={[nameColumn, documentColumn, statusColumn]}
+              columns={[nameColumn, documentColumn, enrollmentColumn, statusColumn]}
               searching={Boolean(query)}
               // Cupos solo tienen sentido sin filtros (con filtro, el conteo no es la matrícula de la sección).
               showCapacity={!anyFilter && !query}
@@ -471,6 +550,7 @@ function StudentsPage() {
 
       {editing !== null && <StudentFormModal initial={editing} onClose={() => setEditing(null)} onSaved={refetch} />}
       {historyOf && <AcademicHistoryDrawer student={historyOf} onClose={() => setHistoryOf(null)} />}
+      {formsOf && <EnrollmentFormsHistoryDrawer student={formsOf} onClose={() => setFormsOf(null)} />}
     </div>
   );
 }

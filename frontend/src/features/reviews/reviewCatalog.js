@@ -11,5 +11,6 @@ export const ENTRY_LABELS = {
   submitted: 'Envió a revisión',
   observed: 'Solicitó ajustes',
   approved: 'Aprobó',
+  direct_approved: 'Aprobó directamente',
   reset: 'Volvió a borrador',
 };

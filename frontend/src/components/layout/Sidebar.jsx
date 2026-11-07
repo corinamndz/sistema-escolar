@@ -26,7 +26,9 @@ function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggleCollapsed }) {
     ...section,
     items: section.items
       .filter((item) => isNavItemVisible(item, { can, user, portalViews: settings.portalViews }))
-      .map((item) => ({ ...item, label: navItemLabel(item, user) })),
+      .map((item) => ({ ...item, label: navItemLabel(item, user) }))
+      // `sortAlphabetically`: la sección se lista por orden alfabético del nombre visible (ej. Administración).
+      .sort((a, b) => (section.sortAlphabetically ? a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }) : 0)),
   })).filter((section) => section.items.length > 0);
 
   const displayName = user?.fullName || user?.username;

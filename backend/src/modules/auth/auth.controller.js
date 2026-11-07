@@ -6,7 +6,7 @@ const { getEffectivePermissions } = require('../../middlewares/permission.middle
 const { getTeacherScope } = require('../access/teacherScope');
 const { loadCoordinatorScope } = require('../access/coordinatorScope');
 const audit = require('../../services/audit/audit.service');
-const { isAdmin } = require('../../middlewares/admin.middleware');
+const { isAdmin, isAdmissions } = require('../../middlewares/admin.middleware');
 
 const loginSchema = z.object({
   tenantSlug: z.string().min(1, 'tenantSlug es requerido.'),
@@ -45,6 +45,8 @@ const me = asyncHandler(async (req, res) => {
     coordinator: coord ? { level: coord.level } : null,
     // Director (rol de sistema Administrador): módulos exclusivos como Auditoría.
     isAdmin: await isAdmin(req.db, req.tenantId, req.user.id),
+    // Rol Admisiones (migración 083): planillas de inscripción y consulta de alumnos.
+    isAdmissions: await isAdmissions(req.db, req.tenantId, req.user.id),
   });
 });
 

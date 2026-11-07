@@ -26,6 +26,11 @@ import EventsPage from '../features/events/pages/EventsPage';
 import AppointmentsPage from '../features/appointments/pages/AppointmentsPage';
 import NotificationLogPage from '../features/notifications/pages/NotificationLogPage';
 import AnnouncementsPage from '../features/notifications/pages/AnnouncementsPage';
+import EnrollmentFormsPage from '../features/enrollment-forms/pages/EnrollmentFormsPage';
+import FormBuilderPage from '../features/enrollment-forms/pages/FormBuilderPage';
+import EnrollmentSubmissionsPage from '../features/enrollment-forms/pages/EnrollmentSubmissionsPage';
+import PortalEnrollmentPage from '../features/enrollment-forms/pages/PortalEnrollmentPage';
+import GuardianPortalPreviewPage from '../features/enrollment-forms/pages/GuardianPortalPreviewPage';
 import NotificationCenterPage from '../features/notifications/pages/NotificationCenterPage';
 import RecognitionsPage from '../features/recognitions/pages/RecognitionsPage';
 import PortalViewGate from '../components/layout/PortalViewGate';
@@ -105,7 +110,18 @@ function App() {
             </Route>
             <Route element={<PermissionRoute module="tenant_settings" blockTeacher />}>
               <Route path="notifications/log" element={<NotificationLogPage />} />
+            </Route>
+            {/* Comunicados: su propio permiso (módulo «Comunicados»), no el de Configuración. */}
+            <Route element={<PermissionRoute module="announcements" blockTeacher />}>
               <Route path="notifications/announcements" element={<AnnouncementsPage />} />
+            </Route>
+            {/* Planillas de inscripción: diseño, bandeja y aprobación — Administrador o Admisiones (el backend exige requireAdmissions). */}
+            <Route element={<PermissionRoute admissionsOnly />}>
+              <Route path="enrollment-submissions" element={<EnrollmentSubmissionsPage />} />
+              <Route path="enrollment-forms" element={<EnrollmentFormsPage />} />
+              <Route path="enrollment-forms/:id" element={<FormBuilderPage />} />
+              {/* «Ver como representante»: el portal de Inscripción de un representante del alumno, en simulación. */}
+              <Route path="students/:id/portal-preview" element={<GuardianPortalPreviewPage />} />
             </Route>
             <Route element={<PermissionRoute adminOnly />}>
               <Route path="audit" element={<AuditPage />} />
@@ -158,6 +174,8 @@ function App() {
             {/* Cartelera de eventos para las familias (el backend filtra por sus hijos) */}
             <Route element={<PermissionRoute guardianOnly />}>
               <Route path="portal/events" element={<PortalViewGate view="events"><PortalEventsPage /></PortalViewGate>} />
+              {/* Planillas de inscripción publicadas por el colegio (el backend valida el representante). */}
+              <Route path="portal/enrollment" element={<PortalEnrollmentPage />} />
             </Route>
 
             <Route path="*" element={<NotFoundPage />} />

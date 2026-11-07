@@ -33,5 +33,19 @@ router.get(
     res.status(200).json(await summary.getSummary(req.db, req.tenantId, { schoolPeriodId }));
   })
 );
+/**
+ * GET /grading/summary/students/:studentId?schoolPeriodId= — desglose de UN alumno:
+ * notas por materia y lapso, definitiva y estado (aprobada / reprobada) según la escala del año.
+ */
+router.get(
+  '/summary/students/:studentId',
+  requirePermission('grading', 'read'),
+  scope.denyTeachers,
+  asyncHandler(async (req, res) => {
+    const studentId = z.string().uuid('Alumno inválido.').parse(req.params.studentId);
+    const schoolPeriodId = z.string().uuid().optional().parse(req.query.schoolPeriodId || undefined);
+    res.status(200).json(await summary.getStudentDetail(req.db, req.tenantId, studentId, { schoolPeriodId }));
+  })
+);
 
 module.exports = router;

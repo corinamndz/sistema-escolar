@@ -13,6 +13,8 @@ import UpcomingEvents from '../../portal/components/UpcomingEvents';
 import { formatAmounts, formatDate, formatMoney } from '../../payments/paymentStatus';
 import MyAppointments from '../../appointments/components/MyAppointments';
 import { usePortalViews } from '../../../lib/portalViews';
+import enrollmentFormsApi from '../../../api/endpoints/enrollmentForms.api';
+import EnrollmentReminder from '../../enrollment-forms/components/EnrollmentReminder';
 
 const STUDENT_STATUS = {
   active: ['Activo', 'success'],
@@ -66,6 +68,13 @@ function StudentCard({ student, refCurrency, showPayments = true }) {
               <LevelBadge code={student.level_code} short={false} />
               <span className="cell-person__sub">Año escolar {student.school_period_name}</span>
             </div>
+            {/* Promovido: el grado de ESTE año se mantiene; el nuevo es del año siguiente. */}
+            {student.next_grade_name && (
+              <div className="student-card__next">
+                <Icon name="arrowRight" size={13} /> {student.enrollment_status === 'retained' ? 'Repite' : 'Pasa a'} {student.next_grade_name}
+                {student.next_section_name ? ` · Sección ${student.next_section_name}` : ''} en {student.next_period_name}
+              </div>
+            )}
           </>
         ) : (
           <div className="student-card__value text-muted">Sin inscripción activa en este momento</div>
@@ -157,6 +166,8 @@ export function BillingNotice({ issues }) {
  */
 function GuardianPanel() {
   const { data, loading, error } = useFetch(() => portalApi.getMine(), []);
+  // Inscripción pendiente (planilla del año / del grado nuevo sin aprobar). Si falla, simplemente no se muestra.
+  const { data: reminders } = useFetch(() => enrollmentFormsApi.portalReminders().catch(() => []), []);
   // Secciones que el colegio ocultó (Configuración → Vistas del representante).
   const isOn = usePortalViews();
   const showPayments = isOn('payments');
@@ -171,6 +182,7 @@ function GuardianPanel() {
 
   return (
     <>
+      <EnrollmentReminder reminders={reminders || []} link />
       {showPayments && incomplete && <BillingNotice issues={billingIssues} />}
 
       <div className={`grid ${showPayments ? 'grid--3' : 'grid--1'}`} style={{ marginBottom: 24 }}>

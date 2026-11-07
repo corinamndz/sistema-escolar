@@ -7,7 +7,8 @@ import { isPortalViewOn } from '../../lib/portalViews';
  * `teacherOnly` solo a usuarios con ficha docente;
  * `blockTeacher` lo oculta a los docentes restringidos a su carga (el backend
  * igual responde 403); `portalView` lo oculta si el colegio desactivó esa
- * sección del portal (Configuración → Vistas del representante). El Topbar
+ * sección del portal (Configuración → Vistas del representante);
+ * `admissionsOnly` solo al Administrador y al rol Admisiones (canManageAdmissions). El Topbar
  * usa esta misma lista para el título de la página actual.
  */
 const NAV_SECTIONS = [
@@ -35,6 +36,8 @@ const NAV_SECTIONS = [
       // Citas con padres: la administración agenda; el docente consulta las de sus alumnos.
       { moduleCode: 'appointments', label: 'Citas con padres', teacherLabel: 'Citas de mis alumnos', icon: 'clock', path: '/appointments' },
       { moduleCode: 'portal_events', label: 'Cartelera', icon: 'calendar', path: '/portal/events', guardianOnly: true, portalView: 'events' },
+      // La familia completa la planilla en «Inscripción»; el Administrador la diseña y aprueba (sección Administración).
+      { moduleCode: 'portal_enrollment', label: 'Inscripción', icon: 'clipboard', path: '/portal/enrollment', guardianOnly: true },
     ],
   },
   {
@@ -68,9 +71,15 @@ const NAV_SECTIONS = [
   },
   {
     label: 'Administración',
+    // Se lista en orden alfabético (Sidebar), sin importar el orden de este arreglo.
+    sortAlphabetically: true,
     items: [
       { moduleCode: 'roles', label: 'Roles y permisos', icon: 'shield', path: '/roles' },
       { moduleCode: 'tenant_settings', label: 'Configuración', icon: 'settings', path: '/tenant/settings' },
+      // Planillas de inscripción: exclusivas del Administrador y del rol Admisiones. «Recibidas» es la
+      // bandeja de revisión (aprobar = alta del alumno, sus representantes y la matrícula).
+      { moduleCode: 'enrollment_forms', label: 'Planillas recibidas', icon: 'inbox', path: '/enrollment-submissions', admissionsOnly: true },
+      { moduleCode: 'enrollment_forms', label: 'Diseño de planillas', icon: 'clipboard', path: '/enrollment-forms', admissionsOnly: true },
       // Historial de correos, avisos de la campana, credenciales y comprobantes, con reenvío.
       // Comunicados: avisos con formato a todo el colegio, niveles, grados, secciones o personas.
       { moduleCode: 'announcements', label: 'Comunicados', icon: 'megaphone', path: '/notifications/announcements', blockTeacher: true },
@@ -87,6 +96,7 @@ const NAV_SECTIONS = [
 const EXTRA_TITLES = [
   { prefix: '/grading/plans/', label: 'Calificaciones', parent: 'Académico' },
   { prefix: '/portal/students/', label: 'Mi alumno', parent: 'Portal' },
+  { prefix: '/enrollment-forms/', label: 'Diseño de planilla', parent: 'Administración' },
   { prefix: '/academics/sections/', label: 'Detalle de sección', parent: 'Académico' },
 ];
 
@@ -126,17 +136,25 @@ function isNavItemVisible(item, { can, user, portalViews }) {
   if (item.home) return hasDashboard({ can, user });
   if (!isPortalViewOn(portalViews, item.portalView)) return false;
   if (item.adminOnly) return Boolean(user?.isAdmin);
+  if (item.admissionsOnly) return canManageAdmissions(user);
   if (item.blockTeacher && user?.isRestrictedTeacher) return false;
   if (item.guardianOnly) return Boolean(user?.guardianId);
   if (item.teacherOnly) return Boolean(user?.teachingStaffId);
   return Boolean(item.public) || can(item.moduleCode, 'read');
 }
 
+/** Planillas de inscripción (diseño, bandeja y aprobación): Administrador o rol Admisiones. */
+function canManageAdmissions(user) {
+  return Boolean(user?.isAdmin || user?.isAdmissions);
+}
+
 /** Página de inicio del usuario: el panel, o la primera página del menú que puede ver (null si ninguna). */
 function homePath(ctx) {
   if (hasDashboard(ctx)) return '/';
+  // Admisiones: su trabajo empieza en la bandeja de planillas.
+  if (ctx.user?.isAdmissions) return '/enrollment-submissions';
   const first = NAV_SECTIONS.flatMap((s) => s.items).find((item) => !item.home && isNavItemVisible(item, ctx));
   return first?.path || null;
 }
 
-export { NAV_SECTIONS, findRouteMeta, isNavItemVisible, navItemLabel, hasDashboard, homePath };
+export { NAV_SECTIONS, findRouteMeta, isNavItemVisible, navItemLabel, hasDashboard, homePath, canManageAdmissions };

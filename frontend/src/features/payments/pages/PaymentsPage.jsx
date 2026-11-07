@@ -28,7 +28,6 @@ import { PaymentFormModal } from '../components/PaymentForms';
 import { PaymentDetailModal } from '../components/PaymentDetailModal';
 import { Link, useSearchParams } from 'react-router-dom';
 import { BatchReviewDrawer, PendingBatches } from '../components/BatchReview';
-import { currentPeriod } from '../../../lib/schoolPeriods';
 import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 import FeePlansSection from '../components/FeePlansSection';
 import AugustSetting from '../components/AugustSetting';
@@ -437,8 +436,8 @@ function mergeAmounts(amounts) {
  * selectores), también si la lista de años llega DESPUÉS de abrir el modal.
  */
 function usePeriodChoice(periods) {
-  const [schoolPeriodId, setSchoolPeriodId] = useState(() => currentPeriod(periods)?.id || '');
-  useDefaultSchoolPeriod(periods, schoolPeriodId, setSchoolPeriodId);
+  const [schoolPeriodId, setSchoolPeriodId] = useState('');
+  useDefaultSchoolPeriod(periods, schoolPeriodId, setSchoolPeriodId); // arranca en el año global
   return [schoolPeriodId, setSchoolPeriodId];
 }
 

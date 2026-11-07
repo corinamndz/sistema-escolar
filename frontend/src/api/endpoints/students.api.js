@@ -1,6 +1,7 @@
 import { axiosClient } from '../axiosClient';
 
 const studentsApi = {
+  /** `params.enrollmentPeriodId`: año del estatus «Inscrito / No inscrito» (por defecto, el vigente). */
   list: (params) => axiosClient.get('/students', { params }).then((r) => r.data),
   getOne: (id) => axiosClient.get(`/students/${id}`).then((r) => r.data),
   /** Años cursados: grado, sección, resultado (promovido, repite…), promedio y boleta por materia. */

@@ -15,9 +15,13 @@ import Table from '../../../components/ui/Table';
 import Spinner from '../../../components/ui/Spinner';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import Card from '../../../components/ui/Card';
+import Icon from '../../../components/ui/Icon';
 import AcademicHistory from '../components/AcademicHistory';
 import { useAuth } from '../../../context/AuthContext';
 import StudentSanctions from '../../discipline/components/StudentSanctions';
+
+/** Estado de la matrícula de cada año (enrollments.status). */
+const ENROLLMENT_STATUS = { active: 'Cursando', promoted: 'Promovido', retained: 'Repite', graduated: 'Egresado', withdrawn: 'Retirado' };
 import StudentFeeCard from '../../payments/components/StudentFeeCard';
 
 function StudentDetailPage() {
@@ -81,7 +85,7 @@ function StudentDetailPage() {
       />
 
       <div className="grid grid--2">
-        <Card title="Inscripción actual">
+        <Card title={student.currentPeriod ? `Inscripción ${student.currentPeriod.name}` : 'Inscripción actual'} subtitle="Año escolar vigente">
           {student.currentEnrollment ? (
             <p>
               {user?.isRestrictedTeacher ? (
@@ -93,7 +97,29 @@ function StudentDetailPage() {
               )}
             </p>
           ) : (
-            <p>{user?.isRestrictedTeacher ? 'Sin inscripción activa.' : 'Sin inscripción activa. Ve a Académico → Secciones para inscribirlo.'}</p>
+            <p>{user?.isRestrictedTeacher ? 'Sin inscripción en el año vigente.' : 'Sin inscripción en el año vigente. Ve a Académico → Secciones para inscribirlo.'}</p>
+          )}
+          {student.currentEnrollment && student.currentEnrollment.status !== 'active' && (
+            <p className="text-sm text-muted">Este año: {ENROLLMENT_STATUS[student.currentEnrollment.status] || student.currentEnrollment.status}</p>
+          )}
+          {student.upcomingEnrollment && (
+            <p className="text-sm">
+              <Icon name="arrowRight" size={13} /> {student.upcomingEnrollment.school_period_name}: {student.upcomingEnrollment.grade_name} - Sección {student.upcomingEnrollment.section_name}
+            </p>
+          )}
+          {/* Cada año escolar con su propio registro: el historial no se sobrescribe al promover. */}
+          {student.enrollments?.length > 1 && (
+            <ul className="period-enrollments">
+              {student.enrollments.map((e) => (
+                <li key={e.enrollment_id} className={e.school_period_id === student.currentPeriod?.id ? 'is-current' : ''}>
+                  <span className="period-enrollments__year">{e.school_period_name}</span>
+                  <span>
+                    {e.grade_name} · Sección {e.section_name}
+                  </span>
+                  <span className="period-enrollments__status">{ENROLLMENT_STATUS[e.status] || e.status}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </Card>
 

@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './app/App';
 import { AuthProvider } from './context/AuthContext';
 import { TenantProvider } from './context/TenantContext';
+import { AcademicYearProvider } from './context/AcademicYearContext';
 import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { redirectLegacyUrl, routerBasename } from './lib/tenantPath';
@@ -17,11 +18,14 @@ if (!redirectLegacyUrl()) {
       <BrowserRouter basename={routerBasename}>
         <AuthProvider>
           <TenantProvider>
-            <ToastProvider>
-              <ConfirmProvider>
-                <App />
-              </ConfirmProvider>
-            </ToastProvider>
+            {/* Año escolar global (selector de la barra superior): lo leen todos los módulos. */}
+            <AcademicYearProvider>
+              <ToastProvider>
+                <ConfirmProvider>
+                  <App />
+                </ConfirmProvider>
+              </ToastProvider>
+            </AcademicYearProvider>
           </TenantProvider>
         </AuthProvider>
       </BrowserRouter>

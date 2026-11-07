@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { ReviewInbox, ReviewStatusBadge } from '../../reviews/components/ReviewWidgets';
+import { DirectApproveButton, useCanDirectApprove } from '../../reviews/components/DirectApprove';
 import ReviewDrawer from '../../reviews/components/ReviewDrawer';
 import DataTable from '../../../components/ui/DataTable';
 import Badge from '../../../components/ui/Badge';
@@ -69,6 +70,7 @@ const formatShort = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`).toLoca
  */
 function EvaluationPlansPage() {
   const { can } = useAuth();
+  const canDirectApprove = useCanDirectApprove();
   const navigate = useNavigate();
   const { data: periods, loading: loadingPeriods } = useFetch(() => evaluationPlansApi.listPeriodOptions(), []);
   const { data: plans, setData: setPlans, loading: loadingPlans, error: plansError, refetch: refetchPlans } = useFetch(() => evaluationPlansApi.list(), []);
@@ -165,7 +167,19 @@ function EvaluationPlansPage() {
     },
     { key: 'total_weight', header: 'Ponderación', render: (p) => <PlanWeight plan={p} />, sortValue: (p) => Number(p.total_weight) },
     // Revisión y aprobación (coordinación del nivel o dirección).
-    { key: 'review_status', header: 'Revisión', render: (p) => <ReviewStatusBadge status={p.review_status} />, sortValue: (p) => ['observado', 'en_revision', 'borrador', 'aprobado'].indexOf(p.review_status) },
+    {
+      key: 'review_status',
+      header: 'Revisión',
+      // Administrador / Coordinador del nivel: «Aprobar» directo (plan al 100 %, sin envío a revisión).
+      render: (p) => (
+        <div className="review-cell">
+          <ReviewStatusBadge status={p.review_status} />
+          {p.review_status !== 'aprobado' && canDirectApprove(p.level_code) && Math.abs(Number(p.total_weight) - 100) < 0.01 && (
+            <DirectApproveButton target={{ planId: p.id }} what="plan" status={p.review_status} onApproved={refetchPlans} />
+          )}
+        </div>
+      ),
+      sortValue: (p) => ['observado', 'en_revision', 'borrador', 'aprobado'].indexOf(p.review_status) },
   ];
   const [reviewing, setReviewing] = useState(null);
   const [duplicating, setDuplicating] = useState(null);

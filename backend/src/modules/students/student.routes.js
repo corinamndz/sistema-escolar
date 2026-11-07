@@ -12,6 +12,7 @@ router.use(authMiddleware, tenantMiddleware);
 
 // Alumnos
 router.get('/students', requirePermission('students', 'read'), controller.listStudents);
+router.get('/students/enrollment-periods', requirePermission('students', 'read'), controller.listEnrollmentPeriods);
 router.post('/students', requirePermission('students', 'create'), controller.createStudent);
 router.get('/students/:id', requirePermission('students', 'read'), ownStudent, controller.getStudent);
 router.get('/students/:id/academic-history', requirePermission('students', 'read'), ownStudent, controller.getAcademicHistory);

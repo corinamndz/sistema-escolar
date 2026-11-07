@@ -11,6 +11,8 @@ const reviewsApi = {
   submit: (target, comment) => axiosClient.post(`${base(target)}/submit`, { comment: comment || undefined }).then((r) => r.data),
   /** Revisor: decision 'approve' | 'observe' (observe exige comentario). */
   review: (target, decision, comment) => axiosClient.post(`${base(target)}/review`, { decision, comment: comment || undefined }).then((r) => r.data),
+  /** Administrador / Coordinador del nivel: aprobar sin envío a revisión (borrador, con observaciones o en revisión). */
+  directApprove: (target, comment) => axiosClient.post(`${base(target)}/approve-direct`, { comment: comment || undefined }).then((r) => r.data),
   comment: (target, body) => axiosClient.post(`${base(target)}/comments`, { body }).then((r) => r.data),
   /** Pendientes de revisión del coordinador (su nivel) o del Director: { reviewer, level, items }. */
   inbox: () => axiosClient.get('/reviews/inbox').then((r) => r.data),

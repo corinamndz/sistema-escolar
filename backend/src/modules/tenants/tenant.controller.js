@@ -41,6 +41,8 @@ const updateSettingsSchema = z.object({
       .nullable()
       .optional()
   ),
+  // Dirección física (membrete de los documentos). Vacío ("") la borra.
+  address: z.preprocess((v) => (v === undefined ? undefined : String(v).trim() === '' ? null : String(v).trim()), z.string().max(300, 'Máximo 300 caracteres.').nullable().optional()),
   // "true" para quitar el logo actual sin subir uno nuevo.
   removeLogo: optional(z.enum(['true', 'false']).transform((v) => v === 'true')),
 });
@@ -48,7 +50,7 @@ const updateSettingsSchema = z.object({
 /**
  * PUT /tenant/settings (multipart/form-data)
  * Campos de texto: name, primaryColor, secondaryColor, menuGradient, accentSecondaryColor,
- * tableHeaderStyle, contactPhone, contactEmail, rif, removeLogo.
+ * tableHeaderStyle, contactPhone, contactEmail, rif, address, removeLogo.
  * Archivo opcional: `logo` (PNG/JPG, máx. 2 MB), procesado por `logoUpload`.
  */
 const updateSettings = asyncHandler(async (req, res) => {

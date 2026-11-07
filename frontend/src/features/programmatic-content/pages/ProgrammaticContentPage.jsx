@@ -8,6 +8,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
 import PageHeader from '../../../components/ui/PageHeader';
 import { ReviewButton, ReviewInbox } from '../../reviews/components/ReviewWidgets';
+import { DirectApproveButton } from '../../reviews/components/DirectApprove';
 import Button from '../../../components/ui/Button';
 import Select from '../../../components/ui/Select';
 import Field from '../../../components/ui/Field';
@@ -23,7 +24,7 @@ import ContentItemModal from '../components/ContentItemModal';
 import IncludeEvaluationModal from '../components/IncludeEvaluationModal';
 import BulkImportActions from '../../../components/import/BulkImportActions';
 import DuplicateToYearModal from '../../../components/ui/DuplicateToYearModal';
-import { currentPeriod } from '../../../lib/schoolPeriods';
+import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 import { LEVELS } from '../../academics/levels';
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -157,12 +158,8 @@ function ProgrammaticContentPage() {
     setParam({ materia: pick.subject_id, grado: pick.grade_id });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, subjectId, gradeId]);
-  useEffect(() => {
-    if (periodId || !periods?.length) return;
-    const sorted = [...periods].sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')));
-    setParam({ ano: (currentPeriod(sorted) || sorted[0]).id });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periods, periodId]);
+  // Año: el de la URL si viene; si no, el año escolar global (barra superior), y lo sigue al cambiarlo.
+  useDefaultSchoolPeriod(periods, periodId, (id) => setParam({ ano: id }));
 
   const selected = options?.find((o) => o.subject_id === subjectId && o.grade_id === gradeId);
   const { data: content, setData: setContent, loading, error } = useFetch(
@@ -366,6 +363,9 @@ function ProgrammaticContentPage() {
                       defaultOpen={openReview}
                       onChanged={reload}
                     />
+                  )}
+                  {review?.can_direct_approve && (
+                    <DirectApproveButton target={{ gradeId, subjectId, schoolPeriodId: periodId }} what="content" status={review.status} size="" onApproved={reload} />
                   )}
                   {canDuplicate && (
                     <Button variant="secondary" icon="copy" onClick={() => setDuplicating(true)}>

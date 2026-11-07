@@ -6,7 +6,6 @@ import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import Select from '../../../components/ui/Select';
 import Button from '../../../components/ui/Button';
-import Drawer from '../../../components/ui/Drawer';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
@@ -15,6 +14,7 @@ import { LevelBadge, LevelFilter } from '../../academics/levels';
 import { isQualitative, literalFor } from '../gradingScale';
 import LiteralBadge from '../components/LiteralBadge';
 import OfficialReportCard from '../components/OfficialReportCard';
+import GradeDetailDrawer from '../components/GradeDetailDrawer';
 
 const VIEW_KEY = 'gradeSummary.view';
 const fullName = (s) => `${s.first_name} ${s.last_name}`;
@@ -113,7 +113,7 @@ function ReportCard({ student, terms, scale, passing }) {
 }
 
 /** Tarjeta colapsable de un alumno: cabecera con el acumulado por lapso; al abrir, su boleta. */
-function StudentCard({ student, terms, scale, passing, open, onToggle, onPrint }) {
+function StudentCard({ student, terms, scale, passing, open, onToggle, onPrint, onDetail }) {
   const qualitative = isQualitative(student.grading_scale);
   return (
     <section className={`gsum-card ${open ? 'is-open' : ''}`}>
@@ -143,6 +143,9 @@ function StudentCard({ student, terms, scale, passing, open, onToggle, onPrint }
             <Link to={`/students/${student.id}`} className="btn btn--ghost btn--sm">
               Ver ficha del alumno <Icon name="arrowRight" size={14} />
             </Link>
+            <Button size="sm" variant="ghost" icon="eye" onClick={() => onDetail(student)}>
+              Detalle por materia
+            </Button>
             <Button size="sm" variant="secondary" icon="file" onClick={() => onPrint(student)}>
               Imprimir boleta
             </Button>
@@ -376,7 +379,7 @@ function GradeSummaryPage() {
           canCreate={false}
           headerActions={<ExportButton filename={`resumen-calificaciones-${data?.school_period?.name || ''}`} columns={exportColumns} rows={visible} />}
           rowActions={[
-            { key: 'grades', icon: 'eye', label: 'Ver calificaciones', tone: 'view', onClick: setViewing },
+            { key: 'grades', icon: 'eye', label: 'Ver calificaciones por materia', tone: 'view', onClick: setViewing },
             { key: 'print', icon: 'file', label: 'Imprimir boleta oficial', onClick: setPrinting },
           ]}
           pageSize={25}
@@ -441,6 +444,7 @@ function GradeSummaryPage() {
                   open={openIds.has(s.id)}
                   onToggle={() => toggle(s.id)}
                   onPrint={setPrinting}
+                  onDetail={setViewing}
                 />
               ))}
             </div>
@@ -448,30 +452,17 @@ function GradeSummaryPage() {
         </>
       )}
 
+      {/* Detalle por materia y lapso, con definitiva y aprobada / reprobada (sin descargar el PDF). */}
       {viewing && (
-        <Drawer title={`Calificaciones · ${fullName(viewing)}`} onClose={() => setViewing(null)} size="lg">
-          <p className="text-sm text-muted" style={{ marginTop: -6 }}>
-            {sectionOf(viewing) || 'Sin inscripción en el año'} · Año escolar {data?.school_period?.name}
-          </p>
-          <ReportCard student={viewing} terms={terms} scale={scale} passing={passing} />
-          <div className="form-actions">
-            <Link to={`/students/${viewing.id}`} className="btn btn--secondary">
-              Ver ficha del alumno
-            </Link>
-            <Button variant="secondary" onClick={() => setViewing(null)}>
-              Cerrar
-            </Button>
-            <Button
-              icon="file"
-              onClick={() => {
-                setPrinting(viewing);
-                setViewing(null);
-              }}
-            >
-              Imprimir boleta
-            </Button>
-          </div>
-        </Drawer>
+        <GradeDetailDrawer
+          studentId={viewing.id}
+          schoolPeriodId={data?.school_period?.id}
+          onClose={() => setViewing(null)}
+          onPrint={() => {
+            setPrinting(viewing);
+            setViewing(null);
+          }}
+        />
       )}
 
       {printing && (

@@ -28,6 +28,12 @@ const familyNotify = require('../notifications/notify');
  * docente no lo puede editar (`locked`); para cambiar algo aprobado, quien
  * revisa lo reabre. Los planes de evaluación siguen su flujo de siempre.
  *
+ * Aprobación DIRECTA (migración 081): el Administrador o el Coordinador del
+ * nivel aprueban sin que el docente lo envíe (borrador / con observaciones /
+ * en revisión → aprobado), con las mismas condiciones que para enviarlo
+ * (plan al 100 %, programa con contenido). Queda registrado: approval_mode =
+ * 'direct', reviewed_at / reviewed_by y el evento 'direct_approved' en el hilo.
+ *
  * Avisos (campana, personales): al enviar → los coordinadores del nivel (o el
  * Director si el nivel no tiene coordinador); al aprobar, pedir ajustes o
  * reabrir → el docente que lo envió.
@@ -58,6 +64,7 @@ async function loadPlanTarget(trx, tenantId, planId) {
       'ep.submitted_by',
       'ep.reviewed_at',
       'ep.reviewed_by',
+      'ep.approval_mode',
       'g.level_code',
       'g.name as grade_name',
       'sec.name as section_name',
@@ -104,6 +111,7 @@ async function loadContentTarget(trx, tenantId, gradeId, subjectId, schoolPeriod
     submitted_by: review?.submitted_by || null,
     reviewed_at: review?.reviewed_at || null,
     reviewed_by: review?.reviewed_by || null,
+    approval_mode: review?.approval_mode || null,
     level_code: pair.level_code,
     grade_name: pair.grade_name,
     subject_name: pair.subject_name,
@@ -119,7 +127,8 @@ async function loadContentTarget(trx, tenantId, gradeId, subjectId, schoolPeriod
 /** 'reviewer' | 'author' | 'viewer' (404 si no puede verlo). */
 async function roleFor(req, target) {
   const perms = req.permissions || (await getEffectivePermissions(req.db, req.tenantId, req.user.id));
-  if (perms.roles?.can_update || (await isAdmin(req.db, req.tenantId, req.user.id))) return { role: 'reviewer', as: 'direccion' };
+  const admin = await isAdmin(req.db, req.tenantId, req.user.id);
+  if (perms.roles?.can_update || admin) return { role: 'reviewer', as: 'direccion', admin };
 
   const coord = await coordinatorScope.getCoordinatorScope(req);
   if (coord) {
@@ -142,8 +151,12 @@ async function roleFor(req, target) {
 
 const LOCKED_STATUSES = ['en_revision', 'aprobado'];
 
-const canDo = (role, status, enabled = true) => ({
+/** Aprobación directa: solo el Administrador o el Coordinador del nivel (no basta con editar roles). */
+const canApproveDirectly = (role) => role.role === 'reviewer' && (role.admin === true || role.as === 'coordinacion');
+
+const canDo = (role, status, enabled = true, direct = false) => ({
   submit: enabled && role === 'author' && ['borrador', 'observado'].includes(status),
+  directApprove: enabled && direct && status !== 'aprobado',
   review: enabled && role === 'reviewer' && status === 'en_revision',
   reopen: enabled && role === 'reviewer' && status === 'aprobado',
   comment: role === 'author' || role === 'reviewer',
@@ -172,7 +185,7 @@ async function nameOf(trx, userId) {
 }
 
 async function present(req, target, role) {
-  const can = canDo(role.role, target.status, target.enabled);
+  const can = canDo(role.role, target.status, target.enabled, canApproveDirectly(role));
   return {
     type: target.type,
     ...target.key,
@@ -188,6 +201,8 @@ async function present(req, target, role) {
     submitted_by_name: await nameOf(req.db, target.submitted_by),
     reviewed_at: target.reviewed_at,
     reviewed_by_name: await nameOf(req.db, target.reviewed_by),
+    // Cómo quedó aprobado: 'review' (revisión normal) | 'direct' (aprobación directa).
+    approval_mode: target.status === 'aprobado' ? target.approval_mode || 'review' : null,
     my_role: role.role,
     can,
     comments: await commentsOf(req.db, target),
@@ -352,14 +367,7 @@ async function submit(req, type, key, { comment } = {}) {
   if (role.role !== 'author') throw ApiError.forbidden('Solo el docente a cargo envía a revisión.');
   if (!target.enabled) throw ApiError.conflict('El colegio no tiene activada la revisión académica: el contenido se publica al guardarlo.');
   if (!canDo(role.role, target.status).submit) throw ApiError.conflict(`No se puede enviar: ${whatOf(target)} está ${STATUS_LABELS[target.status].toLowerCase()}.`);
-  if (target.type === 'plan') {
-    if (!target.activity_count) throw ApiError.unprocessable('Agrega al menos una actividad antes de enviar el plan a revisión.');
-    if (Math.abs(target.total_weight - 100) > 0.01) {
-      throw ApiError.unprocessable(`Las actividades deben sumar 100 % para enviar el plan a revisión (suman ${Number(target.total_weight.toFixed(2))} %).`);
-    }
-  } else if (!target.item_count) {
-    throw ApiError.unprocessable('Agrega al menos una unidad o tema antes de enviar el contenido a revisión.');
-  }
+  assertComplete(target, 'enviar');
   const resend = target.status === 'observado';
   await setStatus(req, target, 'en_revision', { submitted_at: req.db.fn.now(), submitted_by: req.user.id });
   await addEntry(req, target, role, { kind: 'submitted', body: comment || (resend ? 'Reenviado tras ajustar las observaciones.' : null) });
@@ -380,7 +388,7 @@ async function review(req, type, key, { decision, comment }) {
 
   if (decision === 'reopen') {
     if (target.status !== 'aprobado') throw ApiError.conflict(`Solo se reabre lo aprobado (${whatOf(target)} está ${STATUS_LABELS[target.status].toLowerCase()}).`);
-    await setStatus(req, target, 'borrador', {});
+    await setStatus(req, target, 'borrador', { approval_mode: null });
     await addEntry(req, target, role, { kind: 'reset', body: comment?.trim() || `Reabierto por ${role.as === 'direccion' ? 'la Dirección' : 'coordinación'} para hacer ajustes.` });
     await notifyAuthor(req, target, submittedBy, { decision, comment });
     return getReview(req, type, key);
@@ -391,11 +399,52 @@ async function review(req, type, key, { decision, comment }) {
     throw ApiError.badRequest('Escribe los ajustes que pides al docente.', [{ path: 'comment', message: 'Obligatorio al pedir ajustes.' }]);
   }
   const status = decision === 'approve' ? 'aprobado' : 'observado';
-  await setStatus(req, target, status, { reviewed_at: req.db.fn.now(), reviewed_by: req.user.id });
+  await setStatus(req, target, status, { reviewed_at: req.db.fn.now(), reviewed_by: req.user.id, approval_mode: status === 'aprobado' ? 'review' : null });
   await addEntry(req, target, role, { kind: decision === 'approve' ? 'approved' : 'observed', body: comment });
   await notifyAuthor(req, target, submittedBy, { decision, comment });
   // Aprobado = publicado en el portal: se avisa a las familias de sus secciones.
   if (decision === 'approve' && target.type === 'plan') await notifyFamiliesPlanApproved(req, target);
+  return getReview(req, type, key);
+}
+
+/** Lo mínimo para enviar o aprobar: plan con actividades al 100 %, programa con contenido. */
+function assertComplete(target, verb) {
+  const action = verb === 'aprobar' ? 'aprobarlo' : 'enviarlo a revisión';
+  if (target.type === 'plan') {
+    if (!target.activity_count) throw ApiError.unprocessable(`Agrega al menos una actividad al plan antes de ${action}.`);
+    if (Math.abs(target.total_weight - 100) > 0.01) {
+      throw ApiError.unprocessable(`Las actividades deben sumar 100 % para ${action} (suman ${Number(target.total_weight.toFixed(2))} %).`);
+    }
+  } else if (!target.item_count) {
+    throw ApiError.unprocessable(`Agrega al menos una unidad o tema al contenido antes de ${action}.`);
+  }
+}
+
+/**
+ * APROBACIÓN DIRECTA (Administrador o Coordinador del nivel): borrador, con
+ * observaciones o en revisión → aprobado, sin que el docente lo envíe. Se
+ * valida el rol EN EL SERVIDOR (roleFor + canApproveDirectly), no solo el botón.
+ */
+async function directApprove(req, type, key, { comment } = {}) {
+  const target = await loadTarget(req, type, key);
+  const role = await roleFor(req, target);
+  if (!canApproveDirectly(role)) throw ApiError.forbidden('Solo el Administrador o el Coordinador del nivel pueden aprobar directamente.');
+  if (!target.enabled) throw ApiError.conflict('El colegio no tiene activada la revisión académica: el contenido se publica al guardarlo.');
+  if (target.status === 'aprobado') throw ApiError.conflict(`${whatOf(target).replace(/^el /, 'El ')} ya está aprobado.`);
+  assertComplete(target, 'aprobar');
+
+  const from = target.status;
+  // Destinatario del aviso: quien lo envió o, si nunca se envió, el docente del plan.
+  let author = target.submitted_by;
+  if (!author && target.type === 'plan' && target.teacher_id) author = (await req.db('staff').where({ id: target.teacher_id }).first('user_id'))?.user_id || null;
+
+  await setStatus(req, target, 'aprobado', { reviewed_at: req.db.fn.now(), reviewed_by: req.user.id, approval_mode: 'direct' });
+  await addEntry(req, target, role, {
+    kind: 'direct_approved',
+    body: comment?.trim() || `Aprobación directa (estaba ${STATUS_LABELS[from].toLowerCase()}).`,
+  });
+  await notifyAuthor(req, target, author, { decision: 'approve', comment });
+  if (target.type === 'plan') await notifyFamiliesPlanApproved(req, target);
   return getReview(req, type, key);
 }
 
@@ -419,7 +468,16 @@ async function assertContentEditable(req, gradeId, subjectId, schoolPeriodId) {
 async function contentReviewState(req, gradeId, subjectId, schoolPeriodId) {
   const target = await loadContentTarget(req.db, req.tenantId, gradeId, subjectId, schoolPeriodId);
   const role = await roleFor(req, target);
-  return { enabled: target.enabled, status: target.status, status_label: STATUS_LABELS[target.status], my_role: role.role, locked: isLockedFor(role.role, target) };
+  return {
+    enabled: target.enabled,
+    status: target.status,
+    status_label: STATUS_LABELS[target.status],
+    my_role: role.role,
+    locked: isLockedFor(role.role, target),
+    // Botón de aprobación directa (Administrador / Coordinador del nivel).
+    can_direct_approve: canDo(role.role, target.status, target.enabled, canApproveDirectly(role)).directApprove,
+    approval_mode: target.status === 'aprobado' ? target.approval_mode || 'review' : null,
+  };
 }
 
 /** Docente o revisor: comentario en el hilo (sin cambiar el estado). */
@@ -490,4 +548,5 @@ async function inbox(req) {
   return { reviewer: true, level: level ? { code: level, name: LEVEL_NAMES[level] } : null, items };
 }
 
-module.exports = { STATUS_LABELS, getReview, submit, review, comment, inbox, assertContentEditable, contentReviewState };
+module.exports = {
+  directApprove, STATUS_LABELS, getReview, submit, review, comment, inbox, assertContentEditable, contentReviewState };

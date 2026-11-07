@@ -22,6 +22,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useAuth } from '../../../context/AuthContext';
 import { ReviewButton } from '../../reviews/components/ReviewWidgets';
+import { DirectApproveButton, useCanDirectApprove } from '../../reviews/components/DirectApprove';
 import BulkImportActions from '../../../components/import/BulkImportActions';
 import DuplicateToYearModal from '../../../components/ui/DuplicateToYearModal';
 import PlanAcknowledgments, { acknowledgmentRatio } from '../components/PlanAcknowledgments';
@@ -71,6 +72,7 @@ function EvaluationPlanDetailPage() {
   const confirm = useConfirm();
   const toast = useToast();
   const { can } = useAuth();
+  const canDirectApprove = useCanDirectApprove();
   const handleClose = async () => {
     const ok = await confirm({
       title: '¿Cerrar el plan de evaluación?',
@@ -197,6 +199,9 @@ function EvaluationPlanDetailPage() {
           <>
             {/* Revisión y aprobación: el docente envía; coordinación del nivel o dirección revisan. */}
             <ReviewButton target={{ planId: plan.id }} title={plan.subject || ''} status={plan.review_status} onChanged={refetch} defaultOpen={openReview} />
+            {plan.review_status !== 'aprobado' && canDirectApprove(plan.level_code) && (
+              <DirectApproveButton target={{ planId: plan.id }} what="plan" status={plan.review_status} size="" onApproved={refetch} />
+            )}
             <Button
               variant="secondary"
               icon="eye"

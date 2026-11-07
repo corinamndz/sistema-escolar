@@ -10,6 +10,9 @@ const gradingApi = {
     axiosClient.put(`/grading/competencies/${competencyId}/assessments`, data).then((r) => r.data),
   /** Resumen del colegio: cada alumno con su acumulado por lapso y su boleta por materia. */
   getSummary: (schoolPeriodId) => axiosClient.get('/grading/summary', { params: { schoolPeriodId: schoolPeriodId || undefined } }).then((r) => r.data),
+  /** Desglose de un alumno en un año: notas por materia y lapso, definitiva y estado (aprobada / reprobada). */
+  getStudentDetail: (studentId, schoolPeriodId) =>
+    axiosClient.get(`/grading/summary/students/${studentId}`, { params: { schoolPeriodId: schoolPeriodId || undefined } }).then((r) => r.data),
   getCompetencyReport: (projectId) =>
     axiosClient.get(`/grading/projects/${projectId}/competency-report`).then((r) => r.data),
 };

@@ -5,6 +5,7 @@ const { asyncHandler } = require('../../utils/asyncHandler');
 const { ApiError } = require('../../utils/ApiError');
 const teacherScope = require('../access/teacherScope');
 const feePlans = require('../payments/feePlan.service');
+const enrollmentStatus = require('../enrollment-forms/enrollmentStatus');
 
 const relationshipSchema = z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? null : v), z.string().trim().max(30, 'Máximo 30 caracteres.').nullable().optional());
 
@@ -112,9 +113,16 @@ const listStudents = asyncHandler(async (req, res) => {
   const rows = await service.listStudents(req.db, req.tenantId, {
     status: req.query.status,
     availableFor: req.query.availableFor || null,
+    // Año escolar del estatus «Inscrito / No inscrito» (por defecto, el vigente).
+    enrollmentPeriodId: z.string().uuid().safeParse(req.query.enrollmentPeriodId).success ? req.query.enrollmentPeriodId : null,
     scope,
   });
   res.status(200).json(rows);
+});
+
+/** GET /students/enrollment-periods — años para el selector «Inscripción de…» del listado. */
+const listEnrollmentPeriods = asyncHandler(async (req, res) => {
+  res.status(200).json(await enrollmentStatus.selectablePeriods(req.db, req.tenantId));
 });
 
 const getStudent = asyncHandler(async (req, res) => {
@@ -214,6 +222,7 @@ const unlinkGuardian = asyncHandler(async (req, res) => {
 
 module.exports = {
   listStudents,
+  listEnrollmentPeriods,
   getAcademicHistory,
   getStudent,
   createStudent,

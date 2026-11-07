@@ -174,4 +174,30 @@ function announcementImageUpload(req, res, next) {
   });
 }
 
-module.exports = { logoUpload, MAX_LOGO_BYTES, proofUpload, MAX_PROOF_BYTES, importUpload, MAX_IMPORT_BYTES, supportUpload, announcementImageUpload };
+// ---------------------------------------------------------------------------
+// Foto del alumno en una planilla de inscripción (campo `photo`): JPG o PNG de
+// hasta 4 MB, en memoria para validar la firma (enrollmentPhotoStorage.js).
+// ---------------------------------------------------------------------------
+
+const enrollmentPhotoMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024, files: 1, fields: 5 },
+  fileFilter: (req, file, cb) => {
+    if (['image/png', 'image/jpeg', 'image/jpg'].includes(file.mimetype)) return cb(null, true);
+    return cb(ApiError.badRequest('La foto debe ser JPG o PNG.', [{ path: 'photo', message: 'Formato no permitido.' }]));
+  },
+}).single('photo');
+
+function enrollmentPhotoUpload(req, res, next) {
+  enrollmentPhotoMulter(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof ApiError) return next(err);
+    if (err instanceof multer.MulterError) {
+      const message = err.code === 'LIMIT_FILE_SIZE' ? 'La foto no puede pesar más de 4 MB.' : 'No se pudo procesar la foto.';
+      return next(ApiError.badRequest(message, [{ path: 'photo', message }]));
+    }
+    return next(err);
+  });
+}
+
+module.exports = { logoUpload, MAX_LOGO_BYTES, proofUpload, MAX_PROOF_BYTES, importUpload, MAX_IMPORT_BYTES, supportUpload, announcementImageUpload, enrollmentPhotoUpload };

@@ -2,36 +2,25 @@ const { ApiError } = require('../../utils/ApiError');
 const { applyPortalAccess, getPortalAccess, deactivatePortalUser } = require('./portalAccess.service');
 const tuition = require('../payments/tuition.service');
 const teacherScope = require('../access/teacherScope');
-const { currentPeriodOrder } = require('../../utils/schoolPeriods');
+const enrollmentStatus = require('../enrollment-forms/enrollmentStatus');
 
 // ---------- Alumnos ----------
 
 /**
- * Alumnos con su inscripción vigente (sección, grado, nivel, año escolar) para
- * poder agruparlos por grado y sección. Si un alumno tuviera inscripciones
- * activas en más de un año, se toma la del año en curso (currentPeriodOrder). Los
- * campos de inscripción vienen en null si no está inscrito.
+ * Alumnos con su matrícula vigente y su ESTATUS DE INSCRIPCIÓN en `enrollmentPeriodId`
+ * (por defecto, el año vigente): «Inscrito» solo con planilla aprobada de ese año
+ * (regla en enrollment-forms/enrollmentStatus.js).
  */
-async function listStudents(trx, tenantId, { status, scope = null, availableFor = null } = {}) {
+async function listStudents(trx, tenantId, { status, scope = null, availableFor = null, enrollmentPeriodId = null } = {}) {
+  // Un solo año para todo el listado: grado/sección y estatus de inscripción.
+  const period = await enrollmentStatus.resolvePeriod(trx, tenantId, enrollmentPeriodId);
   const query = trx('students as s')
-    .joinRaw(
-      `LEFT JOIN LATERAL (
-         SELECT e.id AS enrollment_id, sec.id AS section_id, sec.name AS section_name, sec.max_students,
-                g.id AS grade_id, g.name AS grade_name, g.sort_order AS grade_sort,
-                g.level_code, el.sort_order AS level_sort,
-                sp.id AS school_period_id, sp.name AS school_period_name
-         FROM enrollments e
-         JOIN sections sec ON sec.id = e.section_id
-         JOIN grades g ON g.id = sec.grade_id
-         JOIN education_levels el ON el.code = g.level_code
-         JOIN school_periods sp ON sp.id = sec.school_period_id
-         WHERE e.student_id = s.id AND e.status = 'active'
-         ORDER BY ${currentPeriodOrder('sp')}
-         LIMIT 1
-       ) cur ON true`
-    )
+    // Grado y sección DEL AÑO elegido (por defecto el vigente): nunca los de otro año.
+    .joinRaw(enrollmentStatus.periodEnrollmentLateral('s'), [period?.id || null])
     .where('s.tenant_id', tenantId)
     .select('s.*', 'cur.*')
+    .select(enrollmentStatus.statusColumns(trx, period?.id || null, 's'))
+    .select(trx.raw('?::uuid AS enrollment_period_id, ?::text AS enrollment_period_name', [period?.id || null, period?.name || null]))
     .orderBy(['s.last_name', 's.first_name']);
   if (status) query.andWhere('s.status', status);
   // Solo alumnos SIN inscripción activa en el año escolar de la sección destino.
@@ -61,15 +50,30 @@ async function getStudentById(trx, tenantId, id) {
     .where('sg.student_id', id)
     .select('g.id', 'g.first_name', 'g.last_name', 'g.phone', 'g.email', 'sg.relationship', 'sg.is_primary');
 
-  const enrollment = await trx('enrollments as e')
+  // Matrícula de CADA año escolar (la más reciente primero): el historial no se mezcla.
+  const enrollments = await trx('enrollments as e')
     .join('sections as sec', 'sec.id', 'e.section_id')
     .join('grades as gr', 'gr.id', 'sec.grade_id')
+    .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
     .where('e.student_id', id)
-    .andWhere('e.status', 'active')
-    .select('e.id as enrollment_id', 'sec.id as section_id', 'sec.name as section_name', 'gr.name as grade_name')
-    .first();
+    .orderBy([{ column: 'sp.start_date', order: 'desc' }, { column: 'e.enrolled_at', order: 'desc' }])
+    .select('e.id as enrollment_id', 'e.status', 'sec.id as section_id', 'sec.name as section_name', 'gr.name as grade_name', 'sp.id as school_period_id', 'sp.name as school_period_name', 'sp.closed_at as period_closed_at');
+  // «Inscripción actual» = la del año escolar VIGENTE (no la activa de cualquier año: tras
+  // promover, la activa es la del año siguiente). Si en el vigente hay varias, la activa.
+  const current = await enrollmentStatus.currentPeriod(trx, tenantId);
+  const rank = (e) => ({ active: 0, withdrawn: 2 })[e.status] ?? 1;
+  const inCurrent = enrollments.filter((e) => e.school_period_id === current?.id).sort((a, b) => rank(a) - rank(b));
+  const next = inCurrent[0] ? enrollments.find((e) => e.status === 'active' && e.school_period_id !== current?.id && e.enrollment_id !== inCurrent[0].enrollment_id) : null;
 
-  return { ...student, guardians, currentEnrollment: enrollment || null };
+  return {
+    ...student,
+    guardians,
+    currentPeriod: current ? { id: current.id, name: current.name } : null,
+    currentEnrollment: inCurrent[0] || null,
+    // Ubicación ya preparada en otro año (p. ej. promovido para el año siguiente).
+    upcomingEnrollment: next && next.school_period_id !== current?.id ? next : null,
+    enrollments,
+  };
 }
 
 /** Crea el alumno y, si viene `data.guardians`, lo asocia a sus representantes en la misma transacción. */
@@ -109,6 +113,8 @@ async function updateStudent(trx, tenantId, id, data) {
  * mostrarlos en la tabla sin una consulta extra por fila.
  */
 async function listGuardians(trx, tenantId) {
+  // Grado de cada alumno en el año VIGENTE (tras promover, no el del año siguiente).
+  const current = await enrollmentStatus.currentPeriod(trx, tenantId);
   return trx('guardians as g')
     .where('g.tenant_id', tenantId)
     .leftJoin('users as u', 'u.id', 'g.user_id')
@@ -137,58 +143,39 @@ async function listGuardians(trx, tenantId) {
           'level_code',  cur.level_code,
           'level_sort',  cur.level_sort,
           'grade_sort',  cur.grade_sort,
-          'school_period_name', cur.school_period_name
+          'school_period_name', cur.school_period_name,
+          'enrollment_status', cur.enrollment_status
         ) ORDER BY sg.is_primary DESC, s.last_name, s.first_name)
         FROM student_guardians sg
         JOIN students s ON s.id = sg.student_id
-        LEFT JOIN LATERAL (
-          SELECT sec.id AS section_id, sec.name AS section_name,
-                 gr.id AS grade_id, gr.name AS grade_name, gr.sort_order AS grade_sort,
-                 gr.level_code, el.sort_order AS level_sort,
-                 sp.name AS school_period_name
-          FROM enrollments e
-          JOIN sections sec ON sec.id = e.section_id
-          JOIN grades gr ON gr.id = sec.grade_id
-          JOIN education_levels el ON el.code = gr.level_code
-          JOIN school_periods sp ON sp.id = sec.school_period_id
-          WHERE e.student_id = s.id AND e.status = 'active'
-          ORDER BY ${currentPeriodOrder('sp')}, e.enrolled_at DESC
-          LIMIT 1
-        ) cur ON true
+        ${enrollmentStatus.periodEnrollmentLateral('s')}
         WHERE sg.guardian_id = g.id
-      ), '[]'::json) AS students_detail`)
+      ), '[]'::json) AS students_detail`, [current?.id || null])
     )
     .orderBy(['g.first_name', 'g.last_name']); // orden alfabético por el nombre que se muestra (Nombre Apellido)
 }
 
 /**
- * Alumnos vinculados a un representante, con su grado y sección actuales.
- * "Actual" = la inscripción activa del año escolar más reciente (un alumno
- * puede tener inscripciones activas en más de un año si no se cerró el
- * anterior); si no tiene ninguna, los campos de sección vienen en null.
+ * Alumnos vinculados a un representante, con su grado y sección del año
+ * escolar VIGENTE (no la matrícula activa de cualquier año: tras promover, esa
+ * es la del año siguiente). Si ya fue promovido, next_* dice a dónde pasa.
+ * Sin matrícula en el año vigente, los campos de sección vienen en null.
  */
 async function listGuardianStudents(trx, guardianId) {
+  const { tenant_id: tenantId } = await trx('guardians').where({ id: guardianId }).first('tenant_id');
+  const current = await enrollmentStatus.currentPeriod(trx, tenantId);
   const { rows } = await trx.raw(
     `SELECT s.id, s.first_name, s.last_name, s.national_id, s.status,
             sg.relationship, sg.is_primary,
-            cur.section_id, cur.section_name, cur.grade_name, cur.level_code, cur.level_name, cur.school_period_name
+            cur.section_id, cur.section_name, cur.grade_name, cur.level_code, cur.level_name, cur.school_period_name,
+            cur.enrollment_status, cur.next_grade_name, cur.next_section_name, cur.next_period_name
      FROM student_guardians sg
      JOIN students s ON s.id = sg.student_id
-     LEFT JOIN LATERAL (
-       SELECT sec.id AS section_id, sec.name AS section_name, g.name AS grade_name,
-              g.level_code, el.name AS level_name, sp.name AS school_period_name
-       FROM enrollments e
-       JOIN sections sec ON sec.id = e.section_id
-       JOIN grades g ON g.id = sec.grade_id
-       JOIN education_levels el ON el.code = g.level_code
-       JOIN school_periods sp ON sp.id = sec.school_period_id
-       WHERE e.student_id = s.id AND e.status = 'active'
-       ORDER BY ${currentPeriodOrder('sp')}, e.enrolled_at DESC
-       LIMIT 1
-     ) cur ON true
+     -- Grado y sección del año escolar VIGENTE (si ya fue promovido, next_* dice a dónde pasa).
+     ${enrollmentStatus.periodEnrollmentLateral('s')}
      WHERE sg.guardian_id = ?
      ORDER BY sg.is_primary DESC, s.last_name, s.first_name`,
-    [guardianId]
+    [current?.id || null, guardianId]
   );
   return rows;
 }

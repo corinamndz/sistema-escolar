@@ -13,6 +13,7 @@ router.use('/imports', require('../modules/imports/import.routes'));
 // Antes del montaje en '/': ese router aplica auth + tenant a todo lo que pasa por él.
 router.use('/portal', require('../modules/portal/portal.routes'));
 router.use('/', require('../modules/students/student.routes')); // expone /students y /guardians
+router.use('/school-years', require('../modules/academics/schoolYears.routes')); // selector global de año escolar
 router.use('/academics', require('../modules/academics/academic.routes'));
 router.use('/evaluation-plans', require('../modules/evaluation-plans/evaluationPlan.routes'));
 // Contenido programático por materia y grado, con sus actividades de evaluación.
@@ -31,5 +32,7 @@ router.use('/audit', require('../modules/audit/audit.routes'));
 router.use('/reviews', require('../modules/reviews/review.routes'));
 router.use('/appointments', require('../modules/appointments/appointment.routes'));
 router.use('/support', require('../modules/support/support.routes'));
+// Planillas de inscripción personalizables (diseño, envío desde el portal y revisión).
+router.use('/enrollment-forms', require('../modules/enrollment-forms/enrollmentForm.routes'));
 
 module.exports = router;

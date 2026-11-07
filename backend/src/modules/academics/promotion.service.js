@@ -2,6 +2,7 @@ const { ApiError } = require('../../utils/ApiError');
 const academicService = require('./academic.service');
 const tuition = require('../payments/tuition.service');
 const record = require('./academicRecord.service');
+const enrollmentForms = require('../enrollment-forms/enrollmentForm.service');
 
 /**
  * Cierre de año escolar y promoción de alumnos.
@@ -44,6 +45,10 @@ async function loadPeriods(trx, tenantId, fromPeriodId, toPeriodId) {
   if (!to) throw ApiError.notFound('Año escolar nuevo no encontrado.');
   if (to.closed_at) throw ApiError.unprocessable(`El año escolar ${to.name} ya está finalizado: elige un año en curso o futuro.`);
   if (from.closed_at) throw ApiError.unprocessable(`El año escolar ${from.name} ya está finalizado.`);
+  // Se promueve HACIA ADELANTE: el año nuevo empieza después del que finaliza (nunca se reescribe uno anterior).
+  if (from.start_date && to.start_date && new Date(to.start_date) <= new Date(from.start_date)) {
+    throw ApiError.badRequest(`El año escolar nuevo (${to.name}) debe empezar después de ${from.name}.`, [{ path: 'toPeriodId', message: 'Elige un año posterior.' }]);
+  }
   return { from, to };
 }
 
@@ -242,7 +247,7 @@ async function applyDecision(trx, tenantId, userId, { from, to, sequence, canCre
   const created = await academicService.enrollStudent(trx, tenantId, { studentId: enr.student_id, sectionId: section.id });
   await trx('enrollments').where({ id: enr.id }).update({ next_enrollment_id: created.id });
   const gradeName = d.action === 'promote' ? next.name : enr.grade_name;
-  return { message: `${d.action === 'promote' ? 'Promovido' : 'Repite'}: ${gradeName} ${section.name} (${to.name})`, nextEnrollmentId: created.id };
+  return { message: `${d.action === 'promote' ? 'Promovido' : 'Repite'}: ${gradeName} ${section.name} (${to.name})`, nextEnrollmentId: created.id, studentId: enr.student_id, gradeName };
 }
 
 /**
@@ -263,10 +268,23 @@ async function executePromotion(trx, tenantId, userId, actor, { fromPeriodId, to
     }
   }
   const done = results.filter((r) => r.ok).length;
+  // Año nuevo = planilla nueva: el alumno queda ubicado en su grado pero «No inscrito» hasta que el
+  // colegio apruebe la planilla de ese año. En ESTA MISMA transacción se le genera la planilla del
+  // año nuevo «Por llenar», asignada a su representante (si falla, no queda la promoción a medias).
+  const moved = results.filter((r) => r.ok && r.studentId).map((r) => ({ studentId: r.studentId, gradeName: r.gradeName, enrollmentId: r.nextEnrollmentId }));
+  const forms = await enrollmentForms.openAfterPromotion(trx, tenantId, userId, to, moved);
+  let formNote = '';
+  if (forms.created) {
+    formNote = ` Se generó la planilla «${forms.formTitle}» por llenar para ${forms.created} alumno(s)${forms.formCreated ? ' (la planilla del año nuevo se creó y publicó copiando la anterior)' : ''}.`;
+    if (forms.formStatus !== 'published') formNote += ' Publícala para que las familias la vean.';
+  }
+  if (forms.withoutGuardian) formNote += ` ${forms.withoutGuardian} alumno(s) no tienen representante: no se les pudo asignar.`;
   return {
+    remindedFamilies: forms.remindedFamilies,
+    enrollmentForms: forms,
     results,
     summary: { processed: done, failed: results.length - done },
-    message: `Se procesaron ${done} alumno(s)${results.length - done ? ` y ${results.length - done} no se pudieron procesar` : ''}.`,
+    message: `Se procesaron ${done} alumno(s)${results.length - done ? ` y ${results.length - done} no se pudieron procesar` : ''}.${formNote}`,
   };
 }
 
@@ -302,6 +320,8 @@ async function undoPromotion(trx, tenantId, enrollmentId) {
       if (paid) throw ApiError.conflict('El alumno ya tiene pagos confirmados o reportados del año nuevo: no se puede deshacer.');
       // Mensualidades generadas al inscribir (todas pendientes, sin movimiento): se quitan.
       await trx('payments').where({ enrollment_id: next.id }).delete();
+      // La planilla «Por llenar» que generó la promoción (si la familia ya la envió, se conserva).
+      await enrollmentForms.dropPendingFor(trx, tenantId, next.id);
       await trx('enrollments').where({ id: next.id }).delete();
     }
   }

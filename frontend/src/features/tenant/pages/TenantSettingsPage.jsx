@@ -88,6 +88,7 @@ function pickForm(settings) {
     contactPhone: settings.contactPhone || '',
     contactEmail: settings.contactEmail || '',
     rif: settings.rif || '',
+    address: settings.address || '',
   };
 }
 
@@ -166,6 +167,8 @@ function TenantSettingsPage() {
     data.append('contactEmail', form.contactEmail.trim());
     // Vacío = quitar el RIF (el backend lo normaliza a J-12345678-9).
     data.append('rif', rifValue);
+    // Dirección física: membrete de las planillas de inscripción. Vacío = quitarla.
+    data.append('address', form.address.trim());
     if (logoFile) data.append('logo', logoFile);
     else if (removeLogo) data.append('removeLogo', 'true');
 
@@ -185,7 +188,7 @@ function TenantSettingsPage() {
   const previewLogo = logoPreview || (!removeLogo ? settings.logoUrl : null);
   const saved = pickForm(settings);
   // Cambios sin guardar por pestaña (se marcan con un punto en su pestaña).
-  const dirtyGeneral = Boolean(logoFile) || removeLogo || ['name', 'contactPhone', 'contactEmail', 'rif'].some((k) => form[k] !== saved[k]);
+  const dirtyGeneral = Boolean(logoFile) || removeLogo || ['name', 'contactPhone', 'contactEmail', 'rif', 'address'].some((k) => form[k] !== saved[k]);
   const dirtyAppearance = form.primaryColor !== saved.primaryColor || form.secondaryColor !== saved.secondaryColor;
   const dirty = dirtyGeneral || dirtyAppearance;
   const dirtyOf = { general: dirtyGeneral, apariencia: dirtyAppearance };
@@ -267,7 +270,7 @@ function TenantSettingsPage() {
                     <Input icon="building" name="name" value={form.name} onChange={handleChange} disabled={!canEdit} required />
                   </Field>
 
-                  <Field label="RIF" error={rifError || fieldErrors.rif} hint="Registro de Información Fiscal. Se muestra en los comprobantes de pago.">
+                  <Field label="RIF" error={rifError || fieldErrors.rif} hint="Registro de Información Fiscal. Se muestra en los comprobantes y en las planillas de inscripción.">
                     <Input
                       icon="file"
                       name="rif"
@@ -283,6 +286,19 @@ function TenantSettingsPage() {
                       placeholder="J-12345678-9"
                       maxLength={14}
                       error={rifError}
+                      disabled={!canEdit}
+                    />
+                  </Field>
+
+                  <Field label="Dirección física" full error={fieldErrors.address} hint="Encabeza los documentos oficiales del colegio (planillas de inscripción en PDF).">
+                    <textarea
+                      className="input"
+                      name="address"
+                      rows={2}
+                      value={form.address}
+                      onChange={handleChange}
+                      maxLength={300}
+                      placeholder="Av. Principal, Sector Centro, Coro, estado Falcón"
                       disabled={!canEdit}
                     />
                   </Field>

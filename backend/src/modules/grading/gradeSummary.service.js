@@ -23,7 +23,13 @@ const mean = (values) => {
   return v.length ? round2(v.reduce((a, b) => a + b, 0) / v.length) : null;
 };
 
-async function getSummary(trx, tenantId, { schoolPeriodId } = {}) {
+/**
+ * `studentId`: solo ese alumno (con cualquier estatus) y su matrícula de ese año
+ * aunque ya esté cerrada (promovido, repite, egresado). Sin él: todos los alumnos
+ * activos con su matrícula activa.
+ */
+async function getSummary(trx, tenantId, { schoolPeriodId, studentId = null } = {}) {
+  const statuses = studentId ? ['active', 'promoted', 'retained', 'graduated'] : ['active'];
   const periods = await trx('school_periods')
     .where({ tenant_id: tenantId })
     .select('id', 'name', 'start_date', 'is_active', 'closed_at', 'passing_grade')
@@ -44,7 +50,8 @@ async function getSummary(trx, tenantId, { schoolPeriodId } = {}) {
         .join('sections as sec', 'sec.id', 'e.section_id')
         .join('grades as g', 'g.id', 'sec.grade_id')
         .join('education_levels as el', 'el.code', 'g.level_code')
-        .where({ 'e.status': 'active', 'sec.school_period_id': period.id })
+        .whereIn('e.status', statuses)
+        .where('sec.school_period_id', period.id)
         .distinctOn('e.student_id')
         .select(
           'e.student_id',
@@ -62,8 +69,9 @@ async function getSummary(trx, tenantId, { schoolPeriodId } = {}) {
       'cur.student_id',
       's.id'
     )
-    .where({ 's.tenant_id': tenantId, 's.status': 'active' })
-    .select('s.id', 's.first_name', 's.last_name', 's.national_id', 'cur.*')
+    .where('s.tenant_id', tenantId)
+    .modify((q) => (studentId ? q.where('s.id', studentId) : q.where('s.status', 'active')))
+    .select('s.id', 's.first_name', 's.last_name', 's.national_id', 's.status as student_status', 'cur.*')
     .orderBy(['s.last_name', 's.first_name']);
 
   // Una fila por alumno y plan (materia × lapso) con lo calificado.
@@ -84,10 +92,10 @@ async function getSummary(trx, tenantId, { schoolPeriodId } = {}) {
     LEFT JOIN subjects sub ON sub.id = ep.subject_id
     JOIN evaluation_activities a ON a.evaluation_plan_id = ep.id
     LEFT JOIN activity_scores sc ON sc.evaluation_activity_id = a.id AND sc.student_id = e.student_id
-    WHERE e.tenant_id = ? AND e.status = 'active'
+    WHERE e.tenant_id = ? AND e.status = ANY(?) AND (?::uuid IS NULL OR e.student_id = ?::uuid)
     GROUP BY e.student_id, ep.id, ep.term_id, ep.subject_id, ep.subject, sub.name
     `,
-    [period.id, tenantId, tenantId]
+    [period.id, tenantId, tenantId, statuses, studentId, studentId]
   );
 
   const byStudent = new Map();
@@ -135,6 +143,7 @@ async function getSummary(trx, tenantId, { schoolPeriodId } = {}) {
         first_name: s.first_name,
         last_name: s.last_name,
         national_id: s.national_id,
+        student_status: s.student_status,
         section_id: s.section_id || null,
         section_name: s.section_name || null,
         grade_id: s.grade_id || null,
@@ -152,4 +161,94 @@ async function getSummary(trx, tenantId, { schoolPeriodId } = {}) {
   };
 }
 
-module.exports = { getSummary };
+/**
+ * Nota de una materia en un lapso (misma regla que la boleta oficial,
+ * OfficialReportCard): la definitiva si el plan se evaluó completo; si no, lo
+ * acumulado a la fecha, marcado como parcial.
+ */
+function termGrade(cell) {
+  if (!cell || cell.accumulated === null) return null;
+  return cell.final !== null && cell.final !== undefined ? { value: cell.final, partial: false } : { value: cell.accumulated, partial: true };
+}
+
+/**
+ * Desglose analítico de UN alumno en un año escolar (pantalla de detalle del
+ * Resumen de calificaciones, sin descargar el PDF):
+ *   student   nombre, cédula, grado, sección, escala
+ *   subjects  [{ name, terms: { <lapso>: { value, partial, accumulated, average, evaluated, final } },
+ *               definitive, partial, status }]
+ *   termAverages / overall   promedio de cada lapso y definitivo del año
+ * status de una materia (escala vigente: passing_grade del año):
+ *   'approved' | 'failed'        definitiva con TODOS los lapsos evaluados completos
+ *   'on_track' | 'at_risk'       año en curso: lo que lleva aprueba / no aprueba
+ *   'no_grades'                  sin notas aún
+ */
+async function getStudentDetail(trx, tenantId, studentId, { schoolPeriodId } = {}) {
+  const exists = await trx('students').where({ id: studentId, tenant_id: tenantId }).first('id');
+  if (!exists) throw ApiError.notFound('Alumno no encontrado.');
+  const data = await getSummary(trx, tenantId, { schoolPeriodId, studentId });
+  const s = data.students[0];
+  const passing = data.passing_grade;
+  const statusOf = (value, partial) => {
+    if (value === null || value === undefined) return 'no_grades';
+    if (partial) return value >= passing ? 'on_track' : 'at_risk';
+    return value >= passing ? 'approved' : 'failed';
+  };
+
+  const subjects = (s?.subjects || []).map((sub) => {
+    const grades = data.terms.map((t) => termGrade(sub.terms[t.id]));
+    const values = grades.map((g) => g?.value ?? null);
+    // Parcial si falta algún lapso o alguno no está evaluado completo.
+    const partial = grades.some((g) => !g || g.partial);
+    const definitive = mean(values);
+    return {
+      key: sub.key,
+      name: sub.name,
+      terms: Object.fromEntries(data.terms.map((t, i) => [t.id, grades[i] ? { ...sub.terms[t.id], value: grades[i].value, partial: grades[i].partial } : null])),
+      definitive,
+      partial,
+      status: statusOf(definitive, partial),
+    };
+  });
+  const termAverages = Object.fromEntries(
+    data.terms.map((t) => {
+      const vals = subjects.map((x) => x.terms[t.id]).filter(Boolean);
+      return [t.id, vals.length ? { value: mean(vals.map((v) => v.value)), partial: vals.some((v) => v.partial) || vals.length < subjects.length } : null];
+    })
+  );
+  const overall = mean(subjects.map((x) => x.definitive));
+  const overallPartial = subjects.some((x) => x.partial);
+  return {
+    school_period: data.school_period,
+    periods: data.periods,
+    terms: data.terms,
+    scale: data.scale,
+    passing_grade: passing,
+    student: s
+      ? {
+          id: s.id,
+          first_name: s.first_name,
+          last_name: s.last_name,
+          national_id: s.national_id,
+          status: s.student_status, // active | graduated | withdrawn…
+          section_id: s.section_id,
+          section_name: s.section_name,
+          grade_name: s.grade_name,
+          level_code: s.level_code,
+          grading_scale: s.grading_scale,
+        }
+      : null,
+    subjects,
+    termAverages,
+    overall,
+    overallPartial,
+    overallStatus: statusOf(overall, overallPartial),
+    counts: {
+      approved: subjects.filter((x) => x.status === 'approved').length,
+      failed: subjects.filter((x) => x.status === 'failed').length,
+      at_risk: subjects.filter((x) => x.status === 'at_risk').length,
+    },
+  };
+}
+
+module.exports = { getSummary, getStudentDetail };

@@ -6,6 +6,7 @@ import Icon from '../ui/Icon';
 import SchoolLogo from '../ui/SchoolLogo';
 import { findRouteMeta } from './navigation';
 import NotificationBell from './NotificationBell';
+import YearSwitcher from './YearSwitcher';
 import { initials } from './initials';
 
 /** Estado abierto/cerrado de un menú desplegable que se cierra con click afuera o Escape. */
@@ -64,6 +65,8 @@ function Topbar({ onOpenMobileSidebar }) {
       </div>
 
       <div className="topbar__right">
+        {/* Año escolar global: para el personal (el portal del representante siempre ve el año en curso). */}
+        {(!user?.guardianId || user?.isAdmin || user?.teachingStaffId) && <YearSwitcher />}
         <div className="topbar__school" title={settings.name}>
           <SchoolLogo src={settings.logoUrl} alt="" className="topbar__school-logo" />
           <span>{settings.name}</span>

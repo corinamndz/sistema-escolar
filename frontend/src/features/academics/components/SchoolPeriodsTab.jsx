@@ -13,13 +13,20 @@ import Badge from '../../../components/ui/Badge';
 import HelpTip from '../../../components/ui/HelpTip';
 import ImportActions from '../../../components/import/ImportActions';
 import { useAuth } from '../../../context/AuthContext';
+import { useAcademicYear } from '../../../context/AcademicYearContext';
 import DeleteSchoolPeriodModal from './DeleteSchoolPeriodModal';
 import YearRolloverWizard from './YearRolloverWizard';
 import Icon from '../../../components/ui/Icon';
 
 /** `onChanged` avisa al asistente de configuración para recalcular el progreso. */
 function SchoolPeriodsTab({ onChanged }) {
-  const { data: rows, loading, error, refetch } = useFetch(() => academicsApi.listSchoolPeriods(), []);
+  const { data: rows, loading, error, refetch: reload } = useFetch(() => academicsApi.listSchoolPeriods(), []);
+  // Crear, editar o eliminar un año también actualiza el selector global de la barra superior.
+  const { refreshPeriods } = useAcademicYear();
+  const refetch = () => {
+    reload();
+    refreshPeriods();
+  };
   const [form, setForm] = useState({ name: '', startDate: '', endDate: '' });
   const { run, loading: saving, error: saveError, fieldErrors } = useMutation(academicsApi.createSchoolPeriod);
   const { can } = useAuth();

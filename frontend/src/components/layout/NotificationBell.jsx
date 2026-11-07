@@ -31,6 +31,7 @@ export const NOTIFICATION_ICONS = {
   review_request: 'clipboard',
   review_result: 'checkCircle',
   announcement: 'megaphone',
+  enrollment_form: 'clipboard',
 };
 /** Categoría visible de cada tipo de aviso (aviso al iniciar sesión, Centro de notificaciones). */
 export const NOTIFICATION_TYPE_LABELS = {
@@ -48,6 +49,7 @@ export const NOTIFICATION_TYPE_LABELS = {
   review_request: 'Revisión académica',
   review_result: 'Revisión académica',
   announcement: 'Comunicado',
+  enrollment_form: 'Inscripción',
 };
 
 /**

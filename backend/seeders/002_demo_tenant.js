@@ -44,6 +44,15 @@ const ROLE_TEMPLATES = {
       payments: { can_create: true, can_read: true, can_update: true, can_delete: true, extra_actions: { approve_payment: true, export: true } },
     },
   },
+  // Admisiones (migración 083): planillas de inscripción (las rutas exigen el rol, ver
+  // requireAdmissions) y consulta de alumnos para verificar «Inscrito / No inscrito». Fuera de la jerarquía.
+  Admisiones: {
+    isSystem: true,
+    byModule: {
+      enrollment_forms: { can_create: true, can_read: true, can_update: true, can_delete: true },
+      students: { can_read: true },
+    },
+  },
   Representante: {
     isSystem: true,
     // Solo el panel: el portal de padres (GET /portal/me, GET /payments/mine) filtra

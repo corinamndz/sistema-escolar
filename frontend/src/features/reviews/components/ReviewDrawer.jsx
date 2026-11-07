@@ -43,7 +43,7 @@ function Entry({ c, mine }) {
         </div>
         {status && (
           <div className="review-msg__status">
-            <Icon name={c.kind === 'approved' ? 'checkCircle' : c.kind === 'observed' ? 'alertTriangle' : 'arrowRight'} size={14} /> {ENTRY_LABELS[c.kind]}
+            <Icon name={c.kind === 'approved' || c.kind === 'direct_approved' ? 'checkCircle' : c.kind === 'observed' ? 'alertTriangle' : 'arrowRight'} size={14} /> {ENTRY_LABELS[c.kind]}
           </div>
         )}
         {c.body && <p>{c.body}</p>}
@@ -141,12 +141,25 @@ function ReviewDrawer({ target, title, onClose, onChanged }) {
           </Button>
         </>
       )}
+      {/* Administrador / Coordinador del nivel: aprobar sin que el docente lo envíe. */}
+      {can.directApprove && !can.review && (
+        <Button
+          icon="checkCircle"
+          className="direct-approve"
+          loading={busy === 'direct'}
+          disabled={Boolean(busy)}
+          title="Aprueba sin pasar por el envío a revisión; queda registrado en el hilo"
+          onClick={() => run('direct', () => reviewsApi.directApprove(target, trimmed), what === 'plan' ? 'Plan aprobado' : 'Contenido aprobado')}
+        >
+          Aprobar directamente
+        </Button>
+      )}
       {can.submit && (
         <Button icon="arrowRight" loading={busy === 'submit'} disabled={Boolean(busy)} onClick={() => run('submit', () => reviewsApi.submit(target, trimmed), resend ? 'Reenviado a revisión' : 'Enviado a revisión')}>
           {resend ? 'Reenviar a revisión' : 'Enviar a revisión'}
         </Button>
       )}
-      {!can.review && !can.submit && !can.reopen && (
+      {!can.review && !can.submit && !can.reopen && !can.directApprove && (
         <Button variant="secondary" onClick={() => drawer.current?.close()}>
           Cerrar
         </Button>
@@ -204,6 +217,7 @@ function ReviewDrawer({ target, title, onClose, onChanged }) {
                     <dd>
                       {when(review.reviewed_at)}
                       {review.reviewed_by_name ? ` · ${review.reviewed_by_name}` : ''}
+                      {review.approval_mode === 'direct' && <span className="review-direct-tag">Aprobación directa</span>}
                     </dd>
                   </div>
                 )}

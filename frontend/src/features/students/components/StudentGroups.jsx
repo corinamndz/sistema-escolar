@@ -78,7 +78,8 @@ function StudentGroups({ rows, columns, searching, showCapacity, onView, onEdit,
       {groups.map((g) => {
         const open = searching || isOpen(g.key);
         const bodyId = `student-group-${g.key}`;
-        const count = g.students.length;
+        // Cupo: solo quienes cursan (un promovido o retirado ya no ocupa puesto en la sección de ese año).
+        const count = g.students.filter((s) => !s.enrollment_status || s.enrollment_status === 'active').length;
         const isNone = g.key === NO_SECTION;
         // Separador de nivel (Inicial / Primaria / Secundaria / Sin inscripción) al cambiar.
         const levelKey = isNone ? NO_SECTION : g.levelCode;

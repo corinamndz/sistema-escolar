@@ -15,6 +15,7 @@ const { requirePermission } = require('../../middlewares/permission.middleware')
  *   GET  /reviews/plans/:planId                          estado + hilo
  *   POST /reviews/plans/:planId/submit      { comment? } enviar / reenviar
  *   POST /reviews/plans/:planId/review      { decision: 'approve' | 'observe', comment? }
+ *   POST /reviews/plans/:planId/approve-direct { comment? }  aprobación directa (Administrador / Coordinador del nivel)
  *   POST /reviews/plans/:planId/comments    { body }
  *   … y lo mismo en /reviews/contents/:gradeId/:subjectId/:schoolPeriodId (el programa de una materia en un grado, en un año).
  */
@@ -42,6 +43,8 @@ for (const t of Object.values(targets)) {
   router.get(t.path, asyncHandler(async (req, res) => res.status(200).json(await service.getReview(req, t.type, t.key(req.params)))));
   router.post(`${t.path}/submit`, asyncHandler(async (req, res) => res.status(200).json(await service.submit(req, t.type, t.key(req.params), submitBody.parse(req.body || {})))));
   router.post(`${t.path}/review`, asyncHandler(async (req, res) => res.status(200).json(await service.review(req, t.type, t.key(req.params), reviewBody.parse(req.body)))));
+  // Aprobación directa (Administrador o Coordinador del nivel; el servicio valida el rol).
+  router.post(`${t.path}/approve-direct`, asyncHandler(async (req, res) => res.status(200).json(await service.directApprove(req, t.type, t.key(req.params), submitBody.parse(req.body || {})))));
   router.post(`${t.path}/comments`, asyncHandler(async (req, res) => res.status(201).json(await service.comment(req, t.type, t.key(req.params), commentBody.parse(req.body)))));
 }
 

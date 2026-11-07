@@ -6,3 +6,4 @@ npm-debug.log*
 storage/logos/*/
 storage/payment-proofs/*/
 storage/announcements/*/
+storage/enrollment-photos/*/

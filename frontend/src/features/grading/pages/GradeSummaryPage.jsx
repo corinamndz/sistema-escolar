@@ -14,7 +14,9 @@ import { LevelBadge, LevelFilter } from '../../academics/levels';
 import { isQualitative, literalFor } from '../gradingScale';
 import LiteralBadge from '../components/LiteralBadge';
 import OfficialReportCard from '../components/OfficialReportCard';
-import GradeDetailDrawer from '../components/GradeDetailDrawer';
+import GradeDetailDrawer, { AdjustedMark } from '../components/GradeDetailDrawer';
+import TermClosureBar from '../components/TermClosureBar';
+import { useAuth } from '../../../context/AuthContext';
 
 const VIEW_KEY = 'gradeSummary.view';
 const fullName = (s) => `${s.first_name} ${s.last_name}`;
@@ -46,6 +48,7 @@ function TermValue({ cell, scale, passing, qualitative, compact = false }) {
     return (
       <span className="gsum-value">
         <LiteralBadge level={literalFor(cell.average)} showLabel={!compact} />
+        <AdjustedMark adjustment={cell.adjustment} computed={cell.computed} />
         {!compact && <span className="cell-person__sub">{fmt(cell.evaluated, 0)}% evaluado</span>}
       </span>
     );
@@ -57,6 +60,7 @@ function TermValue({ cell, scale, passing, qualitative, compact = false }) {
         <strong className="gsum-value__num">{fmt(cell.final ?? cell.accumulated)}</strong>
         <span className="gsum-value__scale">/{scale}</span>
         {cell.final !== null && cell.final !== undefined && <span className="gsum-value__def">Def.</span>}
+        <AdjustedMark adjustment={cell.adjustment} computed={cell.computed} />
       </span>
       {!compact && (
         <span className="cell-person__sub">
@@ -115,6 +119,8 @@ function ReportCard({ student, terms, scale, passing }) {
 /** Tarjeta colapsable de un alumno: cabecera con el acumulado por lapso; al abrir, su boleta. */
 function StudentCard({ student, terms, scale, passing, open, onToggle, onPrint, onDetail }) {
   const qualitative = isQualitative(student.grading_scale);
+  const { can } = useAuth();
+  const canSeeStudent = can('students', 'read');
   return (
     <section className={`gsum-card ${open ? 'is-open' : ''}`}>
       <button type="button" className="gsum-card__head" onClick={onToggle} aria-expanded={open}>
@@ -140,9 +146,11 @@ function StudentCard({ student, terms, scale, passing, open, onToggle, onPrint, 
         <div className="gsum-card__body">
           <ReportCard student={student} terms={terms} scale={scale} passing={passing} />
           <div className="gsum-card__foot">
-            <Link to={`/students/${student.id}`} className="btn btn--ghost btn--sm">
-              Ver ficha del alumno <Icon name="arrowRight" size={14} />
-            </Link>
+            {canSeeStudent && (
+              <Link to={`/students/${student.id}`} className="btn btn--ghost btn--sm">
+                Ver ficha del alumno <Icon name="arrowRight" size={14} />
+              </Link>
+            )}
             <Button size="sm" variant="ghost" icon="eye" onClick={() => onDetail(student)}>
               Detalle por materia
             </Button>
@@ -163,7 +171,10 @@ function StudentCard({ student, terms, scale, passing, open, onToggle, onPrint, 
  */
 function GradeSummaryPage() {
   const [periodId, setPeriodId] = useState('');
-  const { data, loading, error } = useFetch(() => gradingApi.getSummary(periodId), [periodId]);
+  const { data, loading, error, refetch } = useFetch(() => gradingApi.getSummary(periodId), [periodId]);
+  // El Coordinador ve el resumen de su nivel, pero no tiene el módulo Alumnos: sin enlaces a la ficha.
+  const { can } = useAuth();
+  const canSeeStudent = can('students', 'read');
   const [view, setView] = useState(readView);
   const [level, setLevel] = useState('');
   const [gradeId, setGradeId] = useState('');
@@ -223,9 +234,13 @@ function GradeSummaryPage() {
       header: 'Alumno',
       render: (s) => (
         <div>
-          <Link to={`/students/${s.id}`} className="cell-person__name">
-            {fullName(s)}
-          </Link>
+          {canSeeStudent ? (
+            <Link to={`/students/${s.id}`} className="cell-person__name">
+              {fullName(s)}
+            </Link>
+          ) : (
+            <span className="cell-person__name">{fullName(s)}</span>
+          )}
           {s.national_id && <div className="cell-person__sub">{s.national_id}</div>}
         </div>
       ),
@@ -355,6 +370,11 @@ function GradeSummaryPage() {
     <div>
       <PageHeader title="Resumen de calificaciones" subtitle="Lo que lleva acumulado cada alumno en cada lapso, con su boleta por materia." actions={viewToggle} />
 
+      {/* Lapsos: quienes ajustan definitivas ven su estado; el Administrador los cierra o reabre. */}
+      {data?.school_period && (data.can_adjust || data.can_close_terms) && (
+        <TermClosureBar terms={terms} canManage={data.can_close_terms} yearClosed={data.school_period.closed} onChanged={refetch} />
+      )}
+
       {!loading && data && !data.school_period ? (
         <div className="card empty-state">
           <div className="empty-state__icon">
@@ -458,6 +478,7 @@ function GradeSummaryPage() {
           studentId={viewing.id}
           schoolPeriodId={data?.school_period?.id}
           onClose={() => setViewing(null)}
+          onChanged={refetch}
           onPrint={() => {
             setPrinting(viewing);
             setViewing(null);

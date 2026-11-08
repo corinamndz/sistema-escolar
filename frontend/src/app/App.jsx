@@ -156,7 +156,8 @@ function App() {
             <Route element={<PermissionRoute module="grading" />}>
               <Route path="grading/plans/:id" element={<GradebookPage />} />
             </Route>
-            <Route element={<PermissionRoute module="grading" blockTeacher />}>
+            {/* Resumen de calificaciones: también el Coordinador (su nivel), para ajustar definitivas. */}
+            <Route element={<PermissionRoute module="grading" blockTeacher orCoordinator />}>
               <Route path="grading/summary" element={<GradeSummaryPage />} />
             </Route>
 

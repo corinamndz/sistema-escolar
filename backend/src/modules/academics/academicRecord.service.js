@@ -1,5 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const { exclusionOf } = require('./sectionSubjects');
+const adjustments = require('../grading/gradeAdjustments.service');
+const { studentRanks } = require('../grading/gradeSummary.service');
 
 /**
  * Expediente académico de una inscripción (alumno en una sección de un año).
@@ -197,6 +199,8 @@ async function computeRecords(trx, tenantId, enrollments) {
   };
 
   const STATUS_RANK = { no_plan: 0, no_activities: 1, no_grades: 2, in_progress: 3, final: 4 };
+  // Ajustes directivos vigentes de la definitiva (migración 084): reemplazan la nota del lapso.
+  const effective = await adjustments.loadEffective(trx, tenantId, { studentIds, periodIds });
 
   for (const enr of enrollments) {
     const rules = rulesByPeriod.get(enr.school_period_id) || { ...DEFAULT_RULES, effective_mode: 'arithmetic', terms: [], warning: null };
@@ -226,12 +230,16 @@ async function computeRecords(trx, tenantId, enrollments) {
           const results = byTerm.get(termId) || [];
           const withGrade = results.filter((r) => r.raw !== null);
           const status = results.length ? results.reduce((worst, r) => (STATUS_RANK[r.status] < STATUS_RANK[worst] ? r.status : worst), 'final') : 'no_plan';
+          const computed = withGrade.length ? roundGrade(withGrade.reduce((n, r) => n + r.raw, 0) / withGrade.length, rules.grade_rounding) : null;
+          const adj = adjustments.findFor(effective, enr.student_id, termId, { subjectId: s.subject_id, name: s.subject_name });
           return {
             term_id: termId,
             term_name: periodTerms.find((t) => t.id === termId)?.name || '',
             term_number: periodTerms.find((t) => t.id === termId)?.term_number ?? null,
-            grade: withGrade.length ? roundGrade(withGrade.reduce((n, r) => n + r.raw, 0) / withGrade.length, rules.grade_rounding) : null,
-            status,
+            // Ajuste directivo: es la definitiva del lapso (cuenta para el promedio, las reprobadas y la promoción).
+            grade: adj ? adj.grade : computed,
+            status: adj ? 'final' : status,
+            ...(adj ? { computed_grade: computed, adjustment: { grade: adj.grade, previous: adj.previous, reason: adj.reason, by: adj.by, role: adj.role, at: adj.at } } : {}),
           };
         });
         const { final, provisional } = annualAverage(terms, rules);
@@ -406,6 +414,11 @@ async function getStudentHistory(trx, tenantId, studentId) {
   // Normativa vigente de cada año (para inscripciones cerradas antes de la migración 014).
   const currentRules = await loadRules(trx, tenantId, [...new Set(enrollments.map((e) => e.school_period_id))]);
   const frozen = await frozenResults(trx, enrollments.filter((e) => e.closed_at).map((e) => e.id));
+  // Puesto en la sección de cada año (consultas en serie: comparten la conexión de la transacción).
+  const ranksByPeriod = new Map();
+  for (const periodId of new Set(enrollments.map((e) => e.school_period_id))) {
+    ranksByPeriod.set(periodId, await studentRanks(trx, tenantId, studentId, periodId));
+  }
 
   return {
     student,
@@ -429,6 +442,8 @@ async function getStudentHistory(trx, tenantId, studentId) {
         final_average: e.closed_at ? (e.final_average === null ? null : Number(e.final_average)) : rec.final_average,
         failed_subjects: e.closed_at ? e.failed_subjects : rec.failed_subjects,
         outcome_notes: e.outcome_notes,
+        // Un retiro no compite por el puesto (la matrícula vigente de ese año, sí).
+        section_rank: e.status === 'withdrawn' ? null : ranksByPeriod.get(e.school_period_id)?.annual || null,
         rules: e.closed_at ? e.evaluation_rules || publicRules(currentRules.get(e.school_period_id) || { ...DEFAULT_RULES, effective_mode: 'arithmetic', terms: [], warning: null }) : rec.rules,
         subjects: e.closed_at ? frozen.get(e.id) || [] : rec.subjects,
       };

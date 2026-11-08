@@ -53,7 +53,8 @@ const NAV_SECTIONS = [
       { moduleCode: 'evaluation_plans', label: 'Contenido programático', icon: 'layers', path: '/programmatic-content', reviewBadge: 'content' },
       { moduleCode: 'evaluation_plans', label: 'Planes de evaluación', icon: 'clipboard', path: '/evaluation-plans', reviewBadge: 'plan' },
       // Resumen de calificaciones del colegio: acumulado por lapso de cada alumno (administración).
-      { moduleCode: 'grading', label: 'Resumen de calificaciones', icon: 'trendingUp', path: '/grading/summary', blockTeacher: true },
+      // El Coordinador también lo ve (solo su nivel) para el ajuste directivo de definitivas.
+      { moduleCode: 'grading', label: 'Resumen de calificaciones', icon: 'trendingUp', path: '/grading/summary', blockTeacher: true, coordinatorToo: true },
       { moduleCode: 'schedules', label: 'Horarios', icon: 'calendar', path: '/schedules', blockTeacher: true },
       // Docentes: su horario semanal (solo lectura).
       { moduleCode: 'my_schedule', label: 'Mi horario', icon: 'clock', path: '/schedules/mine', teacherOnly: true },
@@ -138,6 +139,8 @@ function isNavItemVisible(item, { can, user, portalViews }) {
   if (item.adminOnly) return Boolean(user?.isAdmin);
   if (item.admissionsOnly) return canManageAdmissions(user);
   if (item.blockTeacher && user?.isRestrictedTeacher) return false;
+  // `coordinatorToo`: también para el Coordinador (el backend limita a su nivel).
+  if (item.coordinatorToo && user?.coordinator) return true;
   if (item.guardianOnly) return Boolean(user?.guardianId);
   if (item.teacherOnly) return Boolean(user?.teachingStaffId);
   return Boolean(item.public) || can(item.moduleCode, 'read');

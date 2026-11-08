@@ -7924,10 +7924,12 @@ body.is-printing-boleta { overflow: hidden; }
 .boleta-title { margin: 16px 0 12px; text-align: center; font-family: var(--font-display); font-size: 13pt; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
 
 .boleta-student { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 16px; margin: 0 0 16px; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; }
-.boleta-student__wide { grid-column: 1 / -1; }
+.boleta-student__name { grid-column: span 2; }
 .boleta-student dt { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; }
 .boleta-student dd { margin: 1px 0 0; font-weight: 600; }
-.boleta-student__wide dd { font-size: 12pt; }
+.boleta-student__name dd, .boleta-student__rank dd { font-size: 12pt; }
+.boleta-student__rank sup { margin-left: 1px; font-size: 7pt; font-weight: 500; color: #64748b; }
+.boleta-student__norank { font-size: 10pt; font-weight: 500; color: #64748b; }
 
 .boleta-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
 .boleta-table th, .boleta-table td { padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; }
@@ -7955,6 +7957,7 @@ body.is-printing-boleta { overflow: hidden; }
   .boleta-header { grid-template-columns: auto 1fr; }
   .boleta-header__doc { grid-column: 1 / -1; align-items: flex-start; text-align: left; }
   .boleta-student, .boleta-signatures { grid-template-columns: 1fr; }
+  .boleta-student__name { grid-column: auto; }
 }
 
 @media print {
@@ -10056,3 +10059,61 @@ body.is-printing-boleta { overflow: hidden; }
   .gd-stat--main { grid-column: 1 / -1; }
   .gd-table__num { text-align: left; }
 }
+
+/* ---- Ajuste directivo de calificaciones definitivas (migración 084) ---- */
+.gd-cell { display: inline-flex; align-items: center; gap: 4px; }
+.gd-adjusted {
+  display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 3px; border-radius: 50%;
+  color: var(--color-warning-text); background: var(--color-warning-soft); cursor: help; vertical-align: middle;
+}
+.gd-adjusted:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.gd-adjust {
+  display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--color-text-secondary); cursor: pointer; opacity: .55; transition: opacity .15s, background .15s, color .15s;
+}
+.gd-table tr:hover .gd-adjust, .gd-adjust:focus-visible { opacity: 1; }
+.gd-adjust:hover { background: var(--color-primary-soft); color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 30%, transparent); }
+@media (hover: none) { .gd-adjust { opacity: 1; } }
+.gd-history { border-top: 1px solid var(--color-border); padding-top: 14px; }
+.gd-history h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 14.5px; color: var(--color-text); }
+.gd-history ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gd-history__item { padding: 10px 12px; border-radius: 10px; background: var(--color-surface-muted); border-left: 3px solid var(--color-warning-border, #f59e0b); }
+.gd-history__head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 13.5px; }
+.gd-history__change { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; color: var(--color-text); }
+.gd-history__reason { margin: 4px 0 2px; font-size: 13px; line-height: 1.45; color: var(--color-text); }
+.gd-history__meta { font-size: 12px; color: var(--color-text-secondary); }
+.adj-form { display: flex; flex-direction: column; gap: 12px; }
+.adj-form__who { display: flex; flex-direction: column; gap: 2px; }
+.adj-form__who strong { font-size: 15px; color: var(--color-text); }
+.adj-form__who span { font-size: 13px; color: var(--color-text-secondary); }
+.adj-form__now { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
+.adj-form__now > div { padding: 10px 12px; border-radius: 10px; background: var(--color-surface-muted); }
+.adj-form__now dt { font-size: 12px; color: var(--color-text-secondary); }
+.adj-form__now dd { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--color-text); font-variant-numeric: tabular-nums; }
+.adj-form__now dd.is-fail { color: var(--color-danger); }
+.adj-tag { font-family: var(--font-body, inherit); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: var(--color-warning-text); background: var(--color-warning-soft); }
+.adj-form__mode { align-self: flex-start; }
+.adj-form__revert { display: flex; align-items: center; gap: 6px; margin: 0; padding: 10px 12px; border-radius: 10px; font-size: 13.5px; background: var(--color-info-soft); color: var(--color-info-text); }
+.adj-form__reason { min-height: 84px; resize: vertical; font-family: inherit; }
+.adj-form__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+.adj-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-surface); font-size: 12px; color: var(--color-text-secondary); cursor: pointer; }
+.adj-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.plan-grades__adjusted { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 12.5px; color: var(--color-warning-text); }
+@media (max-width: 480px) { .adj-form__now { grid-template-columns: 1fr; } }
+
+/* ---- Resumen de calificaciones: estado y cierre de lapsos ---- */
+.term-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; padding: 12px; margin-bottom: 16px; }
+.term-bar__item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--color-surface-muted); color: var(--color-text-secondary); }
+.term-bar__item > svg { flex-shrink: 0; }
+.term-bar__item.is-closed { color: var(--color-success-text); background: var(--color-success-soft); }
+.term-bar__text { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 12.5px; }
+.term-bar__text strong { font-size: 14px; color: var(--color-text); }
+
+/* ---- Puesto del alumno en su sección ---- */
+.gd-rank { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; white-space: nowrap; }
+.gd-rank small { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); }
+.gd-stat--rank .gd-stat__value { color: var(--color-primary); }
+.gd-stat__note { font-size: 11.5px; color: var(--color-text-secondary); }
+.boleta-table tfoot tr.boleta-table__rank td { background: #fff; white-space: nowrap; }
+@media (max-width: 640px) { .gd-rank { align-items: flex-start; } }
+.grades-summary__rank-note { display: block; font-size: 11.5px; color: var(--color-text-secondary); }

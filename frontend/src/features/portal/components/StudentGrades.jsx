@@ -10,6 +10,7 @@ import Select from '../../../components/ui/Select';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import Drawer from '../../../components/ui/Drawer';
+import { rankNote, rankText } from '../../grading/sectionRank';
 import { formatDate } from '../../payments/paymentStatus';
 import { isQualitative, literalFor } from '../../grading/gradingScale';
 import LiteralBadge from '../../grading/components/LiteralBadge';
@@ -114,6 +115,7 @@ function StudentGrades({ studentId }) {
   // general o en el lapso elegido): se ven con "Sin plan de evaluación".
   const visible = subjects.map((s) => ({ ...s, plans: s.plans.filter((p) => !termId || p.term_id === termId) }));
   const termName = terms.find((t) => t.id === termId)?.name || null;
+  const selectedRank = termId ? data.section_ranks?.terms?.[termId] : data.section_ranks?.annual;
 
   // Promedio del lapso: media de lo evaluado en cada materia con notas (orientativo).
   const averages = visible.flatMap((s) => s.plans.map((p) => p.current_average)).filter((v) => v !== null);
@@ -169,6 +171,12 @@ function StudentGrades({ studentId }) {
                   {fmt(overall)} <small>/ {scale}</small>
                 </span>
               )}
+            </div>
+            {/* Puesto en la sección: del lapso elegido o, en «Todos los lapsos», el del año. */}
+            <div>
+              <span className="student-card__label">Puesto en sección · {termName || 'año'}</span>
+              <span className="grades-summary__value">{rankText(selectedRank) || '—'}</span>
+              {rankNote(selectedRank) && <small className="grades-summary__rank-note">{rankNote(selectedRank)}</small>}
             </div>
             <div>
               <span className="student-card__label">Materias</span>
@@ -364,7 +372,7 @@ function SubjectSummary({ plans, scale }) {
           <span key={plan.plan_id} className={`grade-chip ${value === null ? 'grade--none' : tone}`} title={literal ? `${literal.code} · ${literal.label}` : PLAN_STATUS[plan.status].label}>
             <span className="grade-chip__term">{plan.term_name}</span>
             <strong>{literal ? literal.code : fmt(value)}</strong>
-            <span className="grade-chip__kind">{plan.status === 'final' ? 'Def.' : value === null ? 'Sin notas' : 'Acum.'}</span>
+            <span className="grade-chip__kind">{plan.adjusted ? 'Def. · ajustada' : plan.status === 'final' ? 'Def.' : value === null ? 'Sin notas' : 'Acum.'}</span>
           </span>
         );
       })}
@@ -390,6 +398,13 @@ function PlanGrades({ plan, scale, passing, showTerm }) {
         </div>
         <Badge variant={status.variant}>{status.label}</Badge>
       </div>
+      {/* Ajuste directivo de la definitiva (migración 084): la familia ve que la nota la fijó la dirección. */}
+      {plan.adjusted && (
+        <p className="plan-grades__adjusted">
+          <Icon name="pencil" size={13} /> Calificación definitiva ajustada por la dirección del colegio
+          {plan.adjusted.at ? ` el ${new Date(plan.adjusted.at).toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}.
+        </p>
+      )}
 
       {plan.status === 'no_activities' ? (
         <p className="text-muted text-sm" style={{ margin: '8px 0 0' }}>

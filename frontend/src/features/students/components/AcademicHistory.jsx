@@ -1,3 +1,4 @@
+import { rankNote, rankText } from '../../grading/sectionRank';
 import { useState } from 'react';
 import Badge from '../../../components/ui/Badge';
 import Icon from '../../../components/ui/Icon';
@@ -66,6 +67,13 @@ function AcademicHistory({ data, initiallyOpen = false }) {
                   </>
                 ) : (
                   <span className="text-muted">Sin notas</span>
+                )}
+                {y.section_rank && (
+                  <span className="history-year__rank">
+                    {' '}
+                    · Puesto en sección <strong>{rankText(y.section_rank)}</strong>
+                    {rankNote(y.section_rank) ? ` (${rankNote(y.section_rank)})` : ''}
+                  </span>
                 )}
               </span>
             </button>

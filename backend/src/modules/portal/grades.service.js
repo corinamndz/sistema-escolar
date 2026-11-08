@@ -5,6 +5,8 @@ const { loadActivityStructure } = require('../evaluation-plans/evaluationPlan.se
 const { sortByProgram, compareUnits } = require('../programmatic-content/programmaticContent.service');
 const { isContentReviewRequired: familiesSeeOnlyApproved } = require('../reviews/reviewSettings.service');
 const { currentPeriodOrder } = require('../../utils/schoolPeriods');
+const adjustments = require('../grading/gradeAdjustments.service');
+const { studentRanks } = require('../grading/gradeSummary.service');
 
 /**
  * Calificaciones acumuladas de un alumno para el portal del representante.
@@ -278,13 +280,45 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
   }
   subjects.sort((a, b) => a.name.localeCompare(b.name, 'es'));
 
+  // Ajuste directivo de la definitiva (migración 084): la familia ve la nota vigente y que fue
+  // ajustada por la dirección (con la fecha; el motivo queda en el historial interno).
+  const effective = await adjustments.loadEffective(trx, tenantId, { studentIds: [studentId], periodIds: [period.id] });
+  if (effective.size) {
+    const isId = (k) => /^[0-9a-f-]{36}$/i.test(k);
+    subjects.forEach((sub) =>
+      sub.plans.forEach((plan) => {
+        const adj = adjustments.findFor(effective, studentId, plan.term_id, { subjectId: isId(sub.key) ? sub.key : null, name: sub.name });
+        if (!adj) return;
+        plan.computed_final_grade = plan.final_grade;
+        plan.final_grade = adj.grade;
+        plan.status = 'final';
+        plan.adjusted = { grade: adj.grade, at: adj.at };
+      })
+    );
+  }
+
   const terms = [...new Map(plans.map((p) => [p.term_id, { id: p.term_id, name: p.term_name }])).values()];
 
   // Nota mínima: la de la normativa del año escolar consultado (migración 014).
   const passingGrade = period.passing_grade === undefined || period.passing_grade === null ? PASSING_GRADE : Number(period.passing_grade);
   // Escala de la sección vigente del alumno (la de sus planes actuales) y las equivalencias de los literales.
   const gradingScale = current?.grading_scale || 'quantitative';
-  return { ...base, passing_grade: passingGrade, school_period: { id: period.id, name: period.name }, sections, terms, subjects, grading_scale: gradingScale, scale_def: scaleDefinition() };
+  // Puesto en la sección. Con revisión académica activa, la familia no ve los planes sin aprobar:
+  // no se muestra un puesto calculado con notas que aún no puede ver.
+  const ranks = await studentRanks(trx, tenantId, studentId, period.id);
+  if (ranks && onlyApproved && current) {
+    const pending = await trx('evaluation_plans as ep')
+      .join('evaluation_plan_sections as eps', 'eps.plan_id', 'ep.id')
+      .where({ 'ep.tenant_id': tenantId, 'eps.section_id': current.id })
+      .whereNot('ep.review_status', 'aprobado')
+      .distinct('ep.term_id')
+      .pluck('ep.term_id');
+    pending.forEach((id) => {
+      ranks.terms[id] = null;
+    });
+    if (pending.length) ranks.annual = null;
+  }
+  return { ...base, passing_grade: passingGrade, school_period: { id: period.id, name: period.name }, sections, terms, subjects, grading_scale: gradingScale, scale_def: scaleDefinition(), section_ranks: ranks };
 }
 
 /**

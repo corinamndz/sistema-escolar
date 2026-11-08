@@ -6,6 +6,7 @@ import { useTenant } from '../../../context/TenantContext';
 import Button from '../../../components/ui/Button';
 import { DEFAULT_SCHOOL_LOGO } from '../../../components/ui/SchoolLogo';
 import { isQualitative, literalFor } from '../gradingScale';
+import { anyProvisional, anyRank, rankText } from '../sectionRank';
 
 const fmt = (n) => (n === null || n === undefined ? '' : Number(n).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const mean = (values) => {
@@ -20,7 +21,20 @@ const today = () => new Date().toLocaleDateString('es', { day: 'numeric', month:
  */
 function termGrade(cell) {
   if (!cell || cell.accumulated === null) return null;
-  return cell.final !== null && cell.final !== undefined ? { value: cell.final, partial: false } : { value: cell.accumulated, partial: true };
+  // adjusted: definitiva ajustada por la dirección (migración 084).
+  return cell.final !== null && cell.final !== undefined ? { value: cell.final, partial: false, adjusted: Boolean(cell.adjustment) } : { value: cell.accumulated, partial: true };
+}
+
+/** Puesto en la boleta: "3 de 28" con sus marcas de empate y provisional. */
+function RankMark({ rank }) {
+  if (!rank) return '—';
+  return (
+    <>
+      {rankText(rank)}
+      {rank.tied && <sup>(e)</sup>}
+      {rank.provisional && <sup>(p)</sup>}
+    </>
+  );
 }
 
 /**
@@ -65,6 +79,7 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onCl
   const termAverages = terms.map((t, i) => mean(rows.map((r) => r.grades[i]?.value ?? null)));
   const overall = mean(rows.map((r) => r.average));
   const anyPartial = rows.some((r) => r.grades.some((g) => g?.partial));
+  const anyAdjusted = rows.some((r) => r.grades.some((g) => g?.adjusted));
   const contact = [settings.contactPhone, settings.contactEmail].filter(Boolean).join(' · ');
   const issuedAt = today();
   const sectionLabel = student.section_id ? `${student.grade_name} · Sección ${student.section_name}` : 'Sin inscripción en el año';
@@ -103,11 +118,16 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onCl
         <h2 className="boleta-title">Boleta de calificaciones</h2>
 
         <dl className="boleta-student">
-          <div className="boleta-student__wide">
+          <div className="boleta-student__name">
             <dt>Alumno(a)</dt>
             <dd>
               {student.last_name}, {student.first_name}
             </dd>
+          </div>
+          {/* Puesto anual en la sección; el de cada lapso está al pie de la tabla. */}
+          <div className="boleta-student__rank">
+            <dt>Puesto en sección</dt>
+            <dd>{student.ranks?.annual ? <RankMark rank={student.ranks.annual} /> : <span className="boleta-student__norank">Aún sin calificaciones</span>}</dd>
           </div>
           <div>
             <dt>Cédula / documento</dt>
@@ -144,6 +164,7 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onCl
                     <td key={terms[i].id} className={g && !qualitative && g.value < passing ? 'is-low' : undefined}>
                       {g ? show(g.value) : '—'}
                       {g?.partial && <sup>*</sup>}
+                      {g?.adjusted && <sup>(a)</sup>}
                     </td>
                   ))}
                   <td className={`boleta-table__avg ${average !== null && !qualitative && average < passing ? 'is-low' : ''}`}>{show(average)}</td>
@@ -158,6 +179,20 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onCl
                 ))}
                 <td className="boleta-table__avg">{show(overall)}</td>
               </tr>
+              {/* Puesto en la sección, por lapso y anual (e: empate, p: provisional). */}
+              {anyRank(student.ranks) && (
+                <tr className="boleta-table__rank">
+                  <td className="boleta-table__subject">Puesto en la sección</td>
+                  {terms.map((t) => (
+                    <td key={t.id}>
+                      <RankMark rank={student.ranks.terms?.[t.id]} />
+                    </td>
+                  ))}
+                  <td className="boleta-table__avg">
+                    <RankMark rank={student.ranks.annual} />
+                  </td>
+                </tr>
+              )}
             </tfoot>
           </table>
         )}
@@ -167,7 +202,10 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onCl
             {qualitative
               ? 'Escala cualitativa (literales). '
               : `Escala de calificación: 0 a ${scale} puntos. Nota mínima aprobatoria: ${passing} puntos. `}
-            {anyPartial && '(*) Calificación parcial: lo acumulado a la fecha de emisión; el lapso aún no se ha evaluado completo.'}
+            {anyPartial && '(*) Calificación parcial: lo acumulado a la fecha de emisión; el lapso aún no se ha evaluado completo. '}
+            {anyRank(student.ranks) && 'Puesto: por promedio entre los alumnos de la sección con notas; (e) empate: el mismo promedio comparte puesto. '}
+            {anyProvisional(student.ranks) && '(p) Puesto provisional: puede cambiar porque el período no está cerrado o faltan notas. '}
+            {anyAdjusted && '(a) Calificación definitiva ajustada por la dirección del plantel, con constancia en el historial de ajustes.'}
           </p>
         </div>
 

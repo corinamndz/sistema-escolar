@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { z } = require('zod');
 const service = require('./enrollmentForm.service');
+const { TEMPLATE_STYLES } = require('../../services/pdf/enrollmentFormGenerator');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
@@ -249,6 +250,15 @@ router.post(
   })
 );
 router.get('/:id', requireAdmissions, asyncHandler(async (req, res) => res.status(200).json(await service.loadForm(req.db, req.tenantId, idParam(req)))));
+/** GET /enrollment-forms/:id/pdf-preview?template=modern — PDF de ejemplo con esa plantilla, sin guardar nada. */
+router.get(
+  '/:id/pdf-preview',
+  requireAdmissions,
+  asyncHandler(async (req, res) => {
+    const template = z.enum(TEMPLATE_STYLES).optional().parse(req.query.template);
+    sendPdf(res, await service.formPdfPreview(req.db, req.tenantId, idParam(req), template));
+  })
+);
 router.put(
   '/:id',
   requireAdmissions,
@@ -258,6 +268,7 @@ router.put(
         title: z.string().trim().min(3, 'Escribe el título (mínimo 3 caracteres).').max(150).optional(),
         description: z.string().trim().max(1000).nullable().optional(),
         fields: fieldsSchema.optional(),
+        templateStyle: z.enum(TEMPLATE_STYLES).optional(),
       })
       .parse(req.body);
     res.status(200).json(await service.updateForm(req.db, req.tenantId, idParam(req), data));

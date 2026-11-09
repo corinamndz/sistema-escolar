@@ -14,6 +14,8 @@ const enrollmentFormsApi = {
   get: (id) => axiosClient.get(`/enrollment-forms/${id}`).then(data),
   /** { title?, description?, fields? } */
   update: (id, body) => axiosClient.put(`/enrollment-forms/${id}`, body).then(data),
+  /** PDF de ejemplo (datos ficticios) con esa plantilla, sin guardar nada. */
+  formPdfPreview: (id, template) => axiosClient.get(`/enrollment-forms/${id}/pdf-preview`, { params: { template }, responseType: 'blob' }).then(data),
   /** status: draft | published | closed */
   setStatus: (id, status) => axiosClient.post(`/enrollment-forms/${id}/status`, { status }).then(data),
   remove: (id) => axiosClient.delete(`/enrollment-forms/${id}`).then(data),

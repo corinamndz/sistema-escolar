@@ -17,6 +17,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import DynamicForm from '../components/DynamicForm';
 import SubmissionsPanel from '../components/SubmissionsPanel';
+import PdfTemplatePicker from '../components/PdfTemplatePicker';
 import { FIELD_TYPES, FORM_STATUS, NO_PREFILL, PREFILL_SOURCES, SECTION_SCOPES, sectionScopeOf, WITH_OPTIONS, WITH_PLACEHOLDER, newField, newFieldId } from '../fieldTypes';
 
 const DRAG_TYPE = 'application/x-modo-field';
@@ -34,7 +35,7 @@ function FormBuilderPage() {
   const canEdit = canManageAdmissions(user); // Planillas: Administrador o Admisiones
   const { data: form, setData: setForm, loading, error } = useFetch(() => enrollmentFormsApi.get(id), [id]);
   const [tab, setTab] = useState('design');
-  const [draft, setDraft] = useState(null); // { title, description, fields }
+  const [draft, setDraft] = useState(null); // { title, description, fields, templateStyle }
   const [selected, setSelected] = useState(null);
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -45,13 +46,16 @@ function FormBuilderPage() {
   const confirm = useConfirm();
 
   useEffect(() => {
-    if (form && !draft) setDraft({ title: form.title, description: form.description || '', fields: form.fields });
+    if (form && !draft) setDraft({ title: form.title, description: form.description || '', fields: form.fields, templateStyle: form.template_style });
   }, [form, draft]);
 
   const dirty = useMemo(
-    () => Boolean(form && draft) && JSON.stringify({ t: draft.title, d: draft.description || '', f: draft.fields }) !== JSON.stringify({ t: form.title, d: form.description || '', f: form.fields }),
+    () =>
+      Boolean(form && draft) &&
+      JSON.stringify({ t: draft.title, d: draft.description || '', f: draft.fields, s: draft.templateStyle }) !== JSON.stringify({ t: form.title, d: form.description || '', f: form.fields, s: form.template_style }),
     [form, draft]
   );
+  const fieldsDirty = useMemo(() => Boolean(form && draft) && JSON.stringify(draft.fields) !== JSON.stringify(form.fields), [form, draft]);
   // Aviso al salir con cambios sin guardar.
   useEffect(() => {
     if (!dirty) return undefined;
@@ -106,9 +110,9 @@ function FormBuilderPage() {
     setSaving(true);
     setBadIndex(null);
     try {
-      const saved = await enrollmentFormsApi.update(id, { title: draft.title, description: draft.description || null, fields: draft.fields });
+      const saved = await enrollmentFormsApi.update(id, { title: draft.title, description: draft.description || null, fields: draft.fields, templateStyle: draft.templateStyle });
       setForm(saved);
-      setDraft({ title: saved.title, description: saved.description || '', fields: saved.fields });
+      setDraft({ title: saved.title, description: saved.description || '', fields: saved.fields, templateStyle: saved.template_style });
       toast.success('Planilla guardada', `${saved.fields.length} campos`);
       return true;
     } catch (err) {
@@ -198,6 +202,9 @@ function FormBuilderPage() {
         <button type="button" role="tab" aria-selected={tab === 'design'} className={tab === 'design' ? 'is-active' : ''} onClick={() => setTab('design')}>
           <Icon name="pencil" size={15} /> Diseño
         </button>
+        <button type="button" role="tab" aria-selected={tab === 'pdf'} className={tab === 'pdf' ? 'is-active' : ''} onClick={() => setTab('pdf')}>
+          <Icon name="file" size={15} /> Diseño del PDF
+        </button>
         <button type="button" role="tab" aria-selected={tab === 'submissions'} className={tab === 'submissions' ? 'is-active' : ''} onClick={() => setTab('submissions')}>
           <Icon name="inbox" size={15} /> Planillas recibidas
         </button>
@@ -205,6 +212,15 @@ function FormBuilderPage() {
 
       {tab === 'submissions' ? (
         <SubmissionsPanel formId={id} canReview={canEdit} />
+      ) : tab === 'pdf' ? (
+        <PdfTemplatePicker
+          formId={id}
+          value={draft.templateStyle}
+          saved={form.template_style}
+          onChange={(templateStyle) => setDraft((d) => ({ ...d, templateStyle }))}
+          disabled={!canEdit}
+          fieldsDirty={fieldsDirty}
+        />
       ) : (
         <div className="fb__grid">
           {/* Paleta */}

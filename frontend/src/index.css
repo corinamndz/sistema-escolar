@@ -10119,6 +10119,28 @@ body.is-printing-boleta { overflow: hidden; }
 .grades-summary__rank-note { display: block; font-size: 11.5px; color: var(--color-text-secondary); }
 
 /* ---- Períodos de evaluación configurables ---- */
+/* Selector de plantilla del PDF de la planilla. */
+.pdft { display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 14px; background: var(--color-surface-muted); }
+.pdft__head .card__title { margin: 0 0 4px; }
+.pdft__head p { margin: 0; }
+.pdft__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.pdft__card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 2px solid var(--color-border); border-radius: 12px; background: var(--color-surface); transition: border-color 120ms ease, box-shadow 120ms ease; }
+.pdft__card:hover { border-color: var(--color-primary-ring); }
+.pdft__card:focus-within { box-shadow: 0 0 0 3px var(--color-primary-ring); }
+.pdft__card.is-active { border-color: var(--color-primary); background: var(--color-primary-softer); }
+.pdft__card > .btn { align-self: flex-start; }
+.pdft__option { flex: 1; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+.pdft__radio { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.pdft__radio:disabled ~ * { cursor: default; }
+.pdft__sheet { display: block; width: 100%; height: auto; border: 1px solid var(--color-border); border-radius: 4px; box-shadow: var(--shadow-sm); }
+.pdft__name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px; font-size: 14px; color: var(--color-text); }
+.pdft__tag { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--color-text-muted); background: var(--color-surface-muted); }
+.pdft__check { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-left: auto; border-radius: 50%; color: #fff; background: var(--color-primary); }
+.pdft__text { font-size: 12.5px; line-height: 1.4; color: var(--color-text-secondary); }
+.pdft__saved { font-size: 11.5px; font-weight: 600; color: var(--color-text-muted); }
+.pdft__note { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 12.5px; color: var(--color-text-secondary); }
+.pdft__note svg { flex-shrink: 0; margin-top: 2px; }
+
 /* Retiro de alumnos: qué ocurre al confirmar. */
 .wd-effects { list-style: none; margin: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; border-radius: 10px; background: var(--color-surface-muted); font-size: 13.5px; color: var(--color-text-secondary); }
 .wd-effects li { display: flex; align-items: flex-start; gap: 8px; }

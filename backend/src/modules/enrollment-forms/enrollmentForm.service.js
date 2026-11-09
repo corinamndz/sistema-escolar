@@ -229,19 +229,25 @@ async function createForm(trx, tenantId, userId, { schoolPeriodId, title, descri
   if (!period) throw ApiError.badRequest('Año escolar inválido.', [{ path: 'schoolPeriodId', message: 'Año escolar inválido.' }]);
   if (period.closed_at) throw ApiError.unprocessable(`El año escolar ${period.name} está finalizado.`);
   let fields = STARTER_FIELDS;
-  if (copyFromId) fields = (await loadForm(trx, tenantId, copyFromId)).fields;
+  let style = {}; // sin copia: la plantilla por defecto de la tabla
+  if (copyFromId) {
+    const source = await loadForm(trx, tenantId, copyFromId);
+    fields = source.fields;
+    style = { template_style: source.template_style };
+  }
   const [row] = await trx('enrollment_forms')
-    .insert({ tenant_id: tenantId, school_period_id: schoolPeriodId, title: title.trim(), description: description?.trim() || null, fields: JSON.stringify(fields), created_by: userId })
+    .insert({ tenant_id: tenantId, school_period_id: schoolPeriodId, title: title.trim(), description: description?.trim() || null, fields: JSON.stringify(fields), created_by: userId, ...style })
     .returning('id');
   return loadForm(trx, tenantId, row.id);
 }
 
-async function updateForm(trx, tenantId, id, { title, description, fields }) {
+async function updateForm(trx, tenantId, id, { title, description, fields, templateStyle }) {
   await loadForm(trx, tenantId, id);
   const patch = { updated_at: trx.fn.now() };
   if (title !== undefined) patch.title = title.trim();
   if (description !== undefined) patch.description = description?.trim() || null;
   if (fields !== undefined) patch.fields = JSON.stringify(normalizeFields(fields));
+  if (templateStyle !== undefined) patch.template_style = templateStyle;
   await trx('enrollment_forms').where({ id }).update(patch);
   return loadForm(trx, tenantId, id);
 }
@@ -575,11 +581,12 @@ async function formForPeriod(trx, tenantId, userId, period) {
     .join('school_periods as sp', 'sp.id', 'f.school_period_id')
     .where('f.tenant_id', tenantId)
     .orderByRaw("(f.status = 'published') DESC, sp.start_date DESC, f.created_at DESC")
-    .first('f.title', 'f.description', 'f.fields');
+    .first('f.title', 'f.description', 'f.fields', 'f.template_style');
   const [row] = await trx('enrollment_forms')
     .insert({
       tenant_id: tenantId,
       school_period_id: period.id,
+      ...(source?.template_style ? { template_style: source.template_style } : {}),
       title: titleForPeriod(source?.title, period.name).slice(0, 150),
       description: source?.description || null,
       fields: JSON.stringify(source?.fields || STARTER_FIELDS),
@@ -962,7 +969,7 @@ async function submissionPdf(trx, tenantId, id, { guardianUserId = null } = {}) 
       logoPath: resolveLogoFileOrDefault(settings?.logo_url),
       primaryColor: settings?.primary_color,
     },
-    form: { title: form.title, schoolPeriod: form.school_period_name },
+    form: { title: form.title, schoolPeriod: form.school_period_name, templateStyle: form.template_style },
     submission: {
       id: s.id,
       status: s.status,
@@ -992,6 +999,70 @@ async function submissionPdf(trx, tenantId, id, { guardianUserId = null } = {}) 
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return { buffer, fileName: `planilla-inscripcion-${slug || 'alumno'}.pdf` };
+}
+
+/** Respuesta ficticia de un campo, para el PDF de ejemplo del selector de plantillas. */
+function sampleAnswer(f) {
+  switch (f.type) {
+    case 'date':
+      return '2015-03-14';
+    case 'select':
+    case 'radio':
+      return f.options?.[0] || 'Opción de ejemplo';
+    case 'checkboxes':
+      return (f.options || ['Opción de ejemplo']).slice(0, 2);
+    case 'checkbox':
+      return true;
+    case 'number':
+      return '12';
+    case 'long_text':
+      return 'Texto de ejemplo: así se ve una respuesta larga, que ocupa todo el ancho de la hoja.';
+    default:
+      return 'Ejemplo';
+  }
+}
+
+/**
+ * PDF de EJEMPLO de una planilla con la plantilla `templateStyle` (sin guardarla):
+ * usa los campos ya guardados, con datos ficticios. → { buffer, fileName }
+ */
+async function formPdfPreview(trx, tenantId, id, templateStyle) {
+  const form = await loadForm(trx, tenantId, id);
+  const tenant = await trx('tenants').where({ id: tenantId }).first('name');
+  const settings = await trx('tenant_settings').where({ tenant_id: tenantId }).first();
+  const fields = form.fields || [];
+  const style = templateStyle || form.template_style;
+  const buffer = await generateEnrollmentFormPdf({
+    sample: true,
+    tenant: {
+      name: tenant.name,
+      rif: settings?.rif || null,
+      address: settings?.address || null,
+      phone: settings?.contact_phone || null,
+      email: settings?.contact_email || null,
+      logoPath: resolveLogoFileOrDefault(settings?.logo_url),
+      primaryColor: settings?.primary_color,
+    },
+    form: { title: form.title, schoolPeriod: form.school_period_name, templateStyle: style },
+    submission: {
+      id: form.id,
+      status: 'approved',
+      submittedAt: new Date(),
+      reviewedAt: new Date(),
+      reviewNote: null,
+      studentName: 'Alumno de Ejemplo',
+      isApplicant: false,
+      guardianName: 'Representante de Ejemplo',
+      guardianNationalId: 'V-12345678',
+      guardianPhone: '0412-0000000',
+      guardianEmail: 'representante@ejemplo.com',
+      fields,
+      answers: Object.fromEntries(fields.filter((f) => !['section', 'photo'].includes(f.type)).map((f) => [f.id, sampleAnswer(f)])),
+      hasPhotoField: fields.some((f) => f.type === 'photo'),
+      photoPath: null,
+    },
+  });
+  return { buffer, fileName: `ejemplo-planilla-${style}.pdf` };
 }
 
 /**
@@ -1044,6 +1115,7 @@ module.exports = {
   loadForm,
   createForm,
   updateForm,
+  formPdfPreview,
   setStatus,
   deleteForm,
   listSubmissions,

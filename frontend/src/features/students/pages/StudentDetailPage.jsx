@@ -21,6 +21,8 @@ import { useAuth } from '../../../context/AuthContext';
 import StudentSanctions from '../../discipline/components/StudentSanctions';
 import WithdrawStudentModal from '../components/WithdrawStudentModal';
 import { useReactivateStudent } from '../useReactivateStudent';
+import certificatesApi from '../../../api/endpoints/certificates.api';
+import FormPdfButton from '../../enrollment-forms/components/FormPdfButton';
 
 /** Estado de la matrícula de cada año (enrollments.status). */
 const ENROLLMENT_STATUS = { active: 'Cursando', promoted: 'Promovido', retained: 'Repite', graduated: 'Egresado', withdrawn: 'Retirado' };
@@ -62,6 +64,8 @@ function StudentDetailPage() {
   // Retirar y reactivar: la administración (el backend también lo veda a los docentes).
   const canWithdraw = can('students', 'update') && !user?.isRestrictedTeacher;
   const isWithdrawn = student.status === 'withdrawn';
+  // Certificado: la promoción o el egreso más reciente (las matrículas vienen de la más nueva a la más vieja).
+  const promotedIn = can('promotion', 'read') && !user?.isRestrictedTeacher ? student.enrollments?.find((e) => ['promoted', 'graduated'].includes(e.status)) : null;
   const guardianColumns = [
     { key: 'name', header: 'Representante', render: (g) => `${g.first_name} ${g.last_name}` },
     { key: 'relationship', header: 'Relación', render: (g) => g.relationship || '—' },
@@ -88,6 +92,9 @@ function StudentDetailPage() {
         subtitle={student.national_id ? `Documento: ${student.national_id}` : undefined}
         actions={
           <>
+            {promotedIn && (
+              <FormPdfButton load={() => certificatesApi.studentPdf(id, promotedIn.enrollment_id)} fileName={`certificado-${student.last_name}.pdf`} label="Certificado de promoción" size="md" />
+            )}
             {canWithdraw && ['active', 'inactive'].includes(student.status) && (
               <Button variant="danger" icon="logout" onClick={() => setWithdrawing(true)}>
                 Retirar alumno

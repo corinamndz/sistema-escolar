@@ -1,6 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { canManageAdmissions } from '../components/layout/navigation';
+import { canManageAdmissions, canUseCarryovers } from '../components/layout/navigation';
 import AccessDenied from './AccessDenied';
 
 /**
@@ -9,12 +9,12 @@ import AccessDenied from './AccessDenied';
  * carga. `guardianOnly`: solo cuentas de representante; `teacherOnly`: solo
  * usuarios con ficha docente (ambos sin `module`).
  */
-function PermissionRoute({ module, blockTeacher = false, guardianOnly = false, teacherOnly = false, adminOnly = false, admissionsOnly = false, orCoordinator = false }) {
+function PermissionRoute({ module, blockTeacher = false, guardianOnly = false, teacherOnly = false, adminOnly = false, admissionsOnly = false, orCoordinator = false, carryoverUsers = false }) {
   const { can, user } = useAuth();
 
   // adminOnly: solo el rol de sistema Administrador (el backend responde 403 al resto).
   // admissionsOnly: Administrador o rol Admisiones (planillas de inscripción; el backend exige requireAdmissions).
-  const ownOnly = adminOnly ? Boolean(user?.isAdmin) : admissionsOnly ? canManageAdmissions(user) : guardianOnly ? Boolean(user?.guardianId) : teacherOnly ? Boolean(user?.teachingStaffId) : null;
+  const ownOnly = adminOnly ? Boolean(user?.isAdmin) : carryoverUsers ? canUseCarryovers(user) : admissionsOnly ? canManageAdmissions(user) : guardianOnly ? Boolean(user?.guardianId) : teacherOnly ? Boolean(user?.teachingStaffId) : null;
   // orCoordinator: el Coordinador también entra (el backend lo limita a su nivel).
   const allowed = !(blockTeacher && user?.isRestrictedTeacher) && (ownOnly ?? (can(module, 'read') || (orCoordinator && Boolean(user?.coordinator))));
   if (!allowed) return <AccessDenied />;

@@ -52,6 +52,8 @@ const NAV_SECTIONS = [
       // `reviewBadge`: insignia con lo que espera revisión del coordinador o el Director.
       { moduleCode: 'evaluation_plans', label: 'Contenido programático', icon: 'layers', path: '/programmatic-content', reviewBadge: 'content' },
       { moduleCode: 'evaluation_plans', label: 'Planes de evaluación', icon: 'clipboard', path: '/evaluation-plans', reviewBadge: 'plan' },
+      // Materias pendientes (arrastres): dirección y coordinación las asignan; el profesor las evalúa.
+      { moduleCode: 'carryovers', label: 'Materias pendientes', icon: 'refresh', path: '/carryovers', carryoverUsers: true },
       // Resumen de calificaciones del colegio: acumulado por período de cada alumno (administración).
       // El Coordinador también lo ve (solo su nivel) para el ajuste directivo de definitivas.
       { moduleCode: 'grading', label: 'Resumen de calificaciones', icon: 'trendingUp', path: '/grading/summary', blockTeacher: true, coordinatorToo: true },
@@ -86,6 +88,8 @@ const NAV_SECTIONS = [
       // Comunicados: avisos con formato a todo el colegio, niveles, grados, secciones o personas.
       { moduleCode: 'announcements', label: 'Comunicados', icon: 'megaphone', path: '/notifications/announcements', blockTeacher: true },
       { moduleCode: 'tenant_settings', label: 'Log de notificaciones', icon: 'inbox', path: '/notifications/log', blockTeacher: true },
+      // Certificado de promoción: el diseño propio de cada colegio.
+      { moduleCode: 'certificates', label: 'Certificado de promoción', icon: 'award', path: '/certificates', adminOnly: true },
       // Bitácora de actividad: exclusiva del Administrador (rol de sistema), no depende de permisos de módulo.
       { moduleCode: 'audit', label: 'Auditoría', icon: 'eye', path: '/audit', adminOnly: true },
       // Soporte técnico: el Administrador reporta fallas a la plataforma (panel central del superadmin).
@@ -139,6 +143,7 @@ function isNavItemVisible(item, { can, user, portalViews }) {
   if (!isPortalViewOn(portalViews, item.portalView)) return false;
   if (item.adminOnly) return Boolean(user?.isAdmin);
   if (item.admissionsOnly) return canManageAdmissions(user);
+  if (item.carryoverUsers) return canUseCarryovers(user);
   if (item.blockTeacher && user?.isRestrictedTeacher) return false;
   // `coordinatorToo`: también para el Coordinador (el backend limita a su nivel).
   if (item.coordinatorToo && user?.coordinator) return true;
@@ -150,6 +155,11 @@ function isNavItemVisible(item, { can, user, portalViews }) {
 /** Períodos de evaluación del año: Administrador o Coordinador. */
 function canManagePeriods(user) {
   return Boolean(user?.isAdmin || user?.coordinator);
+}
+
+/** Materias pendientes: Administrador, Coordinador o docente (el backend filtra lo que ve cada uno). */
+function canUseCarryovers(user) {
+  return Boolean(user?.isAdmin || user?.coordinator || user?.teachingStaffId);
 }
 
 /** Planillas de inscripción (diseño, bandeja y aprobación): Administrador o rol Admisiones. */
@@ -166,4 +176,4 @@ function homePath(ctx) {
   return first?.path || null;
 }
 
-export { NAV_SECTIONS, findRouteMeta, isNavItemVisible, navItemLabel, hasDashboard, homePath, canManageAdmissions, canManagePeriods };
+export { NAV_SECTIONS, findRouteMeta, isNavItemVisible, navItemLabel, hasDashboard, homePath, canManageAdmissions, canManagePeriods, canUseCarryovers };

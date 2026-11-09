@@ -9,6 +9,10 @@ const portalApi = {
       registerCurrencies(r.data?.exchange?.currencies);
       return r.data;
     }),
+  /** Certificado de promoción de ese año (PDF). */
+  getStudentCertificate: (studentId, enrollmentId) => axiosClient.get(`/portal/students/${studentId}/certificate`, { params: { enrollmentId }, responseType: 'blob' }).then((r) => r.data),
+  /** Materias pendientes del alumno, con el avance de sus momentos de recuperación. */
+  getStudentCarryovers: (studentId) => axiosClient.get(`/portal/students/${studentId}/carryovers`).then((r) => r.data),
   /** Calificaciones acumuladas de un alumno del representante (404 si no es su representado). */
   /** Historial disciplinario (sanciones) del alumno: { student, items, totals }. */
   getStudentSanctions: (studentId) => axiosClient.get(`/portal/students/${studentId}/sanctions`).then((r) => r.data),

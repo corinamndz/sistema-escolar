@@ -18,6 +18,8 @@ import PortalEvaluations from '../components/PortalEvaluations';
 import PortalEvaluationPlan from '../components/PortalEvaluationPlan';
 import PortalClubs from '../components/PortalClubs';
 import PortalRecognitions from '../components/PortalRecognitions';
+import PortalCarryovers from '../../carryovers/components/PortalCarryovers';
+import FormPdfButton from '../../enrollment-forms/components/FormPdfButton';
 import { usePortalViews } from '../../../lib/portalViews';
 
 // `view`: la clave en Configuración → Vistas del representante (Información siempre se muestra).
@@ -92,7 +94,13 @@ function PortalStudentPage() {
         <Tabs tabs={tabs} active={tab} onChange={(key) => setParams({ tab: key }, { replace: true })} />
       )}
 
-      {!student.grades_locked && tab === 'grades' && <StudentGrades studentId={studentId} />}
+      {!student.grades_locked && tab === 'grades' && (
+        <>
+          {/* En paralelo a su año actual: solo aparece si tiene materias pendientes. */}
+          <PortalCarryovers studentId={studentId} />
+          <StudentGrades studentId={studentId} />
+        </>
+      )}
       {!student.grades_locked && tab === 'plan' && <PortalEvaluationPlan studentId={studentId} />}
       {!student.grades_locked && tab === 'schedule' && <PortalSchedule studentId={studentId} />}
       {!student.grades_locked && tab === 'evaluations' && <PortalEvaluations studentId={studentId} />}
@@ -155,8 +163,22 @@ function PortalHistory({ studentId }) {
   const { data, loading, error } = useFetch(() => portalApi.getStudentHistory(studentId), [studentId]);
   if (loading) return <Spinner />;
   if (error) return <Alert>{error}</Alert>;
+  // Cada año con el diseño de su nivel y su año, solo si el colegio lo publicó.
+  const certificates = data.years.filter((y) => (data.certificate_enrollment_ids || []).includes(y.enrollment_id));
   return (
-    <Card title="Historial académico" subtitle="Grados cursados en cada año escolar, resultado y notas finales">
+    <Card
+      title="Historial académico"
+      subtitle="Grados cursados en cada año escolar, resultado y notas finales"
+      actions={
+        certificates.length > 0 && (
+          <span className="cert-portal">
+            {certificates.map((y) => (
+              <FormPdfButton key={y.enrollment_id} load={() => portalApi.getStudentCertificate(studentId, y.enrollment_id)} fileName={`certificado-${y.school_period.name}.pdf`} label={`Certificado ${y.school_period.name}`} />
+            ))}
+          </span>
+        )
+      }
+    >
       <AcademicHistory data={data} />
     </Card>
   );

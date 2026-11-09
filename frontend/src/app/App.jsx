@@ -37,6 +37,8 @@ import PortalViewGate from '../components/layout/PortalViewGate';
 import AuditPage from '../features/audit/pages/AuditPage';
 import SupportPage from '../features/support/pages/SupportPage';
 import GradeSummaryPage from '../features/grading/pages/GradeSummaryPage';
+import CarryoversPage from '../features/carryovers/pages/CarryoversPage';
+import CertificateEditorPage from '../features/certificates/pages/CertificateEditorPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
 import SubjectsPage from '../features/academics/subjects/SubjectsPage';
@@ -128,6 +130,7 @@ function App() {
             </Route>
             <Route element={<PermissionRoute adminOnly />}>
               <Route path="audit" element={<AuditPage />} />
+              <Route path="certificates" element={<CertificateEditorPage />} />
               <Route path="support" element={<SupportPage />} />
             </Route>
             <Route element={<PermissionRoute module="appointments" />}>
@@ -158,6 +161,10 @@ function App() {
 
             <Route element={<PermissionRoute module="grading" />}>
               <Route path="grading/plans/:id" element={<GradebookPage />} />
+            </Route>
+            {/* Materias pendientes: dirección, coordinación y el profesor asignado (el backend filtra). */}
+            <Route element={<PermissionRoute carryoverUsers />}>
+              <Route path="carryovers" element={<CarryoversPage />} />
             </Route>
             {/* Resumen de calificaciones: también el Coordinador (su nivel), para ajustar definitivas. */}
             <Route element={<PermissionRoute module="grading" blockTeacher orCoordinator />}>

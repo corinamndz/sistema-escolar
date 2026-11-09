@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import certificatesApi from '../../../api/endpoints/certificates.api';
+import FormPdfButton from '../../enrollment-forms/components/FormPdfButton';
 import { Link, useSearchParams } from 'react-router-dom';
 import academicsApi from '../../../api/endpoints/academics.api';
 import { getErrorMessage } from '../../../api/axiosClient';
@@ -28,6 +30,32 @@ const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleSt
 function defaultTarget(s) {
   if (s.suggestion === 'graduate') return '';
   return s.suggested_section_id || `new:${s.section_name}`;
+}
+
+/** Emite de una vez los certificados de una sección o de todos los procesados: un PDF, una página por alumno. */
+function CertificateBatch({ processed }) {
+  const [group, setGroup] = useState('');
+  const eligible = processed.filter((p) => ['promoted', 'graduated'].includes(p.status));
+  if (!eligible.length) return null;
+  const keyOf = (p) => `${p.grade.id}|${p.section_name}`;
+  const groups = [...new Map(eligible.map((p) => [keyOf(p), `${p.grade.name} · Sección ${p.section_name}`])).entries()];
+  const chosen = group ? eligible.filter((p) => keyOf(p) === group) : eligible;
+  return (
+    <div className="cert-batch">
+      <span className="cert-batch__label">
+        <Icon name="award" size={15} /> Certificados de promoción
+      </span>
+      <Select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Qué certificados emitir">
+        <option value="">Todos los procesados ({eligible.length})</option>
+        {groups.map(([key, label]) => (
+          <option key={key} value={key}>
+            {label} ({eligible.filter((p) => keyOf(p) === key).length})
+          </option>
+        ))}
+      </Select>
+      <FormPdfButton load={() => certificatesApi.batch(chosen.map((p) => p.enrollment_id))} fileName="certificados-promocion.pdf" label={`Emitir ${chosen.length}`} />
+    </div>
+  );
 }
 
 /**
@@ -399,6 +427,8 @@ function PromotionPage() {
             {preview.processed.length === 0 ? (
               <p className="text-muted">Todavía no se ha procesado a ningún alumno.</p>
             ) : (
+              <>
+              <CertificateBatch processed={preview.processed} />
               <div className="table-wrap">
                 <table className="table">
                   <thead>
@@ -427,7 +457,10 @@ function PromotionPage() {
                         <td style={{ textAlign: 'center' }}>{fmt(p.final_average)}</td>
                         <td>{p.next ? `${p.next.grade_name} · Sección ${p.next.section_name}` : <span className="text-muted">—</span>}</td>
                         {canEdit && (
-                          <td style={{ textAlign: 'right' }}>
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            {['promoted', 'graduated'].includes(p.status) && (
+                              <FormPdfButton load={() => certificatesApi.studentPdf(p.student.id, p.enrollment_id)} fileName={`certificado-${p.student.last_name}.pdf`} label="Certificado" variant="ghost" />
+                            )}
                             <Button size="sm" variant="ghost" icon="arrowLeft" onClick={() => undo(p)}>
                               Deshacer
                             </Button>
@@ -438,6 +471,7 @@ function PromotionPage() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </Card>
         </>

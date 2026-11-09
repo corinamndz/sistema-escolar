@@ -72,6 +72,13 @@ const CATALOG = [
     defaults: { bell: true, email: false },
   },
   {
+    key: 'subject_carryover',
+    label: 'Materias pendientes',
+    description: 'Cuando se califica un momento de recuperación: si el alumno aprobó, o si se habilitó el siguiente.',
+    recipients: 'Los representantes del alumno',
+    defaults: { bell: true, email: false },
+  },
+  {
     key: 'club_enrollment',
     label: 'Inscripción en clubes',
     description: 'Cuando se inscribe a un alumno en un club o actividad extracurricular.',

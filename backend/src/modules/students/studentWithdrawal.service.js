@@ -1,6 +1,7 @@
 const { ApiError } = require('../../utils/ApiError');
 const record = require('../academics/academicRecord.service');
 const tuition = require('../payments/tuition.service');
+const carryovers = require('../carryovers/carryover.service');
 
 /**
  * Retiro de un alumno (migración 088). Es lógico: nunca se borra nada, y sus
@@ -11,7 +12,7 @@ const tuition = require('../payments/tuition.service');
  *     de listas, secciones, cupos, promoción y mensualidades, y el historial no
  *     cambia aunque luego se edite un plan;
  *   - se anulan las mensualidades pendientes de meses futuros (las deudas quedan);
- *   - sale de sus clubes;
+ *   - sale de sus clubes y sus materias pendientes quedan en suspenso;
  *   - queda la constancia en student_withdrawals.
  *
  * «Retirar de la sección» (academics, DELETE /enrollments/:id) es otra cosa: el
@@ -59,6 +60,7 @@ async function withdrawStudent(trx, tenantId, userId, studentId, { withdrawnOn =
   }
 
   const clubs = await trx('club_memberships').where({ tenant_id: tenantId, student_id: studentId, status: 'active' }).update({ status: 'withdrawn', withdrawn_on: date });
+  await carryovers.suspendForStudent(trx, tenantId, studentId);
   await trx('students').where({ id: studentId }).update({ status: 'withdrawn' });
   const [withdrawal] = await trx('student_withdrawals')
     .insert({ tenant_id: tenantId, student_id: studentId, withdrawn_on: date, reason, recorded_by: userId, enrollment_ids: enrollments.map((e) => e.id) })
@@ -78,6 +80,7 @@ async function reactivateStudent(trx, tenantId, userId, studentId) {
   const student = await loadForUpdate(trx, tenantId, studentId);
   if (student.status !== 'withdrawn') throw ApiError.conflict('El alumno no está retirado.');
   await trx('students').where({ id: studentId }).update({ status: 'active' });
+  await carryovers.resumeForStudent(trx, tenantId, studentId);
 
   const open = await trx('student_withdrawals').where({ tenant_id: tenantId, student_id: studentId }).whereNull('reactivated_at').first();
   const enrollments = open?.enrollment_ids?.length

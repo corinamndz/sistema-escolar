@@ -17,12 +17,16 @@ router.get('/me', controller.getMyPortal);
 router.get('/appointments', view('appointments'), appointments.myAppointments);
 router.post('/appointments/:id/confirm', view('appointments'), appointments.confirmMine);
 router.get('/students/:studentId/grades', view('grades'), controller.getStudentGrades);
+// Materias pendientes del año anterior, con el avance de sus momentos de recuperación.
+router.get('/students/:studentId/carryovers', view('grades'), controller.getStudentCarryovers);
 router.get('/students/:studentId/evaluation-plans/:planId', view('evaluation_plan'), controller.getStudentPlanDetail);
 // Constancia "He leído y acepto el plan de evaluación" (069).
 router.post('/students/:studentId/evaluation-plans/:planId/acknowledge', view('evaluation_plan'), controller.acknowledgePlan);
 // Contenido programático de una materia con sus evaluaciones publicadas (sección del alumno).
 router.get('/students/:studentId/subjects/:subjectId/program', view('grades'), controller.getStudentSubjectProgram);
 router.get('/students/:studentId/history', view('history'), controller.getStudentHistory);
+// Certificado de promoción: mismas reglas que el historial (bloqueado con cuotas vencidas).
+router.get('/students/:studentId/certificate', view('history'), controller.getStudentCertificate);
 router.get('/students/:studentId/schedule', view('schedule'), controller.getStudentSchedule);
 router.get('/students/:studentId/sanctions', view('discipline'), controller.getStudentSanctions);
 router.get('/students/:studentId/recognitions', view('recognitions'), controller.getStudentRecognitions);

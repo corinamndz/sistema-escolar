@@ -73,6 +73,15 @@ app.use((err, req, res, next) => {
     });
   }
 
+  // Cuerpo que no es JSON válido (p. ej. «null» con Content-Type JSON) o demasiado grande:
+  // error de la petición, no del servidor.
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: { message: 'Los datos enviados no tienen un formato válido. Recarga la página e inténtalo de nuevo.' } });
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: { message: 'Los datos enviados son demasiado grandes.' } });
+  }
+
   if (err instanceof ApiError) {
     return res.status(err.statusCode).json({ error: { message: err.message, details: err.details } });
   }

@@ -3,6 +3,7 @@ const academicService = require('./academic.service');
 const tuition = require('../payments/tuition.service');
 const record = require('./academicRecord.service');
 const enrollmentForms = require('../enrollment-forms/enrollmentForm.service');
+const carryovers = require('../carryovers/carryover.service');
 
 /**
  * Cierre de año escolar y promoción de alumnos.
@@ -246,8 +247,10 @@ async function applyDecision(trx, tenantId, userId, { from, to, sequence, canCre
   const section = await resolveTargetSection(trx, tenantId, { to, targetGradeId, targetSectionId: d.targetSectionId, createSectionName: d.createSectionName, canCreate });
   const created = await academicService.enrollStudent(trx, tenantId, { studentId: enr.student_id, sectionId: section.id });
   await trx('enrollments').where({ id: enr.id }).update({ next_enrollment_id: created.id });
+  // Promovido con materias reprobadas: quedan como materias pendientes, en paralelo a su año nuevo.
+  const carried = d.action === 'promote' ? await carryovers.openForEnrollment(trx, tenantId, userId, enr.id) : 0;
   const gradeName = d.action === 'promote' ? next.name : enr.grade_name;
-  return { message: `${d.action === 'promote' ? 'Promovido' : 'Repite'}: ${gradeName} ${section.name} (${to.name})`, nextEnrollmentId: created.id, studentId: enr.student_id, gradeName };
+  return { message: `${d.action === 'promote' ? 'Promovido' : 'Repite'}: ${gradeName} ${section.name} (${to.name})${carried ? ` · ${carried} materia(s) pendiente(s)` : ''}`, nextEnrollmentId: created.id, studentId: enr.student_id, gradeName, carried };
 }
 
 /**
@@ -279,6 +282,8 @@ async function executePromotion(trx, tenantId, userId, actor, { fromPeriodId, to
     if (forms.formStatus !== 'published') formNote += ' Publícala para que las familias la vean.';
   }
   if (forms.withoutGuardian) formNote += ` ${forms.withoutGuardian} alumno(s) no tienen representante: no se les pudo asignar.`;
+  const carried = results.reduce((n, r) => n + (r.carried || 0), 0);
+  if (carried) formNote += ` Se abrieron ${carried} materia(s) pendiente(s): asígnales profesor en Académico → Materias pendientes.`;
   return {
     remindedFamilies: forms.remindedFamilies,
     enrollmentForms: forms,
@@ -305,6 +310,7 @@ async function undoPromotion(trx, tenantId, enrollmentId) {
   if (enr.period_closed_at) throw ApiError.conflict(`El año ${enr.period_name} ya está finalizado: reábrelo para deshacer.`);
   const student = await trx('students').where({ id: enr.student_id }).first('status');
   if (student?.status === 'withdrawn') throw ApiError.conflict('El alumno está retirado: reactívalo antes de deshacer su promoción.');
+  await carryovers.dropForPromotionUndo(trx, tenantId, enr.id);
 
   if (enr.next_enrollment_id) {
     const next = await trx('enrollments').where({ id: enr.next_enrollment_id }).first();

@@ -10,6 +10,7 @@ const discipline = require('../discipline/discipline.service');
 const recognitions = require('../recognitions/recognition.service');
 const acknowledgments = require('./planAcknowledgment.service');
 const audit = require('../../services/audit/audit.service');
+const certificates = require('../certificates/certificate.service');
 const { asyncHandler } = require('../../utils/asyncHandler');
 
 /** GET /portal/me — panel del representante autenticado ({ guardian: null } si el usuario no es representante). */
@@ -23,7 +24,20 @@ const getStudentHistory = asyncHandler(async (req, res) => {
   const studentId = z.string().uuid().parse(req.params.studentId);
   await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
   await grades.assertGradesUnlocked(req.db, req.tenantId, studentId); // 403 si tiene cuotas vencidas
-  res.status(200).json(await academicRecord.getStudentHistory(req.db, req.tenantId, studentId));
+  const history = await academicRecord.getStudentHistory(req.db, req.tenantId, studentId);
+  res.status(200).json({ ...history, certificate_enrollment_ids: await certificates.publishedEnrollmentIds(req.db, req.tenantId, studentId) });
+});
+
+/** GET /portal/students/:studentId/certificate?enrollmentId= — certificado de promoción de un alumno del representante. */
+const getStudentCertificate = asyncHandler(async (req, res) => {
+  const studentId = z.string().uuid().parse(req.params.studentId);
+  const enrollmentId = req.query.enrollmentId ? z.string().uuid().parse(req.query.enrollmentId) : null;
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
+  await grades.assertGradesUnlocked(req.db, req.tenantId, studentId); // 403 si tiene cuotas vencidas
+  // Con el diseño del año y el nivel de esa matrícula; 404 si ese diseño no está publicado.
+  const { buffer, fileName } = await certificates.studentPdf(req.db, req.tenantId, studentId, { enrollmentId, requirePublished: true });
+  res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${fileName}"`, 'Cache-Control': 'private, no-store' });
+  res.status(200).send(buffer);
 });
 
 /** Horario (solo lectura) de la sección en que cursa un alumno del representante. */
@@ -60,6 +74,14 @@ const getRecognitionCertificate = asyncHandler(async (req, res) => {
 });
 
 /** GET /portal/students/:studentId/grades?schoolPeriodId= — calificaciones acumuladas de un alumno del representante. */
+/** GET /portal/students/:studentId/carryovers — materias pendientes (mismas reglas que las calificaciones). */
+const getStudentCarryovers = asyncHandler(async (req, res) => {
+  const studentId = z.string().uuid().parse(req.params.studentId);
+  await grades.assertGuardianOfStudent(req.db, req.tenantId, req.user.id, studentId); // 404 si no es suyo
+  await grades.assertGradesUnlocked(req.db, req.tenantId, studentId); // 403 si tiene cuotas vencidas
+  res.status(200).json(await require('../carryovers/carryover.service').listForStudent(req.db, req.tenantId, studentId));
+});
+
 const getStudentGrades = asyncHandler(async (req, res) => {
   const studentId = z.string().uuid().parse(req.params.studentId);
   const { schoolPeriodId } = z.object({ schoolPeriodId: z.string().uuid().optional() }).parse(req.query);
@@ -129,6 +151,8 @@ const getStudentClubs = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  getStudentCertificate,
+  getStudentCarryovers,
   acknowledgePlan,
   getStudentRecognitions,
   getRecognitionCertificate,

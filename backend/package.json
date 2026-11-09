@@ -13,6 +13,7 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "1.1.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -25,6 +26,7 @@
     "morgan": "^1.10.0",
     "multer": "^2.4.0",
     "nodemailer": "^6.9.13",
+    "pdf-lib": "1.17.1",
     "pdfkit": "^0.15.0",
     "pg": "^8.11.5",
     "sanitize-html": "^2.18.1",

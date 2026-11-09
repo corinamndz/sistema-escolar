@@ -6,6 +6,7 @@ const { ApiError } = require('../../utils/ApiError');
 const teacherScope = require('../access/teacherScope');
 const feePlans = require('../payments/feePlan.service');
 const enrollmentStatus = require('../enrollment-forms/enrollmentStatus');
+const withdrawals = require('./studentWithdrawal.service');
 
 const relationshipSchema = z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? null : v), z.string().trim().max(30, 'Máximo 30 caracteres.').nullable().optional());
 
@@ -112,6 +113,8 @@ const listStudents = asyncHandler(async (req, res) => {
   const scope = await teacherScope.getTeacherScope(req);
   const rows = await service.listStudents(req.db, req.tenantId, {
     status: req.query.status,
+    // Sin estado pedido, los retirados no se listan: quien los necesita lo indica.
+    includeWithdrawn: req.query.includeWithdrawn === 'true',
     availableFor: req.query.availableFor || null,
     // Año escolar del estatus «Inscrito / No inscrito» (por defecto, el vigente).
     enrollmentPeriodId: z.string().uuid().safeParse(req.query.enrollmentPeriodId).success ? req.query.enrollmentPeriodId : null,
@@ -146,6 +149,22 @@ const updateStudent = asyncHandler(async (req, res) => {
   const row = await service.updateStudent(req.db, req.tenantId, req.params.id, data);
   const feeApplied = await applyFeePlan(req, row.id, data.feePlanId);
   res.status(200).json({ ...row, ...(data.feePlanId !== undefined ? { fee_plan_id: data.feePlanId } : {}), fee_applied: feeApplied });
+});
+
+const withdrawSchema = z.object({
+  withdrawnOn: z.preprocess((v) => (v === '' ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida.').nullable().optional()),
+  reason: optionalText(z.string().trim().max(500, 'Máximo 500 caracteres.')),
+});
+
+/** POST /students/:id/withdraw — retiro lógico. Fecha (por defecto, hoy) y motivo opcionales. */
+const withdrawStudent = asyncHandler(async (req, res) => {
+  const data = withdrawSchema.parse(req.body || {});
+  res.status(200).json(await withdrawals.withdrawStudent(req.db, req.tenantId, req.user.id, z.string().uuid().parse(req.params.id), data));
+});
+
+/** POST /students/:id/reactivate — reincorpora al alumno retirado y le devuelve sus matrículas si se puede. */
+const reactivateStudent = asyncHandler(async (req, res) => {
+  res.status(200).json(await withdrawals.reactivateStudent(req.db, req.tenantId, req.user.id, z.string().uuid().parse(req.params.id)));
 });
 
 /** GET /students/:id/academic-history — años cursados con grado, resultado y notas por materia. */
@@ -221,6 +240,8 @@ const unlinkGuardian = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  withdrawStudent,
+  reactivateStudent,
   listStudents,
   listEnrollmentPeriods,
   getAcademicHistory,

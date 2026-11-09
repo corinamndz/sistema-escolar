@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { MAX_TERMS } = require('../academics/evaluationPeriods.service');
 const service = require('./discipline.service');
 const teacherScope = require('../access/teacherScope');
 const { asyncHandler } = require('../../utils/asyncHandler');
@@ -16,7 +17,7 @@ const sanctionSchema = z.object({
   measure: z.string().trim().max(200).optional().nullable(),
   occurredOn: date,
   schoolPeriodId: uuid.optional(),
-  termNumber: z.coerce.number().int().min(1).max(3).optional(),
+  termNumber: z.coerce.number().int().min(1).max(MAX_TERMS).optional(),
 });
 
 /** GET /discipline/sanctions?schoolPeriodId=&severity=&q= — docente: solo alumnos de su carga. */

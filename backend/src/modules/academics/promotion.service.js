@@ -124,7 +124,7 @@ async function previewPromotion(trx, tenantId, { fromPeriodId, toPeriodId, grade
       final_average: rec.final_average,
       failed_subjects: rec.failed_subjects,
       pending_subjects: rec.pending_subjects,
-      // Promedio de cada lapso (I, II, III) y, en subjects[].terms, la nota de cada materia por lapso.
+      // Promedio de cada período (I, II, III) y, en subjects[].terms, la nota de cada materia por período.
       term_averages: rec.term_averages,
       complete: rec.complete,
       graded: rec.graded,
@@ -303,6 +303,8 @@ async function undoPromotion(trx, tenantId, enrollmentId) {
   if (!enr) throw ApiError.notFound('Inscripción no encontrada.');
   if (!['promoted', 'retained', 'graduated'].includes(enr.status)) throw ApiError.conflict('Este alumno no fue procesado en la promoción.');
   if (enr.period_closed_at) throw ApiError.conflict(`El año ${enr.period_name} ya está finalizado: reábrelo para deshacer.`);
+  const student = await trx('students').where({ id: enr.student_id }).first('status');
+  if (student?.status === 'withdrawn') throw ApiError.conflict('El alumno está retirado: reactívalo antes de deshacer su promoción.');
 
   if (enr.next_enrollment_id) {
     const next = await trx('enrollments').where({ id: enr.next_enrollment_id }).first();
@@ -370,8 +372,8 @@ async function closeSchoolPeriod(trx, tenantId, userId, periodId) {
 
 /**
  * Normativa de evaluación de un año escolar: nota mínima, materias reprobadas
- * permitidas, promedio de lapsos (aritmético o ponderado con el peso de cada
- * lapso) y redondeo.
+ * permitidas, promedio de períodos (aritmético o ponderado con el peso de cada
+ * período), qué hacer si faltan períodos y redondeo.
  */
 async function getEvaluationRules(trx, tenantId, periodId) {
   const period = await trx('school_periods').where({ id: periodId, tenant_id: tenantId }).first();
@@ -381,7 +383,7 @@ async function getEvaluationRules(trx, tenantId, periodId) {
 }
 
 /**
- * Guarda la normativa. En modo ponderado los pesos de TODOS los lapsos del año
+ * Guarda la normativa. En modo ponderado los pesos de TODOS los períodos del año
  * deben sumar 100%. Un año finalizado no se puede modificar (sus boletas ya se
  * congelaron con la normativa vigente al cerrar).
  */
@@ -392,17 +394,17 @@ async function updateEvaluationRules(trx, tenantId, periodId, data) {
   const terms = await trx('terms').where({ tenant_id: tenantId, school_period_id: periodId }).select('id', 'name');
   const weights = new Map((data.termWeights || []).map((w) => [w.termId, w.weightPercent]));
   if ([...weights.keys()].some((id) => !terms.some((t) => t.id === id))) {
-    throw ApiError.badRequest('Hay lapsos que no pertenecen a este año escolar.', [{ path: 'termWeights', message: 'Lapso inválido.' }]);
+    throw ApiError.badRequest('Hay períodos que no pertenecen a este año escolar.', [{ path: 'termWeights', message: 'Período inválido.' }]);
   }
 
   if (data.termAverageMode === 'weighted') {
-    if (!terms.length) throw ApiError.unprocessable('El año escolar no tiene lapsos: créalos antes de usar el promedio ponderado.');
+    if (!terms.length) throw ApiError.unprocessable('El año escolar no tiene períodos: créalos antes de usar el promedio ponderado.');
     const missing = terms.filter((t) => !weights.get(t.id));
     if (missing.length) {
-      throw ApiError.badRequest(`Indica el peso de: ${missing.map((t) => t.name).join(', ')}.`, [{ path: 'termWeights', message: 'Todos los lapsos necesitan peso.' }]);
+      throw ApiError.badRequest(`Indica el peso de: ${missing.map((t) => t.name).join(', ')}.`, [{ path: 'termWeights', message: 'Todos los períodos necesitan peso.' }]);
     }
     const sum = Math.round(terms.reduce((n, t) => n + Number(weights.get(t.id)), 0) * 100) / 100;
-    if (sum !== 100) throw ApiError.badRequest(`Los pesos de los lapsos suman ${sum}%: deben sumar 100%.`, [{ path: 'termWeights', message: 'Deben sumar 100%.' }]);
+    if (sum !== 100) throw ApiError.badRequest(`Los pesos de los períodos suman ${sum}%: deben sumar 100%.`, [{ path: 'termWeights', message: 'Deben sumar 100%.' }]);
   }
 
   await trx('school_periods').where({ id: periodId }).update({
@@ -410,6 +412,7 @@ async function updateEvaluationRules(trx, tenantId, periodId, data) {
     max_failed_subjects: data.maxFailedSubjects,
     term_average_mode: data.termAverageMode,
     grade_rounding: data.gradeRounding,
+    incomplete_average_policy: data.incompleteAveragePolicy,
   });
   for (const t of terms) {
     if (weights.has(t.id)) await trx('terms').where({ id: t.id }).update({ weight_percent: weights.get(t.id) || null });

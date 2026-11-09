@@ -52,7 +52,7 @@ const NAV_SECTIONS = [
       // `reviewBadge`: insignia con lo que espera revisión del coordinador o el Director.
       { moduleCode: 'evaluation_plans', label: 'Contenido programático', icon: 'layers', path: '/programmatic-content', reviewBadge: 'content' },
       { moduleCode: 'evaluation_plans', label: 'Planes de evaluación', icon: 'clipboard', path: '/evaluation-plans', reviewBadge: 'plan' },
-      // Resumen de calificaciones del colegio: acumulado por lapso de cada alumno (administración).
+      // Resumen de calificaciones del colegio: acumulado por período de cada alumno (administración).
       // El Coordinador también lo ve (solo su nivel) para el ajuste directivo de definitivas.
       { moduleCode: 'grading', label: 'Resumen de calificaciones', icon: 'trendingUp', path: '/grading/summary', blockTeacher: true, coordinatorToo: true },
       { moduleCode: 'schedules', label: 'Horarios', icon: 'calendar', path: '/schedules', blockTeacher: true },
@@ -76,7 +76,8 @@ const NAV_SECTIONS = [
     sortAlphabetically: true,
     items: [
       { moduleCode: 'roles', label: 'Roles y permisos', icon: 'shield', path: '/roles' },
-      { moduleCode: 'tenant_settings', label: 'Configuración', icon: 'settings', path: '/tenant/settings' },
+      // El Coordinador entra solo a la pestaña «Períodos de evaluación» (ver TenantSettingsPage).
+      { moduleCode: 'tenant_settings', label: 'Configuración', icon: 'settings', path: '/tenant/settings', coordinatorToo: true },
       // Planillas de inscripción: exclusivas del Administrador y del rol Admisiones. «Recibidas» es la
       // bandeja de revisión (aprobar = alta del alumno, sus representantes y la matrícula).
       { moduleCode: 'enrollment_forms', label: 'Planillas recibidas', icon: 'inbox', path: '/enrollment-submissions', admissionsOnly: true },
@@ -146,6 +147,11 @@ function isNavItemVisible(item, { can, user, portalViews }) {
   return Boolean(item.public) || can(item.moduleCode, 'read');
 }
 
+/** Períodos de evaluación del año: Administrador o Coordinador. */
+function canManagePeriods(user) {
+  return Boolean(user?.isAdmin || user?.coordinator);
+}
+
 /** Planillas de inscripción (diseño, bandeja y aprobación): Administrador o rol Admisiones. */
 function canManageAdmissions(user) {
   return Boolean(user?.isAdmin || user?.isAdmissions);
@@ -160,4 +166,4 @@ function homePath(ctx) {
   return first?.path || null;
 }
 
-export { NAV_SECTIONS, findRouteMeta, isNavItemVisible, navItemLabel, hasDashboard, homePath, canManageAdmissions };
+export { NAV_SECTIONS, findRouteMeta, isNavItemVisible, navItemLabel, hasDashboard, homePath, canManageAdmissions, canManagePeriods };

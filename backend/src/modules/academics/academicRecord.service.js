@@ -2,6 +2,7 @@ const { ApiError } = require('../../utils/ApiError');
 const { exclusionOf } = require('./sectionSubjects');
 const adjustments = require('../grading/gradeAdjustments.service');
 const { studentRanks } = require('../grading/gradeSummary.service');
+const { DEFAULT_RULES, PASSING_GRADE, loadRules, roundGrade, annualAverage, yearAverage } = require('../grading/gradeAverages');
 
 /**
  * Expediente académico de una inscripción (alumno en una sección de un año).
@@ -9,13 +10,14 @@ const { studentRanks } = require('../grading/gradeSummary.service');
  * Fuente: planes de evaluación de la sección (incluye planes compartidos entre
  * secciones, migración 012) → actividades → notas del alumno.
  *
- *   nota del lapso   = Σ (nota / máximo) × % de cada actividad calificada,
+ *   nota del período   = Σ (nota / máximo) × % de cada actividad calificada,
  *                      llevado a la escala del colegio (acumulado sobre 20)
- *   nota final       = promedio aritmético o ponderado de los lapsos del año
- *                      (normalmente 3); provisional si falta alguno
+ *   nota final       = promedio aritmético o ponderado de los períodos del año
+ *                      (los que defina el colegio); si falta alguno, según la
+ *                      normativa: provisional o pendiente (grading/gradeAverages)
  *   aprobada         = nota final ≥ nota mínima del año escolar
  *   completa         = todos sus planes evaluados al 100% y con plan en todos
- *                      los lapsos del año
+ *                      los períodos del año
  * La normativa (nota mínima, reprobadas permitidas, promedio aritmético o
  * ponderado, redondeo) es de cada año escolar: migración 014.
  *
@@ -25,7 +27,6 @@ const { studentRanks } = require('../grading/gradeSummary.service');
  */
 
 const GRADE_SCALE = 20;
-const PASSING_GRADE = 10;
 const round2 = (n) => Math.round(n * 100) / 100;
 
 /** Datos de la inscripción con su sección, grado, nivel y año escolar. */
@@ -53,88 +54,19 @@ async function loadEnrollment(trx, tenantId, enrollmentId) {
   return e;
 }
 
-/** Normativa por defecto (la de la migración 014) si un año no tiene datos. */
-const DEFAULT_RULES = { passing_grade: PASSING_GRADE, max_failed_subjects: 0, term_average_mode: 'arithmetic', grade_rounding: 'none' };
-
-/** Redondeo "al entero" de la normativa: 9,5 → 10 · 9,49 → 9 (sobre el valor ya llevado a 2 decimales). */
-const roundGrade = (n, mode) => (mode === 'integer' ? Math.floor(round2(n) + 0.5) : round2(n));
-
-/**
- * Reglas de evaluación de varios años escolares, con sus lapsos ordenados.
- * Map periodId → { passing_grade, max_failed_subjects, term_average_mode,
- *                  effective_mode, grade_rounding, terms[], warning }
- * `effective_mode` es 'arithmetic' si se pidió ponderado pero los pesos de los
- * lapsos no suman 100 (se avisa en `warning` en vez de calcular mal).
- */
-async function loadRules(trx, tenantId, periodIds) {
-  const out = new Map();
-  if (!periodIds.length) return out;
-  const periods = await trx('school_periods').where('tenant_id', tenantId).whereIn('id', periodIds);
-  const terms = await trx('terms')
-    .where('tenant_id', tenantId)
-    .whereIn('school_period_id', periodIds)
-    .select('id', 'school_period_id', 'name', 'start_date', 'weight_percent', 'term_number')
-    .orderByRaw('term_number NULLS LAST, start_date NULLS LAST, name');
-  for (const p of periods) {
-    const pTerms = terms
-      .filter((t) => t.school_period_id === p.id)
-      .map((t) => ({ id: t.id, name: t.name, term_number: t.term_number, start_date: t.start_date, weight_percent: t.weight_percent === null ? null : Number(t.weight_percent) }));
-    const mode = p.term_average_mode || DEFAULT_RULES.term_average_mode;
-    const weightSum = round2(pTerms.reduce((n, t) => n + (t.weight_percent || 0), 0));
-    const weightsOk = pTerms.length > 0 && pTerms.every((t) => t.weight_percent) && weightSum === 100;
-    out.set(p.id, {
-      passing_grade: p.passing_grade === undefined || p.passing_grade === null ? DEFAULT_RULES.passing_grade : Number(p.passing_grade),
-      max_failed_subjects: p.max_failed_subjects ?? DEFAULT_RULES.max_failed_subjects,
-      term_average_mode: mode,
-      effective_mode: mode === 'weighted' && weightsOk ? 'weighted' : 'arithmetic',
-      grade_rounding: p.grade_rounding || DEFAULT_RULES.grade_rounding,
-      terms: pTerms,
-      warning:
-        mode === 'weighted' && !weightsOk
-          ? `Los pesos de los lapsos suman ${weightSum}% (deben sumar 100%): se usa el promedio aritmético.`
-          : pTerms.length === 0
-            ? 'El año escolar no tiene lapsos registrados.'
-            : null,
-    });
-  }
-  return out;
-}
-
-/**
- * Promedio anual de una materia a partir de sus definitivas de lapso.
- *   aritmético → Σ notas / nº de lapsos
- *   ponderado  → Σ (nota × peso) / Σ pesos
- * Solo es DEFINITIVO si hay nota en TODOS los lapsos del año; si falta alguno
- * se devuelve el promedio PROVISIONAL de los lapsos con nota (un lapso sin
- * evaluar no cuenta como 0) y se informa cuáles faltan.
- */
-function annualAverage(termEntries, rules) {
-  const graded = termEntries.filter((t) => t.grade !== null);
-  if (!graded.length) return { final: null, provisional: false };
-  let value;
-  if (rules.effective_mode === 'weighted') {
-    const w = (t) => rules.terms.find((x) => x.id === t.term_id)?.weight_percent || 0;
-    const totalW = graded.reduce((n, t) => n + w(t), 0);
-    value = totalW ? graded.reduce((n, t) => n + t.grade * w(t), 0) / totalW : graded.reduce((n, t) => n + t.grade, 0) / graded.length;
-  } else {
-    value = graded.reduce((n, t) => n + t.grade, 0) / graded.length;
-  }
-  return { final: roundGrade(value, rules.grade_rounding), provisional: graded.length < termEntries.length };
-}
-
 /**
  * Calcula EN VIVO las notas por materia de varias inscripciones (una consulta
  * para todas: el panel de promoción procesa grados completos), con la
  * normativa del año escolar de cada una.
  *
- *   1. Definitiva del lapso (por materia) = acumulado de su plan de evaluación
+ *   1. Definitiva del período (por materia) = acumulado de su plan de evaluación
  *      (simple o detallado): Σ (nota / máximo) × % de cada actividad → escala 20.
- *      Si hay más de un plan de la misma materia en el lapso, se promedian.
+ *      Si hay más de un plan de la misma materia en el período, se promedian.
  *   2. Nota final de la materia = promedio (aritmético o ponderado) de las
- *      definitivas de TODOS los lapsos del año (normalmente 3).
+ *      definitivas de TODOS los períodos del año (grading/gradeAverages).
  *   3. Aprobada si la nota final ≥ nota mínima del año.
  *   4. Materias reprobadas → se comparan con las permitidas (promoción).
- *   5. Promedio de cada lapso = Σ definitivas de las materias ÷ nº de materias
+ *   5. Promedio de cada período = Σ definitivas de las materias ÷ nº de materias
  *      cursadas (plan de estudios del grado + materias con plan).
  *
  * Devuelve Map enrollmentId → { subjects, final_average, failed_subjects,
@@ -176,7 +108,7 @@ async function computeRecords(trx, tenantId, enrollments) {
     .select('sec.id as section_id', 'sub.id', 'sub.name')
     .orderBy(['gs.sort_order', 'sub.name']);
 
-  /** Definitiva de un plan (una materia en un lapso) para un alumno. */
+  /** Definitiva de un plan (una materia en un período) para un alumno. */
   const planResult = (plan, studentId, rules) => {
     const acts = activities.filter((a) => a.evaluation_plan_id === plan.id);
     let earned = 0;
@@ -192,21 +124,21 @@ async function computeRecords(trx, tenantId, enrollments) {
       }
     }
     const status = acts.length === 0 ? 'no_activities' : evaluatedWeight === 0 ? 'no_grades' : round2(totalWeight) === 100 && round2(evaluatedWeight) === 100 ? 'final' : 'in_progress';
-    // Sin actividades o sin NINGUNA nota del alumno: el lapso queda sin nota
+    // Sin actividades o sin NINGUNA nota del alumno: el período queda sin nota
     // (no cuenta como 0: "sin evaluar" no es "reprobado").
     const raw = status === 'no_activities' || status === 'no_grades' ? null : (earned / 100) * GRADE_SCALE;
     return { raw, status };
   };
 
   const STATUS_RANK = { no_plan: 0, no_activities: 1, no_grades: 2, in_progress: 3, final: 4 };
-  // Ajustes directivos vigentes de la definitiva (migración 084): reemplazan la nota del lapso.
+  // Ajustes directivos vigentes de la definitiva (migración 084): reemplazan la nota del período.
   const effective = await adjustments.loadEffective(trx, tenantId, { studentIds, periodIds });
 
   for (const enr of enrollments) {
     const rules = rulesByPeriod.get(enr.school_period_id) || { ...DEFAULT_RULES, effective_mode: 'arithmetic', terms: [], warning: null };
     const periodTerms = rules.terms;
 
-    // Materia → lapso → planes (normalmente uno).
+    // Materia → período → planes (normalmente uno).
     const subjects = new Map();
     for (const c of curriculum.filter((x) => x.section_id === enr.section_id)) {
       subjects.set(c.id, { subject_key: c.id, subject_id: c.id, subject_name: c.name, byTerm: new Map() });
@@ -223,8 +155,8 @@ async function computeRecords(trx, tenantId, enrollments) {
 
     const list = [...subjects.values()]
       .map(({ byTerm, ...s }) => {
-        // Una fila por CADA lapso del año (también los que aún no tienen plan),
-        // más los lapsos con plan que no pertenezcan al año (dato inconsistente).
+        // Una fila por CADA período del año (también los que aún no tienen plan),
+        // más los períodos con plan que no pertenezcan al año (dato inconsistente).
         const termIds = [...periodTerms.map((t) => t.id), ...[...byTerm.keys()].filter((id) => !periodTerms.some((t) => t.id === id))];
         const terms = termIds.map((termId) => {
           const results = byTerm.get(termId) || [];
@@ -236,33 +168,35 @@ async function computeRecords(trx, tenantId, enrollments) {
             term_id: termId,
             term_name: periodTerms.find((t) => t.id === termId)?.name || '',
             term_number: periodTerms.find((t) => t.id === termId)?.term_number ?? null,
-            // Ajuste directivo: es la definitiva del lapso (cuenta para el promedio, las reprobadas y la promoción).
+            // Ajuste directivo: es la definitiva del período (cuenta para el promedio, las reprobadas y la promoción).
             grade: adj ? adj.grade : computed,
             status: adj ? 'final' : status,
             ...(adj ? { computed_grade: computed, adjustment: { grade: adj.grade, previous: adj.previous, reason: adj.reason, by: adj.by, role: adj.role, at: adj.at } } : {}),
           };
         });
-        const { final, provisional } = annualAverage(terms, rules);
+        const { final, provisional, pending } = annualAverage(terms, rules);
         return {
           ...s,
           terms,
           final_grade: final,
-          // Con lapsos pendientes la nota es provisional, pero se evalúa igual
+          // Con períodos pendientes la nota es provisional, pero se evalúa igual
           // (la sugerencia de promoción lo indica para que se revise).
           passed: final === null ? null : final >= rules.passing_grade,
           provisional,
+          // La normativa exige todos los períodos con nota y cerrados: aún sin nota final.
+          pending_closure: pending,
           missing_terms: terms.filter((t) => t.grade === null).map((t) => t.term_name),
-          // Completa: nota en todos los lapsos del año y cada plan evaluado al 100%.
+          // Completa: nota en todos los períodos del año y cada plan evaluado al 100%.
           complete: periodTerms.length > 0 && terms.every((t) => t.status === 'final'),
         };
       })
       .sort((a, b) => a.subject_name.localeCompare(b.subject_name, 'es'));
 
     const withGrade = list.filter((s) => s.final_grade !== null);
-    // Promedio del lapso = Σ definitivas de las materias en el lapso ÷ total de
+    // Promedio del período = Σ definitivas de las materias en el período ÷ total de
     // materias CURSADAS (N). Es el promedio aritmético por materia, no por
-    // actividades sueltas. Una materia sin definitiva en el lapso suma 0 pero
-    // cuenta en N (se informa con graded_subjects < total_subjects). Un lapso
+    // actividades sueltas. Una materia sin definitiva en el período suma 0 pero
+    // cuenta en N (se informa con graded_subjects < total_subjects). Un período
     // sin ninguna nota todavía no tiene promedio (null).
     const termAverages = periodTerms.map((t) => {
       const grades = list.map((s) => s.terms.find((x) => x.term_id === t.id)?.grade ?? null);
@@ -280,9 +214,10 @@ async function computeRecords(trx, tenantId, enrollments) {
     });
     out.set(enr.id, {
       subjects: list,
-      final_average: withGrade.length ? round2(withGrade.reduce((n, s) => n + s.final_grade, 0) / withGrade.length) : null,
+      final_average: yearAverage(list.map((s) => ({ final: s.final_grade, pending: s.pending_closure })), rules),
       failed_subjects: list.filter((s) => s.passed === false).length,
       pending_subjects: list.filter((s) => s.provisional).length,
+      awaiting_closure: list.filter((s) => s.pending_closure).length,
       term_averages: termAverages,
       complete: list.length > 0 && list.every((s) => s.complete),
       graded: withGrade.length > 0,
@@ -299,6 +234,7 @@ const publicRules = (r) => ({
   term_average_mode: r.term_average_mode,
   effective_mode: r.effective_mode,
   grade_rounding: r.grade_rounding,
+  incomplete_average_policy: r.incomplete_average_policy,
   terms: r.terms.map((t) => ({ id: t.id, name: t.name, term_number: t.term_number, weight_percent: t.weight_percent })),
   warning: r.warning,
 });
@@ -307,22 +243,28 @@ const publicRules = (r) => ({
  * Sugerencia de promoción a partir del expediente del año.
  *   reprobadas ≤ permitidas → promover (o egresar si es el último grado)
  *   reprobadas > permitidas → repetir
- * Con lapsos sin nota la decisión se toma con el promedio provisional y se
- * advierte en el motivo.
+ * Con períodos sin nota la decisión se toma con el promedio provisional y se
+ * advierte en el motivo. Si la normativa exige todos los períodos cerrados, las
+ * materias sin nota final no cuentan como reprobadas y también se advierte.
  */
 function suggestOutcome(rec, { hasNextGrade, maxFailed }) {
   const advance = hasNextGrade ? 'promote' : 'graduate';
+  if (!rec.graded && rec.awaiting_closure) {
+    return { suggestion: advance, reason: `Sin nota final: la normativa exige todos los períodos con nota y cerrados (${rec.awaiting_closure} materia(s) pendiente(s)). Revisa antes de promover.` };
+  }
   if (!rec.graded) return { suggestion: advance, reason: 'Sin calificaciones registradas: revisa antes de promover.' };
   const n = rec.failed_subjects;
-  const pending = rec.pending_subjects
-    ? ` Provisional: ${rec.pending_subjects} materia(s) sin nota en todos los lapsos.`
-    : '';
+  const pending = rec.awaiting_closure
+    ? ` Pendiente: ${rec.awaiting_closure} materia(s) sin nota final; la normativa exige todos los períodos con nota y cerrados.`
+    : rec.pending_subjects
+      ? ` Provisional: ${rec.pending_subjects} materia(s) sin nota en todos los períodos.`
+      : '';
   if (n > maxFailed) {
     return { suggestion: 'retain', reason: `Reprobó ${n} materia(s); se permiten ${maxFailed}.${pending}` };
   }
   return {
     suggestion: advance,
-    reason: (n ? `Reprobó ${n} materia(s), dentro de lo permitido (${maxFailed}): queda(n) pendiente(s).` : 'Aprobó todas las materias.') + pending,
+    reason: (n ? `Reprobó ${n} materia(s), dentro de lo permitido (${maxFailed}): queda(n) pendiente(s).` : rec.awaiting_closure ? 'Aprobó las materias con nota final.' : 'Aprobó todas las materias.') + pending,
   };
 }
 

@@ -17,6 +17,9 @@ router.post('/students', requirePermission('students', 'create'), controller.cre
 router.get('/students/:id', requirePermission('students', 'read'), ownStudent, controller.getStudent);
 router.get('/students/:id/academic-history', requirePermission('students', 'read'), ownStudent, controller.getAcademicHistory);
 router.put('/students/:id', requirePermission('students', 'update'), ownStudent, controller.updateStudent);
+// Retiro (lógico: nunca se borra a un alumno). Decisión de la administración, no del docente.
+router.post('/students/:id/withdraw', requirePermission('students', 'update'), scope.denyTeachers, controller.withdrawStudent);
+router.post('/students/:id/reactivate', requirePermission('students', 'update'), scope.denyTeachers, controller.reactivateStudent);
 router.post('/students/:id/guardians', requirePermission('students', 'update'), ownStudent, controller.linkGuardian);
 router.delete('/students/:id/guardians/:guardianId', requirePermission('students', 'update'), ownStudent, controller.unlinkGuardian);
 

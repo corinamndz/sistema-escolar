@@ -31,7 +31,7 @@ function columnsFor(sectionNames = []) {
   return [
     { key: 'title', header: 'Actividad', required: true, width: 30, note: 'Nombre de la actividad o instrumento (máx. 200). Basta con escribirlo en la primera fila.' },
     { key: 'category', header: 'Tipo', mustExist: true, width: 14, options: Object.keys(CATEGORIES), note: `Tipo de evaluación: ${Object.keys(CATEGORIES).join(', ')}. Por defecto, Formativa.` },
-    { key: 'weight', header: 'Porcentaje', required: true, width: 12, note: 'Porcentaje de la nota del lapso (ej. 20). Basta con la primera fila.' },
+    { key: 'weight', header: 'Porcentaje', required: true, width: 12, note: 'Porcentaje de la nota del período (ej. 20). Basta con la primera fila.' },
     { key: 'instrument', header: 'Instrumento', width: 22, options: Object.keys(INSTRUMENTS), note: 'Opcional. Elige de la lista.' },
     { key: 'strategy', header: 'Estrategia evaluativa', width: 26, note: 'Opcional (máx. 200). Ej. trabajo en parejas.' },
     { key: 'maxScore', header: 'Puntaje total', width: 13, note: 'Opcional: puntaje de la actividad. Si lo dejas vacío, es la suma de los puntajes de los indicadores.' },

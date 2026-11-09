@@ -9,7 +9,7 @@ import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
-import { TERM_OPTIONS, termLabel } from '../../evaluation-plans/terms';
+import { termLabel, useTerms } from '../../evaluation-plans/terms';
 import { ContentRefsEditor, CriteriaEditor, FormatPicker, detailedBody, detailedFormFrom } from '../../evaluation-plans/components/DetailedPlanner';
 import { INSTRUMENT_LABELS } from '../../evaluation-plans/instruments';
 import { CATEGORY_LABELS } from '../categories';
@@ -18,14 +18,14 @@ import { weekendError } from '../../../utils/weekdays';
 const NEW_PLAN = 'new';
 const round2 = (n) => Math.round(n * 100) / 100;
 
-/** "Lapso I · Secc. A, B · 60% usado" para el selector de plan. */
+/** "Período I · Secc. A, B · 60% usado" para el selector de plan. */
 const planLabel = (p) =>
   `${termLabel(p.term_number, p.term_name)} · Secc. ${p.section_names} · ${p.teacher_name} · ${p.total_weight}% usado${p.format === 'detailed' ? ' · detallado' : ''}${p.status === 'closed' ? ' (cerrado)' : ''}`;
 
 /**
  * Incluir una evaluación para un tema del contenido programático: la actividad
  * se agrega a un plan de evaluación de la materia en ese grado (uno existente o
- * uno nuevo, eligiendo lapso y secciones) y queda vinculada al tema. Un mismo
+ * uno nuevo, eligiendo período y secciones) y queda vinculada al tema. Un mismo
  * tema puede tener varias (un taller y un examen, por ejemplo).
  *
  * Formato:
@@ -35,7 +35,8 @@ const planLabel = (p) =>
  *              puntaje) y fecha de aplicación por sección. Si el plan elegido
  *              es simple, pasa a detallado al guardar (en la misma operación).
  */
-function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
+function IncludeEvaluationModal({ item, content, schoolPeriodId, onClose, onSaved }) {
+  const { data: terms } = useTerms(schoolPeriodId);
   const toast = useToast();
   const openPlans = content.plans.filter((p) => p.status !== 'closed' && p.total_weight < 100);
   const firstPlan = openPlans[0] || null;
@@ -209,7 +210,7 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
         )}
         <Alert>{error}</Alert>
         <div className="form-grid">
-          <Field label="Plan de evaluación" full hint="La actividad suma al plan del lapso y las secciones que elijas.">
+          <Field label="Plan de evaluación" full hint="La actividad suma al plan del período y las secciones que elijas.">
             <Select value={planId} onChange={(e) => choosePlan(e.target.value)}>
               {content.plans.map((p) => (
                 <option key={p.id} value={p.id} disabled={p.status === 'closed' || p.total_weight >= 100}>
@@ -223,11 +224,11 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
           </Field>
           {planId === NEW_PLAN && (
             <>
-              <Field label="Lapso">
+              <Field label="Período">
                 <Select value={newPlan.termNumber} onChange={(e) => setNewPlan((p) => ({ ...p, termNumber: e.target.value }))}>
-                  {TERM_OPTIONS.map((t) => (
-                    <option key={t.number} value={t.number}>
-                      {t.label}
+                  {(terms || []).map((t) => (
+                    <option key={t.id} value={t.term_number}>
+                      {t.name}
                     </option>
                   ))}
                 </Select>
@@ -260,7 +261,7 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
             <Input type="number" min="0.01" max="100" step="0.01" suffix="%" value={form.weightPercent} onChange={set('weightPercent')} error={weightError} required />
           </Field>
           {!detailed && (
-            <Field label="Fecha estimada" hint="Opcional; dentro del lapso, de lunes a viernes." error={plannedDateError}>
+            <Field label="Fecha estimada" hint="Opcional; dentro del período, de lunes a viernes." error={plannedDateError}>
               <Input type="date" value={form.plannedDate} onChange={set('plannedDate')} error={Boolean(plannedDateError)} />
             </Field>
           )}
@@ -320,7 +321,7 @@ function IncludeEvaluationModal({ item, content, onClose, onSaved }) {
                 label="Fechas de aplicación"
                 full
                 error={sectionDateErrors.join(' ') || undefined}
-                hint={sections.length ? 'Opcional; dentro del lapso, de lunes a viernes.' : 'Elige las secciones del plan para indicar sus fechas.'}
+                hint={sections.length ? 'Opcional; dentro del período, de lunes a viernes.' : 'Elige las secciones del plan para indicar sus fechas.'}
               >
                 <div className="section-dates">
                   {sections.map((s) => (

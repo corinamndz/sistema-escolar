@@ -162,7 +162,7 @@ function PortalHistory({ studentId }) {
   );
 }
 
-/** Historial disciplinario del alumno (solo lectura): tipo de falta, motivo, medida, fecha y lapso. */
+/** Historial disciplinario del alumno (solo lectura): tipo de falta, motivo, medida, fecha y período. */
 function PortalSanctions({ studentId }) {
   const { data, loading, error } = useFetch(() => portalApi.getStudentSanctions(studentId), [studentId]);
   if (loading) return <Spinner />;

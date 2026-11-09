@@ -23,7 +23,6 @@ router.get('/terms', requirePermission('evaluation_plans', 'read'), controller.l
 router.get('/options/school-periods', requirePermission('evaluation_plans', 'read'), controller.listPeriodOptions);
 router.get('/options/sections', requirePermission('evaluation_plans', 'read'), controller.listSectionOptions);
 router.get('/options/sections/:id/assignment', requirePermission('evaluation_plans', 'read'), controller.getSectionAssignmentOptions);
-router.post('/terms', requirePermission('evaluation_plans', 'create'), controller.createTerm);
 
 router.get('/', requirePermission('evaluation_plans', 'read'), controller.listPlans);
 router.post('/', requirePermission('evaluation_plans', 'create'), controller.createPlan);

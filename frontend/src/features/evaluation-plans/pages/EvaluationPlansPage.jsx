@@ -22,7 +22,8 @@ import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
 import { LEVELS, LEVEL_CODES, LevelBadge, LevelRule } from '../../academics/levels';
 import { FORMATS, FormatPicker } from '../components/DetailedPlanner';
-import { TERM_OPTIONS, TermSelect, termLabel } from '../terms';
+import { TermSelect, termLabel } from '../terms';
+import { canManagePeriods } from '../../../components/layout/navigation';
 import DuplicateToYearModal from '../../../components/ui/DuplicateToYearModal';
 import { useDefaultSchoolPeriod } from '../../../hooks/useDefaultSchoolPeriod';
 import { currentPeriod } from '../../../lib/schoolPeriods';
@@ -57,31 +58,30 @@ function PlanWeight({ plan }) {
 
 const NO_TERM = 'none';
 
-/** Fechas "07/01 – 05/04" de un lapso, si están cargadas. */
+/** Fechas "07/01 – 05/04" de un período, si están cargadas. */
 const termRange = (t) => (t?.start_date && t?.end_date ? `${formatShort(t.start_date)} – ${formatShort(t.end_date)}` : null);
 const formatShort = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
 /**
  * Planes de evaluación del año escolar elegido, en dos niveles plegables:
- *   1. Materia (A-Z): docentes, lapsos con plan, cerrados / listos para cerrar.
- *   2. Lapso (I, II, III) dentro de cada materia, con sus planes por sección.
- * Los lapsos sin plan de la materia se ofrecen para crearlo en un clic, y las
- * fechas de los lapsos se editan en la barra superior.
+ *   1. Materia (A-Z): docentes, períodos con plan, cerrados / listos para cerrar.
+ *   2. Período (I, II, III) dentro de cada materia, con sus planes por sección.
+ * Los períodos sin plan de la materia se ofrecen para crearlo en un clic, y las
+ * fechas de los períodos se editan en la barra superior.
  */
 function EvaluationPlansPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canDirectApprove = useCanDirectApprove();
   const navigate = useNavigate();
   const { data: periods, loading: loadingPeriods } = useFetch(() => evaluationPlansApi.listPeriodOptions(), []);
   const { data: plans, setData: setPlans, loading: loadingPlans, error: plansError, refetch: refetchPlans } = useFetch(() => evaluationPlansApi.list(), []);
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
-  const { data: terms, refetch: refetchTerms } = useFetch(
+  const { data: terms } = useFetch(
     () => (schoolPeriodId ? evaluationPlansApi.listTerms(schoolPeriodId) : Promise.resolve([])),
     [schoolPeriodId]
   );
 
   const [query, setQuery] = useState('');
-  const [editingTerm, setEditingTerm] = useState(null); // lapso cuyas fechas se editan
   const [createFor, setCreateFor] = useState(null); // { termNumber } | {} → modal de nuevo plan
 
   // Año por defecto: el año escolar en curso (regla común de los selectores de año).
@@ -95,9 +95,9 @@ function EvaluationPlansPage() {
   }, [yearPlans, query]);
 
   /**
-   * Jerarquía Materia → Lapso → planes. Las materias van de la A a la Z (el
+   * Jerarquía Materia → Período → planes. Las materias van de la A a la Z (el
    * backend ya entrega los planes en ese orden); dentro de cada materia, sus
-   * lapsos en orden (I, II, III, y "Otros" si hubiera alguno sin número).
+   * períodos en orden (I, II, III, y "Otros" si hubiera alguno sin número).
    */
   const subjectGroups = useMemo(() => {
     const map = new Map();
@@ -109,15 +109,15 @@ function EvaluationPlansPage() {
     return [...map.values()]
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base', numeric: true }))
       .map((s) => {
-        const termGroups = TERM_OPTIONS.map((t) => ({
-          key: String(t.number),
-          number: t.number,
-          label: t.label,
-          term: (terms || []).find((x) => Number(x.term_number) === t.number) || null,
-          plans: s.plans.filter((p) => Number(p.term_number) === t.number),
+        const termGroups = (terms || []).map((t) => ({
+          key: t.id,
+          number: t.term_number,
+          label: t.name,
+          term: t,
+          plans: s.plans.filter((p) => p.term_id === t.id),
         }));
-        const other = s.plans.filter((p) => !TERM_OPTIONS.some((t) => t.number === Number(p.term_number)));
-        if (other.length) termGroups.push({ key: NO_TERM, number: null, label: 'Otros lapsos', term: null, plans: other });
+        const other = s.plans.filter((p) => !(terms || []).some((t) => t.id === p.term_id));
+        if (other.length) termGroups.push({ key: NO_TERM, number: null, label: 'Otros períodos', term: null, plans: other });
         return {
           ...s,
           termGroups: termGroups.filter((t) => t.plans.length),
@@ -129,7 +129,7 @@ function EvaluationPlansPage() {
       });
   }, [filtered, terms]);
 
-  // Acordeones: materias (clave de la materia) y lapsos dentro (materia|lapso).
+  // Acordeones: materias (clave de la materia) y períodos dentro (materia|período).
   // CERRADOS por defecto: se abre solo lo que se quiere consultar. Al buscar se
   // abre todo para ver los resultados.
   const subjectsOpen = useExpandedSet();
@@ -193,7 +193,7 @@ function EvaluationPlansPage() {
 
   return (
     <div>
-      <PageHeader title="Planes de evaluación" subtitle="Organizados por materia y, dentro de cada una, por lapso académico" />
+      <PageHeader title="Planes de evaluación" subtitle="Organizados por materia y, dentro de cada una, por período académico" />
       {/* Coordinador / Director: planes que esperan su revisión. */}
       <ReviewInbox type="plan" onChanged={refetchPlans} />
       {duplicating && (
@@ -202,8 +202,8 @@ function EvaluationPlansPage() {
           subject={`${duplicating.subject_name || duplicating.subject} · ${duplicating.grade_name} ${duplicating.section_names || duplicating.section_name || ''} · ${termLabel(duplicating.term_number, duplicating.term_name)}`}
           fromPeriodId={duplicating.school_period_id}
           periods={periods || []}
-          items={['Actividades con sus porcentajes, criterios e indicadores', 'Fechas corridas al lapso equivalente', 'Proyecto pedagógico y temas evaluados']}
-          note="Va al mismo grado, secciones (por nombre) y lapso del otro año, a nombre del docente que dicta la materia allí. Las notas no se copian."
+          items={['Actividades con sus porcentajes, criterios e indicadores', 'Fechas corridas al período equivalente', 'Proyecto pedagógico y temas evaluados']}
+          note="Va al mismo grado, secciones (por nombre) y período del otro año, a nombre del docente que dicta la materia allí. Las notas no se copian."
           onConfirm={(toPeriodId) => evaluationPlansApi.duplicate(duplicating.id, toPeriodId)}
           renderResult={(r) => (
             <>
@@ -293,22 +293,19 @@ function EvaluationPlansPage() {
         </div>
         <Alert>{plansError}</Alert>
 
-        {/* Lapsos del año con sus fechas (antes eran los grupos principales). */}
-        <div className="term-bar" aria-label="Lapsos del año escolar">
-          {TERM_OPTIONS.map((t) => {
-            const term = (terms || []).find((x) => Number(x.term_number) === t.number);
-            return (
-              <span key={t.number} className="term-bar__item">
-                <strong>{t.label}</strong>
-                <span className="text-sm text-muted">{termRange(term) || 'Sin fechas'}</span>
-                {canCreate && term && (
-                  <button type="button" className="link-button term-bar__edit" onClick={() => setEditingTerm(term)} title={`Fechas del ${t.label}`}>
-                    <Icon name="calendar" size={13} /> Fechas
-                  </button>
-                )}
-              </span>
-            );
-          })}
+        {/* Períodos del año con sus fechas (antes eran los grupos principales). */}
+        <div className="term-bar" aria-label="Períodos del año escolar">
+          {(terms || []).map((term) => (
+            <span key={term.id} className="term-bar__item">
+              <strong>{term.name}</strong>
+              <span className="text-sm text-muted">{termRange(term) || 'Sin fechas'}</span>
+            </span>
+          ))}
+          {canManagePeriods(user) && (
+            <Link to="/tenant/settings?tab=periodos" className="link-button term-bar__edit">
+              <Icon name="calendar" size={13} /> Configurar períodos
+            </Link>
+          )}
         </div>
       </div>
 
@@ -320,7 +317,7 @@ function EvaluationPlansPage() {
             <Icon name="clipboard" size={24} />
           </div>
           <div className="empty-state__title">Aún no hay planes en este año escolar</div>
-          <div className="text-sm">Crea el primero: elige la sección, la materia y el lapso.</div>
+          <div className="text-sm">Crea el primero: elige la sección, la materia y el período.</div>
           {canCreate && (
             <Button icon="plus" onClick={() => setCreateFor({})} style={{ marginTop: 12 }}>
               Nuevo plan
@@ -364,7 +361,7 @@ function EvaluationPlansPage() {
 
                 {open && (
                   <div id={bodyId} className="student-group__body subject-group__body">
-                    {/* Nivel 2: los lapsos de la materia */}
+                    {/* Nivel 2: los períodos de la materia */}
                     {s.termGroups.map((t) => {
                       const termKey = `${s.key}|${t.key}`;
                       const termOpen = Boolean(query) || termsOpen.isOpen(termKey);
@@ -383,7 +380,6 @@ function EvaluationPlansPage() {
                             >
                               <Icon name="chevronDown" size={16} className="term-subgroup__chevron" />
                               <span className="term-subgroup__title">{t.label}</span>
-                              {t.term && t.term.name !== `Lapso ${t.number}` && <span className="text-sm text-muted">{t.term.name}</span>}
                               <span className="term-subgroup__meta">
                                 {termRange(t.term) || 'Sin fechas'} · {t.plans.length} plan{t.plans.length === 1 ? '' : 'es'}
                                 {closed > 0 && ` · ${closed} cerrado${closed === 1 ? '' : 's'}`}
@@ -447,71 +443,12 @@ function EvaluationPlansPage() {
         </div>
       )}
 
-      {editingTerm && (
-        <CreateTermModal
-          schoolPeriodId={schoolPeriodId}
-          initial={editingTerm}
-          onClose={() => setEditingTerm(null)}
-          onCreated={refetchTerms}
-        />
-      )}
 
       {createFor && (
         // Los planes nuevos son del año escolar en curso (no del siguiente ya preparado).
         <CreatePlanModal initialTermNumber={createFor.termNumber} schoolPeriod={currentPeriod(periods)} onClose={() => setCreateFor(null)} onCreated={refetchPlans} />
       )}
     </div>
-  );
-}
-
-/** Fechas de un lapso del año (los 3 lapsos se crean con el año escolar). */
-function CreateTermModal({ schoolPeriodId, initial, onClose, onCreated }) {
-  const day = (d) => (d ? String(d).slice(0, 10) : '');
-  const [form, setForm] = useState({
-    name: initial?.name || '',
-    startDate: day(initial?.start_date),
-    endDate: day(initial?.end_date),
-    termNumber: initial?.term_number || undefined,
-  });
-  const { run, loading, error, fieldErrors } = useMutation(evaluationPlansApi.createTerm);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      await run({ schoolPeriodId, ...form });
-      onCreated();
-      onClose();
-    } catch {
-      // error visible en el modal
-    }
-  };
-
-  return (
-    <Drawer title={initial ? `Fechas del ${termLabel(initial.term_number, initial.name)}` : 'Nuevo lapso'} onClose={onClose}>
-      <Alert>{error}</Alert>
-      <form onSubmit={handleSubmit}>
-        <Field label="Nombre" error={fieldErrors.name}>
-          <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Lapso 1" required disabled={Boolean(initial)} />
-        </Field>
-        <div style={{ height: 12 }} />
-        <div className="form-grid">
-          <Field label="Fecha de inicio">
-            <Input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} />
-          </Field>
-          <Field label="Fecha de fin">
-            <Input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} />
-          </Field>
-        </div>
-        <div className="form-actions">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="submit" loading={loading}>
-            {initial ? 'Guardar fechas' : 'Crear'}
-          </Button>
-        </div>
-      </form>
-    </Drawer>
   );
 }
 
@@ -584,7 +521,7 @@ function CreatePlanModal({ initialTermNumber, schoolPeriod, onClose, onCreated }
   const changeSection = (e) => {
     setSectionId(e.target.value);
     setExtraSections([]);
-    // El lapso elegido se conserva al cambiar de sección.
+    // El período elegido se conserva al cambiar de sección.
     setForm((f) => ({ termNumber: f.termNumber, teacherId: '', subject: '', subjectId: '' }));
   };
 
@@ -645,11 +582,11 @@ function CreatePlanModal({ initialTermNumber, schoolPeriod, onClose, onCreated }
             </Field>
 
             <Field
-              label="Lapso académico"
+              label="Período académico"
               error={fieldErrors.termNumber || fieldErrors.termId}
               full
               required
-              hint="Todas las actividades de este plan se califican en el lapso elegido. Para otro lapso, crea otro plan de la misma materia."
+              hint="Todas las actividades de este plan se califican en el período elegido. Para otro período, crea otro plan de la misma materia."
             >
               <TermSelect value={form.termNumber} onChange={(termNumber) => setForm((f) => ({ ...f, termNumber }))} terms={terms} disabled={loadingTerms} required />
             </Field>

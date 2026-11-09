@@ -13,10 +13,11 @@ import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { isQualitative, literalFor } from '../gradingScale';
 import LiteralBadge from './LiteralBadge';
+import { averageRuleText } from '../averageRule';
 
 /** 16.3 → "16,30" (como en la boleta oficial). */
 const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-const shortTerm = (t) => (t.term_number ? `Lapso ${t.term_number}` : t.name);
+const shortTerm = (t) => t.name;
 
 /** Estado de una materia (o del año) según la nota mínima del año escolar. */
 const STATUS = {
@@ -24,6 +25,7 @@ const STATUS = {
   failed: { label: 'Reprobada', variant: 'danger', icon: 'alertCircle' },
   on_track: { label: 'En curso · aprobando', variant: 'info', icon: 'trendingUp' },
   at_risk: { label: 'En riesgo', variant: 'warning', icon: 'alertTriangle' },
+  pending_closure: { label: 'Pendiente de cierre', variant: 'neutral', icon: 'lock' },
   no_grades: { label: 'Sin notas', variant: 'neutral', icon: 'clock' },
 };
 
@@ -75,26 +77,26 @@ function Grade({ cell, passing, qualitative, strong = false }) {
   return (
     <span className={`gd-grade ${cell.value < passing ? 'is-fail' : 'is-pass'}`}>
       <Tag>{fmt(cell.value)}</Tag>
-      {cell.partial && <sup className="gd-grade__partial" title="Parcial: acumulado a la fecha (el lapso aún no está evaluado completo)">*</sup>}
+      {cell.partial && <sup className="gd-grade__partial" title="Parcial: acumulado a la fecha (el período aún no está evaluado completo)">*</sup>}
       <AdjustedMark adjustment={cell.adjustment} computed={cell.computed} />
     </span>
   );
 }
 
 /**
- * Detalle de calificaciones de un alumno, por materia y lapso, sin descargar
+ * Detalle de calificaciones de un alumno, por materia y período, sin descargar
  * el PDF (Resumen de calificaciones → «Ver calificaciones por materia»). Los
  * datos vienen de GET /grading/summary/students/:id, con la misma regla de la
- * boleta oficial: en cada lapso, la definitiva si el plan se evaluó completo o
+ * boleta oficial: en cada período, la definitiva si el plan se evaluó completo o
  * lo acumulado a la fecha (parcial, con *); la definitiva de la materia es la
- * media de sus lapsos, y se aprueba con la nota mínima del año.
+ * media de sus períodos, y se aprueba con la nota mínima del año.
  *
  *   studentId, schoolPeriodId   alumno y año escolar elegido en el resumen
  *   onPrint()                   abre la boleta oficial (imprimir / PDF)
  *   onChanged()                 tras un ajuste directivo (para refrescar el resumen)
  *
  * Administrador / Coordinador del nivel (can_adjust): lápiz en cada nota de un
- * lapso cerrado → «Ajustar calificación definitiva» con motivo obligatorio. Las
+ * período cerrado → «Ajustar calificación definitiva» con motivo obligatorio. Las
  * notas ajustadas llevan un indicador con el motivo, y al pie queda el
  * historial completo de ajustes.
  */
@@ -105,7 +107,7 @@ function GradeDetailDrawer({ studentId, schoolPeriodId, onClose, onPrint, onChan
   const [adjusting, setAdjusting] = useState(null);
   const data = fresh || fetched;
   const st = data?.student;
-  // ¿Se puede ajustar esta nota? Año abierto, matrícula activa y lapso cerrado (por fecha o con definitiva).
+  // ¿Se puede ajustar esta nota? Año abierto, matrícula activa y período cerrado (por fecha o con definitiva).
   const canAdjustCell = (term, cell) =>
     Boolean(data?.can_adjust && !data.school_period?.closed && st?.enrollment_status === 'active' && (term.ended || cell?.adjustment || (cell && cell.value !== null && !cell.partial)));
   const qualitative = isQualitative(st?.grading_scale);
@@ -165,7 +167,7 @@ function GradeDetailDrawer({ studentId, schoolPeriodId, onClose, onPrint, onChan
               {/* Resumen del año */}
               <div className="gd-stats">
                 <div className={`gd-stat gd-stat--main is-${data.overallStatus}`}>
-                  <span className="gd-stat__label">Promedio {data.overallPartial ? 'a la fecha' : 'definitivo'}</span>
+                  <span className="gd-stat__label">Promedio {data.overallPending ? 'pendiente' : data.overallPartial ? 'a la fecha' : 'definitivo'}</span>
                   <span className="gd-stat__value">{qualitative ? <LiteralBadge level={literalFor(data.overall)} showLabel /> : fmt(data.overall)}</span>
                   <Badge variant={overallStatus.variant}>{overallStatus.label}</Badge>
                 </div>
@@ -194,7 +196,7 @@ function GradeDetailDrawer({ studentId, schoolPeriodId, onClose, onPrint, onChan
                 )}
               </div>
 
-              {/* Materias × lapsos */}
+              {/* Materias × períodos */}
               <div className="table-wrap table-wrap--stack">
                 <table className="table table--stack gd-table">
                   <thead>
@@ -280,12 +282,12 @@ function GradeDetailDrawer({ studentId, schoolPeriodId, onClose, onPrint, onChan
 
               <p className="gd-legend">
                 {qualitative ? 'Literal según el rendimiento (A–E). ' : `Escala de 0 a ${data.scale}; se aprueba con ${passing}. `}
-                Definitiva = promedio de los lapsos.
-                {anyPartial && ' * Parcial: el lapso aún no está evaluado completo, se muestra lo acumulado a la fecha; la materia queda «En curso» o «En riesgo» hasta completarse.'}
+                {averageRuleText(data.rules) || 'Definitiva = promedio de los períodos.'}
+                {anyPartial && ' * Parcial: el período aún no está evaluado completo, se muestra lo acumulado a la fecha; la materia queda «En curso» o «En riesgo» hasta completarse.'}
                 {anyRank(st.ranks) && ' Puesto: por promedio, de mayor a menor, entre los alumnos de la sección con notas; el mismo promedio comparte puesto.'}
                 {anyProvisional(st.ranks) && ' Provisional: puede cambiar porque el período no está cerrado o faltan notas.'}
                 {data.adjustments?.length > 0 && ' El lápiz junto a una nota indica que fue ajustada por la dirección (pasa el cursor para ver el motivo).'}
-                {data.can_adjust && !data.school_period?.closed && st.enrollment_status === 'active' && ' Puedes ajustar la definitiva de los lapsos cerrados con el botón de lápiz.'}
+                {data.can_adjust && !data.school_period?.closed && st.enrollment_status === 'active' && ' Puedes ajustar la definitiva de los períodos cerrados con el botón de lápiz.'}
               </p>
             </>
           )}
@@ -301,7 +303,7 @@ function GradeDetailDrawer({ studentId, schoolPeriodId, onClose, onPrint, onChan
                   <li key={h.id} className="gd-history__item">
                     <div className="gd-history__head">
                       <strong>
-                        {h.subject_name} · {h.term_number ? `Lapso ${h.term_number}` : h.term_name}
+                        {h.subject_name} · {h.term_name}
                       </strong>
                       <span className="gd-history__change">
                         {h.new_grade === null ? (

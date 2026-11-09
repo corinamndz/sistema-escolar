@@ -21,7 +21,7 @@ const academicsApi = {
   executeRollover: (id, data) => post(`/academics/school-periods/${id}/rollover`, data),
   closeSchoolPeriod: (id) => post(`/academics/school-periods/${id}/close`),
   reopenSchoolPeriod: (id) => post(`/academics/school-periods/${id}/reopen`),
-  /** Normativa del año: nota mínima, reprobadas permitidas, promedio de lapsos (aritmético/ponderado), redondeo. */
+  /** Normativa del año: nota mínima, reprobadas permitidas, promedio de períodos (aritmético/ponderado), redondeo. */
   getEvaluationRules: (id) => get(`/academics/school-periods/${id}/evaluation-rules`),
   updateEvaluationRules: (id, data) => put(`/academics/school-periods/${id}/evaluation-rules`, data),
 

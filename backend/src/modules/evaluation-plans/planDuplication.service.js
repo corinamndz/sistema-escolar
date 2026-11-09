@@ -5,7 +5,7 @@ const { nearestWeekday } = require('../../utils/weekdays');
 
 /**
  * "Duplicar para otro año": copia un plan de evaluación al mismo grado,
- * secciones (por nombre) y lapso (por número) de otro año escolar, con toda su
+ * secciones (por nombre) y período (por número) de otro año escolar, con toda su
  * estructura: actividades, criterios e indicadores, fechas por sección y el
  * proyecto pedagógico. Las notas NO se copian.
  *
@@ -15,8 +15,8 @@ const { nearestWeekday } = require('../../utils/weekdays');
  *   - Los temas que evalúan sus actividades se buscan en el temario del año
  *     destino (misma unidad y tema); los que falten se copian allí (068).
  *   - Las fechas se corren la misma distancia que hay entre el inicio del
- *     lapso de origen y el de destino (sin fechas de lapso: un año); si caen
- *     en sábado o domingo pasan al día hábil más cercano del lapso.
+ *     período de origen y el de destino (sin fechas de período: un año); si caen
+ *     en sábado o domingo pasan al día hábil más cercano del período.
  *   - Nace abierto y en borrador de revisión.
  * Corre en la transacción del request: o se copia todo o nada.
  */
@@ -78,16 +78,16 @@ async function duplicatePlan(trx, tenantId, planId, { toPeriodId }, { assertCanC
     subject: plan.subject,
     teacherId: plan.subject_id ? undefined : await freeAreaTeacher(trx, plan.teacher_id, sectionIds[0]),
   };
-  if (!createInput.termNumber) throw ApiError.unprocessable('El lapso del plan no tiene número (I, II o III): no se puede ubicar su equivalente en el otro año.');
+  if (!createInput.termNumber) throw ApiError.unprocessable('El período del plan no tiene posición en el año: no se puede ubicar su equivalente en el otro año.');
   await assertCanCreate(createInput);
   const created = await planService.createPlan(trx, tenantId, createInput);
 
-  // Distancia entre lapsos para correr las fechas.
+  // Distancia entre períodos para correr las fechas.
   const targetTerm = await trx('terms').where({ id: created.term_id }).first();
   const from = toDate(plan.term_start);
   const to = toDate(targetTerm.start_date);
   const offsetDays = from && to ? Math.round((to - from) / DAY) : null;
-  // Corrida la fecha, si cae en sábado o domingo pasa al día hábil más cercano dentro del lapso destino.
+  // Corrida la fecha, si cae en sábado o domingo pasa al día hábil más cercano dentro del período destino.
   const termBounds = { min: targetTerm.start_date, max: targetTerm.end_date };
   const moveDate = (d) => nearestWeekday(shiftDate(d, offsetDays), termBounds);
 

@@ -278,7 +278,7 @@ async function deleteItem(trx, tenantId, id) {
  * Duplica el temario de una materia en un grado de un año a otro (unidades y
  * temas, en el mismo orden). Los temas que ya existen en el destino (misma
  * unidad y tema) no se repiten: se puede repetir sin crear duplicados.
- * Las evaluaciones son de los planes (por sección y lapso) y se duplican desde
+ * Las evaluaciones son de los planes (por sección y período) y se duplican desde
  * Planes de evaluación.
  */
 async function duplicateContent(trx, tenantId, { gradeId, subjectId, fromPeriodId, toPeriodId }) {

@@ -11,7 +11,7 @@ const enrollmentStatus = require('../enrollment-forms/enrollmentStatus');
  * (por defecto, el año vigente): «Inscrito» solo con planilla aprobada de ese año
  * (regla en enrollment-forms/enrollmentStatus.js).
  */
-async function listStudents(trx, tenantId, { status, scope = null, availableFor = null, enrollmentPeriodId = null } = {}) {
+async function listStudents(trx, tenantId, { status, includeWithdrawn = false, scope = null, availableFor = null, enrollmentPeriodId = null } = {}) {
   // Un solo año para todo el listado: grado/sección y estatus de inscripción.
   const period = await enrollmentStatus.resolvePeriod(trx, tenantId, enrollmentPeriodId);
   const query = trx('students as s')
@@ -21,8 +21,12 @@ async function listStudents(trx, tenantId, { status, scope = null, availableFor 
     .select('s.*', 'cur.*')
     .select(enrollmentStatus.statusColumns(trx, period?.id || null, 's'))
     .select(trx.raw('?::uuid AS enrollment_period_id, ?::text AS enrollment_period_name', [period?.id || null, period?.name || null]))
+    // Retiro vigente (migración 088): fecha y motivo para el listado.
+    .select(trx.raw('(SELECT w.withdrawn_on FROM student_withdrawals w WHERE w.student_id = s.id AND w.reactivated_at IS NULL) AS withdrawn_on'))
+    .select(trx.raw('(SELECT w.reason FROM student_withdrawals w WHERE w.student_id = s.id AND w.reactivated_at IS NULL) AS withdrawal_reason'))
     .orderBy(['s.last_name', 's.first_name']);
   if (status) query.andWhere('s.status', status);
+  else if (!includeWithdrawn) query.whereNot('s.status', 'withdrawn');
   // Solo alumnos SIN inscripción activa en el año escolar de la sección destino.
   if (availableFor) {
     query.whereNotExists(
@@ -65,8 +69,13 @@ async function getStudentById(trx, tenantId, id) {
   const inCurrent = enrollments.filter((e) => e.school_period_id === current?.id).sort((a, b) => rank(a) - rank(b));
   const next = inCurrent[0] ? enrollments.find((e) => e.status === 'active' && e.school_period_id !== current?.id && e.enrollment_id !== inCurrent[0].enrollment_id) : null;
 
+  const withdrawal = student.status === 'withdrawn'
+    ? (await trx('student_withdrawals as w').leftJoin('users as u', 'u.id', 'w.recorded_by').where('w.student_id', id).whereNull('w.reactivated_at').first('w.withdrawn_on', 'w.reason', 'u.full_name as recorded_by_name')) || null
+    : null;
+
   return {
     ...student,
+    withdrawal,
     guardians,
     currentPeriod: current ? { id: current.id, name: current.name } : null,
     currentEnrollment: inCurrent[0] || null,
@@ -92,7 +101,11 @@ async function createStudent(trx, tenantId, data) {
 }
 
 async function updateStudent(trx, tenantId, id, data) {
-  await getStudentById(trx, tenantId, id);
+  const current = await getStudentById(trx, tenantId, id);
+  // Retirar y reactivar tienen su propia operación: cierran o devuelven matrícula y cobros.
+  if (data.status && data.status !== current.status && (data.status === 'withdrawn' || current.status === 'withdrawn')) {
+    throw ApiError.conflict(data.status === 'withdrawn' ? 'Para retirar al alumno usa «Retirar alumno».' : 'Para reincorporar al alumno usa «Reactivar alumno».', [{ path: 'status', message: 'Usa la acción correspondiente.' }]);
+  }
   const payload = {
     first_name: data.firstName,
     last_name: data.lastName,

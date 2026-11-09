@@ -148,7 +148,7 @@ function AppointmentFormModal({ initial, onClose, onSaved }) {
             </div>
 
             <Field label="Motivo o tema a tratar" required full error={fieldErrors.topic}>
-              <Input value={form.topic} onChange={set('topic')} maxLength={200} placeholder="Ej. Rendimiento en Matemáticas del primer lapso" required />
+              <Input value={form.topic} onChange={set('topic')} maxLength={200} placeholder="Ej. Rendimiento en Matemáticas del primer período" required />
             </Field>
             <Field label="Lugar" error={fieldErrors.location} hint="Opcional.">
               <Input value={form.location} onChange={set('location')} maxLength={150} placeholder="Ej. Dirección, Coordinación…" />

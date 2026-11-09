@@ -29,7 +29,8 @@ function statusColumns(trx, periodId, alias = 's') {
   const placed = `FROM enrollments e JOIN sections sec ON sec.id = e.section_id JOIN grades g ON g.id = sec.grade_id
                   WHERE e.student_id = ${alias}.id AND e.status = 'active' AND sec.school_period_id = ?`;
   return [
-    trx.raw(`CASE WHEN EXISTS (SELECT 1 ${sub} AND fs.status = 'approved') THEN 'enrolled' ELSE 'not_enrolled' END AS enrollment_state`, [periodId]),
+    // Un retirado ya no figura inscrito, aunque su planilla aprobada se conserve en el historial.
+    trx.raw(`CASE WHEN ${alias}.status <> 'withdrawn' AND EXISTS (SELECT 1 ${sub} AND fs.status = 'approved') THEN 'enrolled' ELSE 'not_enrolled' END AS enrollment_state`, [periodId]),
     trx.raw(`(SELECT fs.status ${sub} ORDER BY ${FORM_STATUS_ORDER} LIMIT 1) AS form_status`, [periodId]),
     trx.raw(`(SELECT g.name ${placed} LIMIT 1) AS period_grade_name`, [periodId]),
     trx.raw(`(SELECT sec.name ${placed} LIMIT 1) AS period_section_name`, [periodId]),

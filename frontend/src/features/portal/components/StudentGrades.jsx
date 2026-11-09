@@ -51,7 +51,7 @@ const mean = (values) => {
   return v.length ? v.reduce((a, b) => a + Number(b), 0) / v.length : null;
 };
 
-/** Lapso por defecto: el último con alguna nota cargada (o el primero). */
+/** Período por defecto: el último con alguna nota cargada (o el primero). */
 function defaultTermId(terms, subjects) {
   const graded = new Set(subjects.flatMap((s) => s.plans.filter((p) => p.graded_count > 0).map((p) => p.term_id)));
   const withGrades = terms.filter((t) => graded.has(t.id));
@@ -67,12 +67,12 @@ const PLAN_STATUS = {
 
 /**
  * Calificaciones acumuladas de un alumno (portal del representante):
- * por materia y lapso, con cada actividad del plan de evaluación, su nota y
+ * por materia y período, con cada actividad del plan de evaluación, su nota y
  * el acumulado actual. Los cálculos vienen del backend (grades.service.js).
  */
 function StudentGrades({ studentId }) {
   const [schoolPeriodId, setSchoolPeriodId] = useState('');
-  const [pickedTermId, setPickedTermId] = useState(null); // null = lapso por defecto
+  const [pickedTermId, setPickedTermId] = useState(null); // null = período por defecto
   // Aviso "Plan de evaluación publicado" (?materia=<id>): abre esa materia en "Contenido y evaluaciones".
   const [params, setParams] = useSearchParams();
   const [openSubject, setOpenSubject] = useState(() => params.get('materia') || null);
@@ -112,14 +112,16 @@ function StudentGrades({ studentId }) {
   const setTermId = setPickedTermId;
 
   // TODAS las materias se muestran, también las que aún no tienen plan (en
-  // general o en el lapso elegido): se ven con "Sin plan de evaluación".
+  // general o en el período elegido): se ven con "Sin plan de evaluación".
   const visible = subjects.map((s) => ({ ...s, plans: s.plans.filter((p) => !termId || p.term_id === termId) }));
   const termName = terms.find((t) => t.id === termId)?.name || null;
   const selectedRank = termId ? data.section_ranks?.terms?.[termId] : data.section_ranks?.annual;
 
-  // Promedio del lapso: media de lo evaluado en cada materia con notas (orientativo).
+  // Promedio del período: media de lo evaluado en cada materia con notas (orientativo).
   const averages = visible.flatMap((s) => s.plans.map((p) => p.current_average)).filter((v) => v !== null);
-  const overall = averages.length ? averages.reduce((a, b) => a + b, 0) / averages.length : null;
+  // En «Todos los períodos»: el promedio del año, según la normativa (lo calcula el servidor).
+  const overall = !termId && data.year_average ? data.year_average.value : averages.length ? averages.reduce((a, b) => a + b, 0) / averages.length : null;
+  const overallLabel = termId || !data.year_average ? 'Promedio de lo evaluado' : data.year_average.pending ? 'Promedio pendiente' : data.year_average.provisional ? 'Promedio a la fecha' : 'Promedio del año';
   const finals = visible.flatMap((s) => s.plans).filter((p) => p.status === 'final').length;
   const selectedSubject = openSubject && visible.find((s) => s.key === openSubject);
 
@@ -136,8 +138,8 @@ function StudentGrades({ studentId }) {
           </Select>
         )}
         {terms.length > 0 && (
-          <div className="level-filter" role="group" aria-label="Lapso">
-            {[...terms, { id: '', name: 'Todos los lapsos' }].map((t) => (
+          <div className="level-filter" role="group" aria-label="Período">
+            {[...terms, { id: '', name: 'Todos los períodos' }].map((t) => (
               <button
                 key={t.id || 'all'}
                 type="button"
@@ -161,7 +163,7 @@ function StudentGrades({ studentId }) {
         <>
           <div className="grades-summary">
             <div>
-              <span className="student-card__label">Promedio de lo evaluado</span>
+              <span className="student-card__label">{overallLabel}</span>
               {isQualitative(data.grading_scale) ? (
                 <span className="grades-summary__value">
                   <LiteralBadge level={literalFor(overall)} showLabel size="lg" />
@@ -172,7 +174,7 @@ function StudentGrades({ studentId }) {
                 </span>
               )}
             </div>
-            {/* Puesto en la sección: del lapso elegido o, en «Todos los lapsos», el del año. */}
+            {/* Puesto en la sección: del período elegido o, en «Todos los períodos», el del año. */}
             <div>
               <span className="student-card__label">Puesto en sección · {termName || 'año'}</span>
               <span className="grades-summary__value">{rankText(selectedRank) || '—'}</span>
@@ -263,16 +265,18 @@ function TrafficLight({ light }) {
 }
 
 /**
- * Tarjeta de una materia en el lapso elegido: acumulado, promedio de lo
- * calificado con su semáforo y avance del plan. Con "Todos los lapsos", el
- * semáforo usa la media de los lapsos y debajo va la nota de cada uno.
+ * Tarjeta de una materia en el período elegido: acumulado, promedio de lo
+ * calificado con su semáforo y avance del plan. Con "Todos los períodos", el
+ * semáforo usa la media de los períodos y debajo va la nota de cada uno.
  */
 function SubjectGradeCard({ subject, scale, termName, allTerms, onOpen }) {
   const plans = subject.plans;
   const qualitative = plans.some((p) => isQualitative(p.grading_scale));
   const plan = plans.find((p) => p.graded_count > 0) || plans[0] || null;
 
-  const score = allTerms ? mean(plans.map(planScore)) : plan && planScore(plan);
+  // «Todos los períodos»: la nota anual de la materia, según la normativa (la calcula el servidor).
+  const annual = subject.annual;
+  const score = allTerms ? (annual ? annual.final : mean(plans.map(planScore))) : plan && planScore(plan);
   const light = trafficLight(score, scale);
   const headline = allTerms ? score : plan && (plan.final_grade ?? (plan.graded_count ? plan.accumulated : null));
   const literal = qualitative ? literalFor(score) : null;
@@ -281,10 +285,12 @@ function SubjectGradeCard({ subject, scale, termName, allTerms, onOpen }) {
 
   let caption;
   if (!plan) caption = termName ? `Sin plan de evaluación en ${termName}` : 'Sin plan de evaluación';
-  else if (allTerms) caption = 'Promedio de los lapsos';
+  else if (allTerms && annual?.pending) caption = 'Promedio al cerrar todos los períodos';
+  else if (allTerms && annual?.provisional) caption = `Promedio a la fecha (${annual.counted} de ${annual.divisor} períodos)`;
+  else if (allTerms) caption = 'Promedio de los períodos';
   else if (plan.status === 'final') caption = 'Nota definitiva';
   else if (headline === null) caption = 'Aún sin notas';
-  else caption = 'Acumulado del lapso';
+  else caption = 'Acumulado del período';
 
   return (
     <button type="button" className={`grade-card ${light ? `grade-card--${light}` : 'grade-card--none'}`} onClick={onOpen} aria-haspopup="dialog">
@@ -337,7 +343,7 @@ function SubjectGradeCard({ subject, scale, termName, allTerms, onOpen }) {
   );
 }
 
-/** Desglose de la materia en el modal: un bloque por plan (lapso). */
+/** Desglose de la materia en el modal: un bloque por plan (período). */
 function SubjectDetail({ subject, scale, passing, showTerm, termName }) {
   if (subject.plans.length === 0) {
     return (
@@ -357,7 +363,7 @@ function SubjectDetail({ subject, scale, passing, showTerm, termName }) {
   );
 }
 
-/** Una etiqueta por lapso con su nota, coloreada con el semáforo. */
+/** Una etiqueta por período con su nota, coloreada con el semáforo. */
 function SubjectSummary({ plans, scale }) {
   if (!plans.length) return null;
   return (

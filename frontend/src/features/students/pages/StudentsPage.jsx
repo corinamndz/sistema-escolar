@@ -26,6 +26,8 @@ import { LEVEL_CODES, LevelBadge, LevelFilter } from '../../academics/levels';
 import StudentGroups, { sectionLabel } from '../components/StudentGroups';
 import AcademicHistoryDrawer from '../components/AcademicHistoryDrawer';
 import EnrollmentFormsHistoryDrawer from '../components/EnrollmentFormsHistoryDrawer';
+import WithdrawStudentModal from '../components/WithdrawStudentModal';
+import { useReactivateStudent } from '../useReactivateStudent';
 import LinksField, { linksChanged } from '../components/LinksField';
 import paymentsApi from '../../../api/endpoints/payments.api';
 import { formatMoney } from '../../payments/paymentStatus';
@@ -39,6 +41,7 @@ const STATUS_FILTERS = [
   ['graduated', 'Egresados'],
   ['withdrawn', 'Retirados'],
 ];
+const DEFAULT_STATUS = 'active';
 // Clave nueva: la vista inicial pasó a ser la tabla (la preferencia anterior era "Por sección").
 const VIEW_KEY = 'students.view.v2';
 
@@ -120,6 +123,9 @@ const FORM_STATE = {
 /** Resultado de la matrícula de ese año cuando ya no está cursando (promoción, retiro). */
 const OUTCOME_LABELS = { promoted: 'Promovido', retained: 'Repite', graduated: 'Egresado', withdrawn: 'Retirado' };
 
+/** «No inscrito» por atender: un retirado no tiene inscripción pendiente. */
+const isPendingEnrollment = (r) => r.enrollment_state !== 'enrolled' && r.status !== 'withdrawn';
+
 const countBy = (rows, key) => rows.reduce((acc, r) => (r[key] ? { ...acc, [r[key]]: (acc[r[key]] || 0) + 1 } : acc), {});
 
 /**
@@ -136,8 +142,9 @@ function StudentsPage() {
   // Se cargan todos los alumnos: los filtros (estado, nivel, grado, sección, búsqueda) son locales y muestran sus totales.
   // Año escolar GLOBAL (barra superior): grado, sección e inscripción de ese año.
   const { periodId: yearId } = useAcademicYear();
-  const { data: rows, loading, error, refetch } = useFetch(() => studentsApi.list(yearId ? { enrollmentPeriodId: yearId } : undefined), [yearId]);
-  const [status, setStatus] = useState('');
+  const { data: rows, loading, error, refetch } = useFetch(() => studentsApi.list({ includeWithdrawn: true, ...(yearId ? { enrollmentPeriodId: yearId } : {}) }), [yearId]);
+  // Por defecto, solo los activos: los retirados y egresados se consultan con su filtro.
+  const [status, setStatus] = useState(DEFAULT_STATUS);
   const [level, setLevel] = useState('');
   const [gradeId, setGradeId] = useState('');
   const [section, setSection] = useState(''); // nombre de la sección ("A"): sin grado, filtra la A de todos los grados
@@ -168,11 +175,11 @@ function StudentsPage() {
     (skip === 'grade' || !gradeId || r.grade_id === gradeId) &&
     (skip === 'section' || !section || r.section_name === section) &&
     (skip === 'fee' || !specialFee || Boolean(r.fee_plan_id)) &&
-    (skip === 'enroll' || !notEnrolled || r.enrollment_state !== 'enrolled');
+    (skip === 'enroll' || !notEnrolled || isPendingEnrollment(r));
   const forStatus = all.filter((r) => matches(r, 'status'));
   const forLevel = all.filter((r) => matches(r, 'level'));
   const specialFeeCount = all.filter((r) => matches(r, 'fee') && r.fee_plan_id).length;
-  const notEnrolledCount = all.filter((r) => matches(r, 'enroll') && r.enrollment_state !== 'enrolled').length;
+  const notEnrolledCount = all.filter((r) => matches(r, 'enroll') && isPendingEnrollment(r)).length;
   const periodName = all[0]?.enrollment_period_name || null; // año del estatus (el mismo para todas las filas)
   const statusCounts = countBy(forStatus, 'status');
   const levelCounts = countBy(forLevel, 'level_code');
@@ -204,11 +211,11 @@ function StudentsPage() {
   useEffect(() => {
     if (section && !sectionOptions.includes(section)) setSection('');
   }, [section, sectionOptions]);
-  const anyFilter = Boolean(status || level || gradeId || section || specialFee || notEnrolled);
+  const anyFilter = Boolean(status !== DEFAULT_STATUS || level || gradeId || section || specialFee || notEnrolled);
   const clearFilters = () => {
     setSpecialFee(false);
     setNotEnrolled(false);
-    setStatus('');
+    setStatus(DEFAULT_STATUS);
     setLevel('');
     setGradeId('');
     setSection('');
@@ -220,21 +227,20 @@ function StudentsPage() {
 
   const canEdit = can('students', 'update');
 
-  /** Retirar o reactivar desde la fila (con confirmación). */
-  const changeStatus = async (r, next) => {
-    const withdraw = next === 'withdrawn';
-    const ok = await confirm({
-      title: withdraw ? `¿Retirar a ${fullName(r)}?` : `¿Reactivar a ${fullName(r)}?`,
-      message: withdraw
-        ? 'Quedará como Retirado. Su historial, notas e inscripciones se conservan, y puedes reactivarlo cuando quieras.'
-        : 'Volverá a estar Activo.',
-      danger: withdraw,
-      confirmLabel: withdraw ? 'Retirar' : 'Reactivar',
-    });
+  const [withdrawing, setWithdrawing] = useState(null); // alumno cuyo retiro se está registrando
+  const reactivateWithdrawn = useReactivateStudent();
+
+  /** Reactivar desde la fila: un retirado recupera su matrícula; un inactivo o egresado solo cambia de estado. */
+  const reactivate = async (r) => {
+    if (r.status === 'withdrawn') {
+      await reactivateWithdrawn(r, refetch);
+      return;
+    }
+    const ok = await confirm({ title: `¿Reactivar a ${fullName(r)}?`, message: 'Volverá a estar Activo.', confirmLabel: 'Reactivar' });
     if (!ok) return;
     try {
-      await studentsApi.update(r.id, { status: next });
-      toast.success(withdraw ? 'Alumno retirado' : 'Alumno reactivado', fullName(r));
+      await studentsApi.update(r.id, { status: 'active' });
+      toast.success('Alumno reactivado', fullName(r));
       refetch();
     } catch (err) {
       toast.error('No se pudo cambiar el estado', getErrorMessage(err));
@@ -249,8 +255,8 @@ function StudentsPage() {
     ...(canManageAdmissions(user) ? [{ key: 'forms', icon: 'clipboard', label: 'Historial de planillas', tone: 'view', onClick: (r) => setFormsOf(r) }] : []),
     ...(canEdit
       ? [
-          { key: 'withdraw', icon: 'logout', label: 'Retirar alumno', show: (r) => r.status === 'active', onClick: (r) => changeStatus(r, 'withdrawn') },
-          { key: 'reactivate', icon: 'checkCircle', label: 'Reactivar alumno', show: (r) => r.status !== 'active', onClick: (r) => changeStatus(r, 'active') },
+          ...(!user?.isRestrictedTeacher ? [{ key: 'withdraw', icon: 'logout', label: 'Retirar alumno', show: (r) => ['active', 'inactive'].includes(r.status), onClick: (r) => setWithdrawing(r) }] : []),
+          { key: 'reactivate', icon: 'checkCircle', label: 'Reactivar alumno', show: (r) => r.status !== 'active', onClick: reactivate },
         ]
       : []),
   ];
@@ -280,7 +286,17 @@ function StudentsPage() {
     header: 'Estado',
     render: (r) => {
       const [label, variant] = STATUS_LABELS[r.status] || ['—', 'neutral'];
-      return <Badge variant={variant}>{label}</Badge>;
+      return (
+        <div>
+          <Badge variant={variant}>{label}</Badge>
+          {r.status === 'withdrawn' && r.withdrawn_on && (
+            <div className="cell-person__sub" title={r.withdrawal_reason || undefined}>
+              El {formatDate(r.withdrawn_on)}
+              {r.withdrawal_reason ? ` · ${r.withdrawal_reason}` : ''}
+            </div>
+          )}
+        </div>
+      );
     },
     sortValue: (r) => r.status,
   };
@@ -289,6 +305,7 @@ function StudentsPage() {
     key: 'enrollment',
     header: periodName ? `Inscripción ${periodName}` : 'Inscripción',
     render: (r) => {
+      if (r.status === 'withdrawn') return <span className="text-muted">Retirado</span>;
       const form = FORM_STATE[r.form_status || 'missing'];
       return (
         <div className="enroll-cell">
@@ -364,7 +381,7 @@ function StudentsPage() {
     { header: 'Nivel',             value: (r) => r.level_code ? { initial: 'Inicial', primary: 'Primaria', secondary: 'Secundaria' }[r.level_code] ?? r.level_code : '', width: 14 },
     { header: 'Estado',            value: (r) => STATUS_LABELS[r.status]?.[0] ?? r.status, width: 12 },
     { header: 'Año escolar',       value: (r) => r.school_period_name ?? '',        width: 16 },
-    { header: `Inscripción ${periodName || ''}`.trim(), value: (r) => (r.enrollment_state === 'enrolled' ? 'Inscrito' : `No inscrito · ${FORM_STATE[r.form_status || 'missing'].label.toLowerCase()}`), width: 30 },
+    { header: `Inscripción ${periodName || ''}`.trim(), value: (r) => (r.status === 'withdrawn' ? 'Retirado' : r.enrollment_state === 'enrolled' ? 'Inscrito' : `No inscrito · ${FORM_STATE[r.form_status || 'missing'].label.toLowerCase()}`), width: 30 },
     { header: 'Fecha de nacimiento', value: (r) => r.birth_date ? r.birth_date.slice(0, 10) : '', width: 18 },
   ];
   const exportButton = (
@@ -549,6 +566,16 @@ function StudentsPage() {
       )}
 
       {editing !== null && <StudentFormModal initial={editing} onClose={() => setEditing(null)} onSaved={refetch} />}
+      {withdrawing && (
+        <WithdrawStudentModal
+          student={withdrawing}
+          onClose={() => setWithdrawing(null)}
+          onDone={() => {
+            setWithdrawing(null);
+            refetch();
+          }}
+        />
+      )}
       {historyOf && <AcademicHistoryDrawer student={historyOf} onClose={() => setHistoryOf(null)} />}
       {formsOf && <EnrollmentFormsHistoryDrawer student={formsOf} onClose={() => setFormsOf(null)} />}
     </div>
@@ -658,13 +685,19 @@ function StudentFormModal({ initial, onClose, onSaved }) {
             <Input name="nationalId" value={form.nationalId} onChange={handleChange} />
           </Field>
           {isEdit && (
-            <Field label="Estado" error={fieldErrors.status} hint="Para dar de baja a un alumno, márcalo como Retirado.">
-              <Select name="status" value={form.status} onChange={handleChange}>
-                {Object.entries(STATUS_LABELS).map(([value, [label]]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
+            <Field
+              label="Estado"
+              error={fieldErrors.status}
+              hint={initial.status === 'withdrawn' ? 'Para reincorporarlo, usa «Reactivar alumno».' : 'Para dar de baja a un alumno, usa «Retirar alumno».'}
+            >
+              <Select name="status" value={form.status} onChange={handleChange} disabled={initial.status === 'withdrawn'}>
+                {Object.entries(STATUS_LABELS)
+                  .filter(([value]) => value !== 'withdrawn' || initial.status === 'withdrawn')
+                  .map(([value, [label]]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
               </Select>
             </Field>
           )}

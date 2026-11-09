@@ -7,15 +7,16 @@ const { isContentReviewRequired: familiesSeeOnlyApproved } = require('../reviews
 const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 const adjustments = require('../grading/gradeAdjustments.service');
 const { studentRanks } = require('../grading/gradeSummary.service');
+const { loadRules, roundGrade, annualAverage, yearAverage } = require('../grading/gradeAverages');
 
 /**
  * Calificaciones acumuladas de un alumno para el portal del representante.
  *
- * Modelo (ya existente): evaluation_plans (sección + lapso + materia + docente)
+ * Modelo (ya existente): evaluation_plans (sección + período + materia + docente)
  *   → evaluation_activities (título, % de la nota)
  *     → activity_scores (nota obtenida `raw_score` sobre `max_score`)
  *
- * Por cada plan (una materia en un lapso) se calcula:
+ * Por cada plan (una materia en un período) se calcula:
  *   earned_percent   Σ (nota / máximo) × % actividad   → puntos ganados de 100
  *   evaluated_weight Σ % de las actividades ya calificadas
  *   accumulated      earned_percent / 100 × ESCALA      → "llevas X de 20"
@@ -299,6 +300,24 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
 
   const terms = [...new Map(plans.map((p) => [p.term_id, { id: p.term_id, name: p.term_name }])).values()];
 
+  // Promedio anual con la normativa del año, sobre los períodos definidos y los planes que la familia puede ver.
+  const rules = (await loadRules(trx, tenantId, [period.id])).get(period.id);
+  const planGrade = (plan) => {
+    if (!plan) return null;
+    if (plan.adjusted) return plan.final_grade;
+    const value = plan.final_grade ?? (plan.graded_count ? plan.accumulated : null);
+    return value === null ? null : roundGrade(value, rules.grade_rounding);
+  };
+  subjects.forEach((sub) => {
+    sub.annual = annualAverage(rules.terms.map((t) => ({ term_id: t.id, grade: planGrade(sub.plans.find((p) => p.term_id === t.id && p.graded_count > 0) || sub.plans.find((p) => p.term_id === t.id)) })), rules);
+  });
+  const annualOf = subjects.map((s) => ({ final: s.annual.final, pending: s.annual.pending }));
+  const year_average = {
+    value: yearAverage(annualOf, rules),
+    provisional: subjects.some((s) => s.annual.provisional),
+    pending: subjects.some((s) => s.annual.pending),
+  };
+
   // Nota mínima: la de la normativa del año escolar consultado (migración 014).
   const passingGrade = period.passing_grade === undefined || period.passing_grade === null ? PASSING_GRADE : Number(period.passing_grade);
   // Escala de la sección vigente del alumno (la de sus planes actuales) y las equivalencias de los literales.
@@ -318,7 +337,7 @@ async function getStudentGrades(trx, tenantId, userId, studentId, { schoolPeriod
     });
     if (pending.length) ranks.annual = null;
   }
-  return { ...base, passing_grade: passingGrade, school_period: { id: period.id, name: period.name }, sections, terms, subjects, grading_scale: gradingScale, scale_def: scaleDefinition(), section_ranks: ranks };
+  return { ...base, passing_grade: passingGrade, school_period: { id: period.id, name: period.name }, sections, terms, subjects, year_average, grading_scale: gradingScale, scale_def: scaleDefinition(), section_ranks: ranks };
 }
 
 /**

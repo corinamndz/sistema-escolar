@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import AppLayout from '../components/layout/AppLayout';
 import ProtectedRoute from './ProtectedRoute';
@@ -65,9 +65,12 @@ function App() {
             {/* Centro de notificaciones: cada usuario ve las suyas (el backend filtra por su público). */}
             <Route path="notifications" element={<NotificationCenterPage />} />
 
-            <Route element={<PermissionRoute module="tenant_settings" />}>
+            {/* El Coordinador entra solo a la pestaña de períodos: la página filtra las demás. */}
+            <Route element={<PermissionRoute module="tenant_settings" orCoordinator />}>
               <Route path="tenant/settings" element={<TenantSettingsPage />} />
             </Route>
+            {/* Dirección anterior de los períodos de evaluación. */}
+            <Route path="evaluation-periods" element={<Navigate to="/tenant/settings?tab=periodos" replace />} />
 
             <Route element={<PermissionRoute module="roles" />}>
               <Route path="roles" element={<RolesPage />} />

@@ -19,15 +19,21 @@ import Icon from '../../../components/ui/Icon';
 import AcademicHistory from '../components/AcademicHistory';
 import { useAuth } from '../../../context/AuthContext';
 import StudentSanctions from '../../discipline/components/StudentSanctions';
+import WithdrawStudentModal from '../components/WithdrawStudentModal';
+import { useReactivateStudent } from '../useReactivateStudent';
 
 /** Estado de la matrícula de cada año (enrollments.status). */
 const ENROLLMENT_STATUS = { active: 'Cursando', promoted: 'Promovido', retained: 'Repite', graduated: 'Egresado', withdrawn: 'Retirado' };
+const STUDENT_STATUS = { active: 'Activo', inactive: 'Inactivo', graduated: 'Egresado', withdrawn: 'Retirado' };
+const dmy = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' }) : null);
 import StudentFeeCard from '../../payments/components/StudentFeeCard';
 
 function StudentDetailPage() {
   const { id } = useParams();
   const { data: student, loading, error, refetch } = useFetch(() => studentsApi.getOne(id), [id]);
   const [showLink, setShowLink] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
+  const reactivate = useReactivateStudent();
   const { run: unlinkRun, error: unlinkError } = useMutation((guardianId) => studentsApi.unlinkGuardian(id, guardianId));
 
   const confirm = useConfirm();
@@ -53,6 +59,9 @@ function StudentDetailPage() {
   if (error) return <Alert>{error}</Alert>;
   if (!student) return null;
 
+  // Retirar y reactivar: la administración (el backend también lo veda a los docentes).
+  const canWithdraw = can('students', 'update') && !user?.isRestrictedTeacher;
+  const isWithdrawn = student.status === 'withdrawn';
   const guardianColumns = [
     { key: 'name', header: 'Representante', render: (g) => `${g.first_name} ${g.last_name}` },
     { key: 'relationship', header: 'Relación', render: (g) => g.relationship || '—' },
@@ -78,11 +87,31 @@ function StudentDetailPage() {
         title={`${student.first_name} ${student.last_name}`}
         subtitle={student.national_id ? `Documento: ${student.national_id}` : undefined}
         actions={
-          <Link to="/students" className="btn btn--secondary">
-            Volver
-          </Link>
+          <>
+            {canWithdraw && ['active', 'inactive'].includes(student.status) && (
+              <Button variant="danger" icon="logout" onClick={() => setWithdrawing(true)}>
+                Retirar alumno
+              </Button>
+            )}
+            {canWithdraw && isWithdrawn && (
+              <Button variant="secondary" icon="checkCircle" onClick={() => reactivate(student, refetch)}>
+                Reactivar alumno
+              </Button>
+            )}
+            <Link to="/students" className="btn btn--secondary">
+              Volver
+            </Link>
+          </>
         }
       />
+
+      {isWithdrawn && (
+        <Alert variant="warning">
+          <strong>Alumno retirado{student.withdrawal?.withdrawn_on ? ` el ${dmy(student.withdrawal.withdrawn_on)}` : ''}.</strong>
+          {student.withdrawal?.reason ? ` Motivo: ${student.withdrawal.reason}.` : ''}
+          {student.withdrawal?.recorded_by_name ? ` Registrado por ${student.withdrawal.recorded_by_name}.` : ''} Su historial sigue disponible en esta ficha.
+        </Alert>
+      )}
 
       <div className="grid grid--2">
         <Card title={student.currentPeriod ? `Inscripción ${student.currentPeriod.name}` : 'Inscripción actual'} subtitle="Año escolar vigente">
@@ -125,7 +154,7 @@ function StudentDetailPage() {
 
         <Card title="Datos generales">
           <p>Nacimiento: {student.birth_date ? student.birth_date.slice(0, 10) : '—'}</p>
-          <p>Estado: {student.status}</p>
+          <p>Estado: {STUDENT_STATUS[student.status] || student.status}</p>
         </Card>
       </div>
 
@@ -155,6 +184,16 @@ function StudentDetailPage() {
 
       {showLink && (
         <LinkGuardianModal studentId={id} onClose={() => setShowLink(false)} onLinked={refetch} />
+      )}
+      {withdrawing && (
+        <WithdrawStudentModal
+          student={student}
+          onClose={() => setWithdrawing(false)}
+          onDone={() => {
+            setWithdrawing(false);
+            refetch();
+          }}
+        />
       )}
     </div>
   );

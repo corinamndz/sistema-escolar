@@ -12,18 +12,23 @@ import { termLabel } from '../../evaluation-plans/terms';
 
 const fmt = (n) => Number(n).toLocaleString('es', { maximumFractionDigits: 2 });
 
+const POLICY_LABEL = {
+  evaluated_terms: 'Si faltan períodos: promedio provisional de los que tienen nota',
+  all_terms_closed: 'Si faltan períodos: sin promedio hasta tenerlos todos con nota y cerrados',
+};
+
 /** Texto corto del cálculo del promedio anual de una materia. */
 function averageLabel(rules) {
   const n = rules.terms.length;
   if (rules.effective_mode === 'weighted') {
-    return `Promedio ponderado de ${n} lapsos (${rules.terms.map((t) => `${termLabel(t.term_number, t.name)} ${fmt(t.weight_percent)}%`).join(' · ')})`;
+    return `Promedio ponderado de ${n} períodos (${rules.terms.map((t) => `${termLabel(t.term_number, t.name)} ${fmt(t.weight_percent)}%`).join(' · ')})`;
   }
-  return n ? `Promedio aritmético de ${n} lapso${n === 1 ? '' : 's'}` : 'Promedio de los lapsos';
+  return n ? `Promedio aritmético de ${n} período${n === 1 ? '' : 's'}` : 'Promedio de los períodos';
 }
 
 /**
  * Normativa de evaluación del año que finaliza: con qué nota se aprueba una
- * materia, cómo se promedian sus lapsos y cuántas materias reprobadas se
+ * materia, cómo se promedian sus períodos y cuántas materias reprobadas se
  * permiten para promover. La sugerencia de cada alumno sale de aquí.
  */
 function EvaluationRulesPanel({ period, rules, canEdit, onSaved }) {
@@ -43,6 +48,7 @@ function EvaluationRulesPanel({ period, rules, canEdit, onSaved }) {
           <li>
             Promueve con hasta <b>{rules.max_failed_subjects}</b> materia{rules.max_failed_subjects === 1 ? '' : 's'} reprobada{rules.max_failed_subjects === 1 ? '' : 's'}
           </li>
+          <li>{POLICY_LABEL[rules.incomplete_average_policy] || POLICY_LABEL.evaluated_terms}</li>
           <li>{rules.grade_rounding === 'integer' ? 'Notas redondeadas al entero (9,5 → 10)' : 'Notas con decimales, sin redondeo'}</li>
         </ul>
         {rules.warning && <span className="text-sm text-warning">{rules.warning}</span>}
@@ -73,6 +79,7 @@ function RulesModal({ period, rules, onClose, onSaved }) {
     maxFailedSubjects: rules.max_failed_subjects,
     termAverageMode: rules.term_average_mode,
     gradeRounding: rules.grade_rounding,
+    incompleteAveragePolicy: rules.incomplete_average_policy || 'evaluated_terms',
     weights: Object.fromEntries(rules.terms.map((t) => [t.id, t.weight_percent ?? (rules.terms.length ? Math.round((100 / rules.terms.length) * 100) / 100 : '')])),
   });
   const { run, loading, error, fieldErrors } = useMutation((data) => academicsApi.updateEvaluationRules(period.id, data));
@@ -88,6 +95,7 @@ function RulesModal({ period, rules, onClose, onSaved }) {
         maxFailedSubjects: Number(form.maxFailedSubjects),
         termAverageMode: form.termAverageMode,
         gradeRounding: form.gradeRounding,
+        incompleteAveragePolicy: form.incompleteAveragePolicy,
         termWeights: rules.terms.map((t) => ({ termId: t.id, weightPercent: form.weights[t.id] === '' ? null : Number(form.weights[t.id]) })),
       });
       onSaved();
@@ -109,8 +117,23 @@ function RulesModal({ period, rules, onClose, onSaved }) {
           </Field>
           <Field label="Promedio anual de cada materia" required>
             <Select value={form.termAverageMode} onChange={(e) => set({ termAverageMode: e.target.value })}>
-              <option value="arithmetic">Aritmético: (L1 + L2 + L3) ÷ 3</option>
-              <option value="weighted">Ponderado: cada lapso con su peso</option>
+              <option value="arithmetic">Aritmético (÷ {rules.terms.length} período{rules.terms.length === 1 ? '' : 's'})</option>
+              <option value="weighted">Ponderado (con pesos)</option>
+            </Select>
+          </Field>
+          <Field
+            label="Si faltan períodos por evaluar"
+            hint={
+              form.incompleteAveragePolicy === 'all_terms_closed'
+                ? 'Sin promedio hasta que todos tengan nota y estén cerrados.'
+                : 'Promedio provisional con los que tienen nota; un período sin evaluar no cuenta como 0.'
+            }
+            error={fieldErrors.incompleteAveragePolicy}
+            required
+          >
+            <Select value={form.incompleteAveragePolicy} onChange={(e) => set({ incompleteAveragePolicy: e.target.value })}>
+              <option value="evaluated_terms">Promediar los evaluados</option>
+              <option value="all_terms_closed">Esperar todos cerrados</option>
             </Select>
           </Field>
           <Field label="Redondeo" required>
@@ -123,9 +146,9 @@ function RulesModal({ period, rules, onClose, onSaved }) {
 
         {weighted && (
           <div className="rules-form__weights">
-            <span className="student-card__label">Peso de cada lapso</span>
+            <span className="student-card__label">Peso de cada período</span>
             {rules.terms.length === 0 ? (
-              <Alert variant="warning">El año no tiene lapsos registrados.</Alert>
+              <Alert variant="warning">El año no tiene períodos registrados.</Alert>
             ) : (
               <>
                 <div className="rules-form__weights-row">

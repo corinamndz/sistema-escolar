@@ -281,8 +281,9 @@ async function approveSubmission(trx, tenantId, userId, id, data) {
   let studentCreated = false;
   const fields = { firstName: st.firstName, lastName: st.lastName, nationalId: clean(st.nationalId, 30), birthDate: st.birthDate || null };
   if (studentId) {
-    const exists = await trx('students').where({ id: studentId, tenant_id: tenantId }).first('id');
+    const exists = await trx('students').where({ id: studentId, tenant_id: tenantId }).first('id', 'status');
     if (!exists) throw ApiError.notFound('Alumno no encontrado.');
+    if (exists.status === 'withdrawn') throw ApiError.conflict('El alumno está retirado: reactívalo en Alumnos antes de aprobar su planilla, o rechaza la planilla.');
     if (!sub.student_id) {
       const other = await trx('enrollment_form_submissions').where({ form_id: sub.form_id, student_id: studentId }).whereNot({ id: sub.id }).first('id');
       if (other) throw ApiError.conflict('Ese alumno ya tiene otra planilla en este formulario: revísala allí.');

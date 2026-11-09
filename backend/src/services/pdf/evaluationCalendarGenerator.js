@@ -7,7 +7,7 @@ const { hueOf, hslToHex, mix, textOn, validHex } = require('./scheduleGenerator'
  * mismo estilo que el horario de clases: cabecera con el color del menú del
  * colegio, días con el color de acento y cada materia con su color.
  *
- *   Una fila por semana (lunes a viernes) del rango del lapso; en cada día,
+ *   Una fila por semana (lunes a viernes) del rango del período; en cada día,
  *   sus evaluaciones con la hora del bloque de clase de la materia. Los días
  *   sobrecargados se resaltan; las de ponderación alta (examen, proyecto o ≥ 20 %) llevan
  *   una marca. Si no cabe en una página, continúa en las siguientes.
@@ -115,7 +115,7 @@ function generateEvaluationCalendarPdf(data) {
     drawHead();
 
     if (!weeks.length) {
-      doc.font('Helvetica-Oblique').fontSize(10).fillColor(MUTED).text('No hay evaluaciones con fecha en este lapso.', M, y + 16, { width: INNER, align: 'center' });
+      doc.font('Helvetica-Oblique').fontSize(10).fillColor(MUTED).text('No hay evaluaciones con fecha en este período.', M, y + 16, { width: INNER, align: 'center' });
     }
 
     weeks.forEach((monday, wi) => {
@@ -160,7 +160,7 @@ function generateEvaluationCalendarPdf(data) {
     // Leyenda
     if (y + 16 < bottomLimit) {
       doc.circle(M + 3, y + 9.5, 2.6).fill(OVER_INK);
-      doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text('Ponderación alta (examen, proyecto o 20 % o más del lapso).    Fondo rojo: día cargado (2 o más de ponderación alta, o 3 o más evaluaciones).', M + 10, y + 6, { width: INNER - 10 });
+      doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text('Ponderación alta (examen, proyecto o 20 % o más del período).    Fondo rojo: día cargado (2 o más de ponderación alta, o 3 o más evaluaciones).', M + 10, y + 6, { width: INNER - 10 });
     }
     footer(doc, data.summary, accent, page);
     doc.end();

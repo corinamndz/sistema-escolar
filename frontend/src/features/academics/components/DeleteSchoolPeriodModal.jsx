@@ -19,7 +19,7 @@ const IMPACT_ROWS = [
   ['schedule_classes', 'clases del horario', 'clase del horario'],
   ['time_slots', 'bloques horarios', 'bloque horario'],
   ['sanctions', 'sanciones de convivencia', 'sanción de convivencia'],
-  ['terms', 'lapsos', 'lapso'],
+  ['terms', 'períodos', 'período'],
   ['tuition_fees', 'tarifas de mensualidad', 'tarifa de mensualidad'],
   ['pending_charges', 'cobros pendientes o anulados sin pagar', 'cobro pendiente o anulado sin pagar'],
 ];

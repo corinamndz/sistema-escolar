@@ -8,17 +8,17 @@ const gradingApi = {
 
   assessCompetency: (competencyId, data) =>
     axiosClient.put(`/grading/competencies/${competencyId}/assessments`, data).then((r) => r.data),
-  /** Resumen del colegio: cada alumno con su acumulado por lapso y su boleta por materia. */
+  /** Resumen del colegio: cada alumno con su acumulado por período y su boleta por materia. */
   getSummary: (schoolPeriodId) => axiosClient.get('/grading/summary', { params: { schoolPeriodId: schoolPeriodId || undefined } }).then((r) => r.data),
   /**
    * Ajuste directivo de la definitiva (Administrador o Coordinador del nivel), con motivo obligatorio.
    *   { schoolPeriodId, termId, subjectKey, newGrade (null = quitar el ajuste), reason } → detalle actualizado
    */
   adjustGrade: (studentId, body) => axiosClient.post(`/grading/summary/students/${studentId}/adjustments`, body).then((r) => r.data),
-  /** Cerrar o reabrir un lapso de todo el colegio (solo el Administrador). */
+  /** Cerrar o reabrir un período de todo el colegio (solo el Administrador). */
   closeTerm: (termId) => axiosClient.post(`/grading/summary/terms/${termId}/close`).then((r) => r.data),
   reopenTerm: (termId) => axiosClient.post(`/grading/summary/terms/${termId}/reopen`).then((r) => r.data),
-  /** Desglose de un alumno en un año: notas por materia y lapso, definitiva y estado (aprobada / reprobada). */
+  /** Desglose de un alumno en un año: notas por materia y período, definitiva y estado (aprobada / reprobada). */
   getStudentDetail: (studentId, schoolPeriodId) =>
     axiosClient.get(`/grading/summary/students/${studentId}`, { params: { schoolPeriodId: schoolPeriodId || undefined } }).then((r) => r.data),
   getCompetencyReport: (projectId) =>

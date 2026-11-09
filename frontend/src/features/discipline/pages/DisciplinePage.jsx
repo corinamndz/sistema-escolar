@@ -219,7 +219,7 @@ function SchoolDisciplineView() {
     { header: 'Medida', value: (r) => r.measure ?? '', width: 28 },
     { header: 'Fecha', value: (r) => r.occurred_on, width: 12 },
     { header: 'Año escolar', value: (r) => r.school_period_name ?? '', width: 14 },
-    { header: 'Lapso', value: (r) => (r.term_id ? termLabel(r.term_number, r.term_name) : ''), width: 12 },
+    { header: 'Período', value: (r) => (r.term_id ? termLabel(r.term_number, r.term_name) : ''), width: 12 },
     { header: 'Registró', value: (r) => r.registered_by_name ?? '', width: 20 },
   ];
 

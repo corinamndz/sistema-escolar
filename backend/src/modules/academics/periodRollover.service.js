@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { seedTerms } = require('./evaluationPeriods.service');
 const { regularMonths } = require('../payments/tuition.service');
 
 /**
@@ -23,13 +24,13 @@ const REQUIRES = { teachers: ['sections'], schedule: ['sections', 'teachers', 't
 const PART_LABELS = {
   sections: 'Secciones',
   teachers: 'Asignación de docentes',
-  terms: 'Lapsos',
+  terms: 'Períodos',
   evaluationRules: 'Reglas de evaluación',
   timeSlots: 'Bloques horarios',
   schedule: 'Horario de clases',
   tuition: 'Mensualidades',
 };
-const RULE_COLUMNS = ['passing_grade', 'max_failed_subjects', 'term_average_mode', 'grade_rounding'];
+const RULE_COLUMNS = ['passing_grade', 'max_failed_subjects', 'term_average_mode', 'grade_rounding', 'incomplete_average_policy'];
 
 const count = async (q) => Number((await q.count('* as n').first()).n);
 
@@ -193,10 +194,8 @@ async function copyTerms(trx, tenantId, source, target, created) {
   return copied;
 }
 
-/** Igual que createSchoolPeriod: todo año nace con sus 3 lapsos. */
-async function defaultTerms(trx, tenantId, periodId) {
-  for (const n of [1, 2, 3]) await trx('terms').insert({ tenant_id: tenantId, school_period_id: periodId, name: `Lapso ${n}`, term_number: n });
-}
+/** Igual que createSchoolPeriod: todo año nace con la estructura de períodos del colegio. */
+const defaultTerms = (trx, tenantId, periodId) => seedTerms(trx, tenantId, periodId);
 
 /** Secciones + materias excluidas. Devuelve el mapa sección origen → sección nueva. */
 async function copySections(trx, tenantId, source, target, opts, skipped) {

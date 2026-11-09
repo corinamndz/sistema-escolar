@@ -3,17 +3,17 @@ import { termLabel } from '../../evaluation-plans/terms';
 
 const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('es', { maximumFractionDigits: 2 }));
 
-// Misma etiqueta de lapso que en Planes de evaluación: Lapso I, Lapso II, Lapso III.
+// Misma etiqueta de período que en Planes de evaluación: su nombre.
 export { termLabel };
 
 /** Clase de color de una nota según la nota mínima. */
 export const gradeClass = (grade, passing) => (grade === null || grade === undefined ? 'text-muted' : grade >= passing ? 'grade--pass' : 'grade--fail');
 
 /**
- * Desglose de las notas de un alumno: una columna por lapso (todas las materias
- * cursadas con su definitiva del lapso y el promedio del lapso = suma de las
+ * Desglose de las notas de un alumno: una columna por período (todas las materias
+ * cursadas con su definitiva del período y el promedio del período = suma de las
  * definitivas ÷ número de materias) y una columna final con
- * la nota anual de cada materia (promedio de los lapsos) y si la aprobó.
+ * la nota anual de cada materia (promedio de los períodos) y si la aprobó.
  */
 function TermBreakdown({ student, passingGrade }) {
   const subjects = student.subjects;
@@ -36,7 +36,7 @@ function TermBreakdown({ student, passingGrade }) {
               return (
                 <li key={s.subject_key}>
                   <span className="term-breakdown__subject">{s.subject_name}</span>
-                  <strong className={gradeClass(g, passingGrade)} title={g === null ? 'Sin definitiva en este lapso: suma 0 en el promedio' : undefined}>
+                  <strong className={gradeClass(g, passingGrade)} title={g === null ? 'Sin definitiva en este período: suma 0 en el promedio' : undefined}>
                     {fmt(g)}
                   </strong>
                 </li>
@@ -45,7 +45,7 @@ function TermBreakdown({ student, passingGrade }) {
           </ul>
           <footer className="term-breakdown__foot">
             <span>
-              Promedio del lapso
+              Promedio del período
               {t.average !== null && (
                 <span className="term-breakdown__formula">
                   {fmt(t.sum)} ÷ {t.total_subjects} materias

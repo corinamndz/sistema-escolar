@@ -272,7 +272,7 @@ function RecognitionFormDrawer({ onClose, onSaved }) {
               maxLength={800}
               value={form.message}
               onChange={set('message')}
-              placeholder="Ej. Por su dedicación y excelentes resultados en el primer lapso, siendo un ejemplo para sus compañeros."
+              placeholder="Ej. Por su dedicación y excelentes resultados en el primer período, siendo un ejemplo para sus compañeros."
             />
           </Field>
 

@@ -413,8 +413,8 @@ async function portalOverview(trx, tenantId, userId) {
         .leftJoin('students as st', 'st.id', 's.student_id')
         .where('s.tenant_id', tenantId)
         .whereIn('s.form_id', forms.map((f) => f.id))
-        // Las suyas y las «Por llenar» de sus alumnos (cualquiera de sus representantes puede llenarlas).
-        .andWhere((w) => w.where('s.guardian_id', g.id).orWhere((x) => x.where('s.status', PENDING).whereIn('s.student_id', students.map((s) => s.id))))
+        // Las suyas y las «Por llenar» de sus alumnos (cualquiera de sus representantes puede llenarlas), salvo retirados.
+        .andWhere((w) => w.where('s.guardian_id', g.id).orWhere((x) => x.where('s.status', PENDING).whereIn('s.student_id', students.filter((s) => s.status !== 'withdrawn').map((s) => s.id))))
         .select('s.id', 's.form_id', 's.student_id', 's.applicant_name', 's.status', 's.review_note', 's.answers', 's.fields_snapshot', 's.submitted_at', 's.reviewed_at', trx.raw("COALESCE(st.first_name || ' ' || st.last_name, s.applicant_name) AS student_name"))
         .orderBy('s.submitted_at', 'desc')
     : [];

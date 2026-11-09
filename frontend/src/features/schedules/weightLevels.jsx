@@ -2,7 +2,7 @@
  * Ponderación de una evaluación en el calendario de evaluaciones. La calcula el
  * servidor (evaluationCalendar.service → weightLevelOf) a partir de su tipo y su
  * porcentaje, así que no se guarda y los registros anteriores se clasifican solos:
- *   high    Ponderación alta: examen, proyecto o 20 % o más del lapso (antes "Pesada")
+ *   high    Ponderación alta: examen, proyecto o 20 % o más del período (antes "Pesada")
  *   medium  Ponderación media: 10 % a menos de 20 %
  *   low     Ponderación baja: menos de 10 %
  */

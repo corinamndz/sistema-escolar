@@ -46,7 +46,7 @@ function sortChildren(children) {
  * Selector del sistema. `sorted`: ordena las opciones alfabéticamente (A→Z),
  * dejando fija arriba la opción vacía o "todos". Se usa en las listas de datos
  * (docentes, materias, grados, secciones, alumnos…); las listas con un orden
- * lógico propio (lapsos, estados, días) no lo llevan.
+ * lógico propio (períodos, estados, días) no lo llevan.
  */
 function Select({ error, className = '', sorted = false, children, ...props }) {
   return (

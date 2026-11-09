@@ -825,7 +825,7 @@ async function schedulePdf(trx, tenantId, filters) {
   return { buffer, fileName };
 }
 
-/** PDF del calendario de evaluaciones de una sección (y lapso). Devuelve { buffer, fileName }. */
+/** PDF del calendario de evaluaciones de una sección (y período). Devuelve { buffer, fileName }. */
 async function evaluationCalendarPdf(trx, tenantId, { sectionId, termNumber }) {
   const cal = await evaluationCalendar.getEvaluationCalendar(trx, tenantId, { sectionId, termNumber });
   const tenant = await trx('tenants').where({ id: tenantId }).first();
@@ -840,7 +840,7 @@ async function evaluationCalendarPdf(trx, tenantId, { sectionId, termNumber }) {
       secondaryColor: settings?.secondary_color,
     },
     title: `${cal.section.grade_name} · Sección ${cal.section.name}`,
-    subtitle: [cal.term ? cal.term.name : 'Todos los lapsos', s.undated ? `${plural(s.undated, 'evaluación', 'evaluaciones')} sin fecha (no ${s.undated === 1 ? 'aparece' : 'aparecen'})` : null].filter(Boolean).join('  ·  '),
+    subtitle: [cal.term ? cal.term.name : 'Todos los períodos', s.undated ? `${plural(s.undated, 'evaluación', 'evaluaciones')} sin fecha (no ${s.undated === 1 ? 'aparece' : 'aparecen'})` : null].filter(Boolean).join('  ·  '),
     periodName: cal.school_period.name,
     termName: cal.term ? cal.term.name : null,
     from: s.from,
@@ -849,7 +849,7 @@ async function evaluationCalendarPdf(trx, tenantId, { sectionId, termNumber }) {
     overloadedDates: new Set(s.overloaded_days),
     summary: [plural(s.scheduled, 'evaluación programada', 'evaluaciones programadas'), plural(s.heavy, 'de ponderación alta', 'de ponderación alta'), s.overloaded_days.length ? plural(s.overloaded_days.length, 'día cargado', 'días cargados') : 'sin días cargados'].join('  ·  '),
   });
-  const term = cal.term ? `-lapso-${cal.term.term_number}` : '';
+  const term = cal.term ? `-periodo-${cal.term.term_number}` : '';
   return { buffer, fileName: `evaluaciones-${slugify(`${cal.section.grade_name} ${cal.section.name}`)}${term}-${slugify(cal.school_period.name)}.pdf` };
 }
 

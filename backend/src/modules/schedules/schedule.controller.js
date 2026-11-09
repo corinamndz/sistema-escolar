@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { MAX_TERMS } = require('../academics/evaluationPeriods.service');
 const service = require('./schedule.service');
 const generator = require('./scheduleGenerator.service');
 const evaluationCalendar = require('./evaluationCalendar.service');
@@ -154,7 +155,7 @@ async function assertSectionRead(req, sectionId) {
 
 const evaluationQuery = (q) =>
   z
-    .object({ sectionId: uuid, termNumber: z.coerce.number().int().min(1).max(3).optional() })
+    .object({ sectionId: uuid, termNumber: z.coerce.number().int().min(1).max(MAX_TERMS).optional() })
     .parse({ sectionId: q.section_id ?? q.sectionId, termNumber: q.term_number ?? q.termNumber ?? undefined });
 
 /**

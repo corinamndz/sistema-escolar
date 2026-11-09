@@ -7,7 +7,7 @@ const { currentPeriodOrder } = require('../../utils/schoolPeriods');
  * carga a mano) a partir de:
  *
  *   1. Los planes de evaluación que aplican a la sección (también los
- *      compartidos entre varias secciones), del lapso pedido.
+ *      compartidos entre varias secciones), del período pedido.
  *   2. La fecha de cada actividad: la fecha propia de la sección
  *      (activity_section_dates, planes compartidos/detallados) o, si no
  *      tiene, la fecha estimada de la actividad (planned_date).
@@ -18,7 +18,7 @@ const { currentPeriodOrder } = require('../../utils/schoolPeriods');
  *
  * Cada evaluación lleva su PONDERACIÓN (calculada, no se guarda: los registros
  * anteriores se clasifican solos):
- *   high    alta: examen, proyecto o ≥ 20 % del lapso (lo que antes era "pesada")
+ *   high    alta: examen, proyecto o ≥ 20 % del período (lo que antes era "pesada")
  *   medium  media: 10 % a < 20 %
  *   low     baja: < 10 %
  * y se resume la CARGA por día: un día con 2 o más de ponderación alta, o con
@@ -62,9 +62,9 @@ async function getEvaluationCalendar(trx, tenantId, { sectionId, termNumber = nu
       .select('id', 'name', 'term_number', 'start_date', 'end_date')
   ).map((t) => ({ ...t, start_date: ymd(t.start_date), end_date: ymd(t.end_date) }));
   const term = termNumber ? terms.find((t) => Number(t.term_number) === Number(termNumber)) : null;
-  if (termNumber && !term) throw ApiError.notFound('Ese lapso no existe en el año escolar de la sección.');
+  if (termNumber && !term) throw ApiError.notFound('Ese período no existe en el año escolar de la sección.');
 
-  // Actividades de los planes que aplican a la sección (del lapso, si se pidió).
+  // Actividades de los planes que aplican a la sección (del período, si se pidió).
   const rows = await trx('evaluation_activities as a')
     .join('evaluation_plans as ep', 'ep.id', 'a.evaluation_plan_id')
     .join('evaluation_plan_sections as eps', function onSection() {
@@ -224,7 +224,7 @@ async function getEvaluationCalendar(trx, tenantId, { sectionId, termNumber = nu
       by_weight: Object.fromEntries(Object.keys(WEIGHT_LEVEL_LABELS).map((k) => [k, evaluations.filter((e) => e.weight_level === k).length])),
       overloaded_days: days.filter((d) => d.overloaded).map((d) => d.date),
       without_block: evaluations.filter((e) => !e.time_slot_id && e.subject_id).length,
-      // Rango a mostrar: el del lapso; si no tiene fechas, el de las evaluaciones.
+      // Rango a mostrar: el del período; si no tiene fechas, el de las evaluaciones.
       from: term?.start_date || evaluations[0]?.date || null,
       to: term?.end_date || evaluations[evaluations.length - 1]?.date || null,
     },

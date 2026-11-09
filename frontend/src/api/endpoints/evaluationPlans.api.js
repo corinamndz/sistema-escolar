@@ -4,7 +4,6 @@ import { fileNameFrom, saveBlob, unwrapBlobError, upload } from './imports.api';
 const evaluationPlansApi = {
   listTerms: (schoolPeriodId) =>
     axiosClient.get('/evaluation-plans/terms', { params: { schoolPeriodId } }).then((r) => r.data),
-  createTerm: (data) => axiosClient.post('/evaluation-plans/terms', data).then((r) => r.data),
 
   // Opciones para crear planes: el docente recibe solo lo de su carga del período activo.
   listPeriodOptions: () => axiosClient.get('/evaluation-plans/options/school-periods').then((r) => r.data),

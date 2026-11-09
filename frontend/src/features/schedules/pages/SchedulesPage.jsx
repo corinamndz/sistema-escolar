@@ -18,7 +18,7 @@ import SlotsEditorModal from '../components/SlotsEditorModal';
 import TeacherScheduleView from '../components/TeacherScheduleView';
 import AssignmentsView from '../components/AssignmentsView';
 import EvaluationCalendar from '../components/EvaluationCalendar';
-import { TERM_OPTIONS } from '../../evaluation-plans/terms';
+import { useTerms } from '../../evaluation-plans/terms';
 import QuickAssign from '../components/QuickAssign';
 import ScheduleGeneratorModal from '../components/ScheduleGeneratorModal';
 import TeacherAvailabilityModal from '../components/TeacherAvailabilityModal';
@@ -61,6 +61,7 @@ function SchedulesPage() {
   const toast = useToast();
   const { data: periods } = useFetch(() => schedulesApi.listPeriods(), []);
   const [periodId, setPeriodId] = useState('');
+  const { data: terms } = useTerms(periodId);
   // TODOS los grados del colegio (jerarquía escolar), cada uno con sus secciones
   // en el año elegido. Se vuelve a pedir al cambiar de año.
   const {
@@ -72,7 +73,7 @@ function SchedulesPage() {
   const [gradeId, setGradeId] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [teacherId, setTeacherId] = useState('');
-  const [termNumber, setTermNumber] = useState(''); // horario de evaluaciones: lapso ('' = todos)
+  const [termNumber, setTermNumber] = useState(''); // horario de evaluaciones: período ('' = todos)
   // Docentes A-Z del año: para "Ver por docente" y para asignar profesores al instante.
   const {
     data: teachers,
@@ -561,12 +562,12 @@ function SchedulesPage() {
                 </label>
                 {view === 'evaluations' && (
                   <label>
-                    <span className="student-card__label">Lapso</span>
+                    <span className="student-card__label">Período</span>
                     <Select value={termNumber} onChange={(e) => setTermNumber(e.target.value)}>
-                      <option value="">Todos los lapsos</option>
-                      {TERM_OPTIONS.map((t) => (
-                        <option key={t.number} value={t.number}>
-                          {t.label}
+                      <option value="">Todos los períodos</option>
+                      {(terms || []).map((t) => (
+                        <option key={t.id} value={t.term_number}>
+                          {t.name}
                         </option>
                       ))}
                     </Select>

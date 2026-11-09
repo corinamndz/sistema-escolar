@@ -104,6 +104,8 @@ const ACTIONS = {
 
   'POST /students': ['CREAR_ALUMNO', 'Registró al alumno'],
   'PUT /students/:id': ['ACTUALIZAR_ALUMNO', 'Actualizó la ficha del alumno'],
+  'POST /students/:id/withdraw': ['RETIRAR_ALUMNO_COLEGIO', 'Retiró al alumno del colegio'],
+  'POST /students/:id/reactivate': ['REACTIVAR_ALUMNO', 'Reactivó al alumno retirado'],
   'POST /students/:id/guardians': ['ASOCIAR_REPRESENTANTE', 'Asoció un representante al alumno'],
   'DELETE /students/:id/guardians/:guardianId': ['DESASOCIAR_REPRESENTANTE', 'Quitó un representante del alumno'],
   'POST /guardians': ['CREAR_REPRESENTANTE', 'Registró al representante'],

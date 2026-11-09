@@ -19,7 +19,7 @@ const { ApiError } = require('../../utils/ApiError');
  * Qué pasa con cada cosa:
  *   Se ELIMINA: planes de evaluación (actividades, notas, indicadores,
  *   proyectos y competencias), horario (clases y bloques), sanciones del año,
- *   secciones (inscripciones, carga docente, resultados de promoción), lapsos,
+ *   secciones (inscripciones, carga docente, resultados de promoción), períodos,
  *   tarifas de mensualidad y los cobros pendientes o anulados no pagados ni
  *   reportados.
  *   Se CONSERVA: alumnos, representantes, personal, grados y materias (son
@@ -28,7 +28,7 @@ const { ApiError } = require('../../utils/ApiError');
  *   año asociado (las mensualidades pasan a pagos sueltos, ver paso 3).
  */
 
-/** Planes del año: los de sus lapsos y los de sus secciones. */
+/** Planes del año: los de sus períodos y los de sus secciones. */
 const plansOf = (trx, tenantId, periodId) =>
   trx('evaluation_plans as ep')
     .where('ep.tenant_id', tenantId)
@@ -146,7 +146,7 @@ async function deleteSchoolPeriod(trx, tenantId, periodId, { confirmName }) {
   //    Promoción: inscripciones de OTRO año que apuntan a las de este como "siguiente".
   await trx('enrollments').where({ tenant_id: tenantId }).whereIn('next_enrollment_id', enrollmentIds).update({ next_enrollment_id: null });
   // 4) El año: la cascada borra secciones (inscripciones, carga docente,
-  //    resultados de promoción), lapsos, bloques horarios y tarifas; los pagos
+  //    resultados de promoción), períodos, bloques horarios y tarifas; los pagos
   //    conservados quedan con school_period_id y enrollment_id en NULL.
   await trx('school_periods').where({ id: periodId, tenant_id: tenantId }).delete();
 

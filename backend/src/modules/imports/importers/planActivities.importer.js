@@ -34,7 +34,7 @@ const planService = require('../../evaluation-plans/evaluationPlan.service');
  * Porcentajes: los del archivo más los de las actividades que el plan ya tiene
  * no pueden pasar de 100%. Si pasan, NINGUNA fila se importa (validateAll), así
  * no queda un plan a medias. Cada actividad se guarda con upsertActivity: mismas
- * reglas que al crearla a mano (plan abierto, fechas dentro del lapso, tema de la
+ * reglas que al crearla a mano (plan abierto, fechas dentro del período, tema de la
  * misma materia y grado, indicadores que suman el puntaje, suma ≤ 100%).
  */
 
@@ -148,7 +148,7 @@ module.exports = {
     const sectionText = sections.map((s) => s.name).join(', ');
     const label = `${plan.subject_name} · ${plan.grade_name} ${sectionText} · ${plan.term_name}`;
     const termText = plan.term_start && plan.term_end ? `del ${dmy(plan.term_start)} al ${dmy(plan.term_end)}` : null;
-    const inTerm = termText ? `, dentro del lapso (${termText})` : '';
+    const inTerm = termText ? `, dentro del período (${termText})` : '';
 
     const columns = [
       { key: 'contentId', header: 'ID del tema', note: 'No modificar: identifica el tema del contenido programático.' },
@@ -158,7 +158,7 @@ module.exports = {
       { key: 'category', header: 'Tipo', mustExist: true, width: 14, options: Object.keys(CATEGORIES), note: `Tipo de evaluación: ${Object.keys(CATEGORIES).join(', ')}. Por defecto, Formativa.` },
       { key: 'strategy', header: 'Estrategia de evaluación', width: 30, note: 'Opcional (máx. 200). Ej. exposición en grupos, taller práctico.' },
       { key: 'instrument', header: 'Instrumento', width: 22, options: Object.keys(INSTRUMENTS), note: 'Opcional. Elige de la lista.' },
-      { key: 'weight', header: 'Porcentaje %', mustExist: true, width: 13, note: `Obligatorio para evaluar el tema: porcentaje de la nota del lapso (ej. 20). Entre todas, hasta ${pct(available)} disponible.` },
+      { key: 'weight', header: 'Porcentaje %', mustExist: true, width: 13, note: `Obligatorio para evaluar el tema: porcentaje de la nota del período (ej. 20). Entre todas, hasta ${pct(available)} disponible.` },
       {
         key: 'plannedDate',
         header: 'Fecha estimada',
@@ -195,7 +195,7 @@ module.exports = {
         fileName: `plan-${safeName(plan.subject_name)}-${safeName(plan.grade_name)}-${safeName(sectionText)}-${safeName(plan.term_name)}.xlsx`,
         title: `Plan de evaluación — ${label}`,
         instructions: [
-          `Plan: ${label}${termText ? ` (lapso ${termText})` : ''} · formato ${detailed ? 'DETALLADO' : 'simple'}.`,
+          `Plan: ${label}${termText ? ` (período ${termText})` : ''} · formato ${detailed ? 'DETALLADO' : 'simple'}.`,
           'La hoja "Datos" ya trae una fila por cada tema del contenido programático. Completa la evaluación de los temas que vas a evaluar; los que dejes sin datos se omiten.',
           'Para evaluar dos veces el mismo tema, copia la fila completa (con Unidad y Tema) y cambia los datos de la evaluación.',
           ...(detailed
@@ -293,10 +293,10 @@ module.exports = {
     const outside = (d) => d && ((start && d < start) || (end && d > end));
     const range = start && end ? ` (${dmy(start)} al ${dmy(end)})` : '';
     if (outside(data.plannedDate)) {
-      errors.push({ column: 'plannedDate', reason: 'fecha fuera del lapso', message: `La fecha estimada debe estar dentro del ${ctx.plan.term_name}${range}.` });
+      errors.push({ column: 'plannedDate', reason: 'fecha fuera del período', message: `La fecha estimada debe estar dentro del ${ctx.plan.term_name}${range}.` });
     }
     ctx.sections.forEach((s) => {
-      if (outside(data.sectionDate[s.id])) errors.push({ column: s.dateKey, reason: 'fecha fuera del lapso', message: `La fecha de la sección ${s.name} debe estar dentro del ${ctx.plan.term_name}${range}.` });
+      if (outside(data.sectionDate[s.id])) errors.push({ column: s.dateKey, reason: 'fecha fuera del período', message: `La fecha de la sección ${s.name} debe estar dentro del ${ctx.plan.term_name}${range}.` });
     });
     // Sin evaluaciones en fin de semana: se marca la fila (antes de guardar nada).
     if (weekendDay(data.plannedDate)) {

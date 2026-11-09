@@ -52,7 +52,7 @@ const DND_A11Y = {
 };
 
 /**
- * Una evaluación de un tema: actividad, tipo, peso, plan (lapso y secciones) y
+ * Una evaluación de un tema: actividad, tipo, peso, plan (período y secciones) y
  * fecha. Con `draggable`, el asa permite moverla a otro tema (de cualquier unidad).
  */
 function ActivityRow({ activity: a, topicId, draggable }) {
@@ -631,6 +631,7 @@ function ProgrammaticContentPage() {
         <IncludeEvaluationModal
           item={including}
           content={content}
+          schoolPeriodId={periodId}
           onClose={() => setIncluding(null)}
           onSaved={() => {
             setOpenTopics((s) => new Set(s).add(including.id));

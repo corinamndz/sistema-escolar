@@ -27,13 +27,17 @@ import AcademicReviewCard from '../components/AcademicReviewCard';
 import PortalViewsCard from '../components/PortalViewsCard';
 import BcvRateCard from '../../payments/components/BcvRateCard';
 import SchoolPeriodsTab from '../../academics/components/SchoolPeriodsTab';
+import EvaluationPeriodsTab from '../../academics/components/EvaluationPeriodsTab';
+import { canManagePeriods } from '../../../components/layout/navigation';
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 
 /**
- * Pestañas de Configuración. `can`: quién la ve (por defecto, quien entra a
- * Configuración). General y Apariencia comparten un mismo formulario y se
- * guardan juntas; Años escolares y Escalas se guardan al instante.
+ * Pestañas de Configuración. Todas exigen leer `tenant_settings`, más `can` si
+ * lo indica. Excepción: `periodManagers` es solo para el Administrador y el
+ * Coordinador, que no tiene `tenant_settings` y por eso no ve las demás.
+ * General y Apariencia comparten un mismo formulario y se guardan juntas;
+ * Años escolares y Escalas se guardan al instante.
  */
 const TABS = [
   { key: 'general', label: 'General', long: '/ Institución', icon: 'building', hint: 'Nombre, logo y datos de contacto del colegio.' },
@@ -44,6 +48,13 @@ const TABS = [
     icon: 'calendar',
     hint: 'Crea, consulta o elimina los periodos académicos del colegio.',
     can: (can) => can('academics', 'read'),
+  },
+  {
+    key: 'periodos',
+    label: 'Períodos de evaluación',
+    icon: 'layers',
+    hint: 'Cuántos cortes evaluativos tiene el año escolar, cómo se llaman y sus fechas. Boletas, planes, notas y reportes usan esta configuración.',
+    periodManagers: true,
   },
   { key: 'escalas', label: 'Escalas de calificación', icon: 'star', hint: 'Escala cuantitativa (0–20) o cualitativa (A–E) de cada grado.' },
   {
@@ -120,7 +131,7 @@ function useObjectUrl(file) {
  */
 function TenantSettingsPage() {
   const { settings, refreshTenant } = useTenant();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const toast = useToast();
   const { run, loading, error, fieldErrors } = useMutation(tenantApi.updateSettings);
 
@@ -195,8 +206,9 @@ function TenantSettingsPage() {
 
   // Pestaña activa en la URL (?tab=…).
   const [params, setParams] = useSearchParams();
-  const tabs = TABS.filter((t) => !t.can || t.can(can));
-  const tab = tabs.find((t) => t.key === params.get('tab'))?.key || 'general';
+  const canReadSettings = can('tenant_settings', 'read');
+  const tabs = TABS.filter((t) => (t.periodManagers ? canManagePeriods(user) : canReadSettings && (!t.can || t.can(can))));
+  const tab = tabs.find((t) => t.key === params.get('tab'))?.key || tabs[0]?.key;
   const active = tabs.find((t) => t.key === tab);
   const otherDirty = tab === 'general' ? dirtyAppearance : dirtyGeneral;
   const tabRefs = useRef({});
@@ -224,7 +236,10 @@ function TenantSettingsPage() {
 
   return (
     <div>
-      <PageHeader title="Configuración del colegio" subtitle="Institución, apariencia, años escolares y escalas de calificación" />
+      <PageHeader
+        title="Configuración del colegio"
+        subtitle={canReadSettings ? 'Institución, apariencia, años escolares, períodos de evaluación y escalas de calificación' : 'Períodos de evaluación del año escolar'}
+      />
 
       <div className="settings-tabs" role="tablist" aria-label="Secciones de configuración" onKeyDown={onTabKeyDown}>
         {tabs.map((t) => {
@@ -394,6 +409,8 @@ function TenantSettingsPage() {
         )}
 
         {tab === 'anios' && <SchoolPeriodsTab />}
+
+        {tab === 'periodos' && <EvaluationPeriodsTab />}
 
         {/* Escala de calificación de cada grado: se guarda al instante, aparte del formulario. */}
         {tab === 'escalas' && <GradingScalesCard canEdit={canEdit} />}

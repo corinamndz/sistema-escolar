@@ -36,10 +36,10 @@ const PARTS = [
   {
     key: 'terms',
     icon: 'calendar',
-    title: 'Lapsos',
-    desc: 'Los mismos lapsos, con sus fechas corridas un año.',
+    title: 'Períodos',
+    desc: 'Los mismos períodos, con sus fechas corridas un año.',
     count: (p) => p.counts.terms,
-    unit: ['lapso', 'lapsos'],
+    unit: ['período', 'períodos'],
   },
   {
     key: 'evaluationRules',

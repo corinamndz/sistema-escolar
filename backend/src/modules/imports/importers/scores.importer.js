@@ -92,8 +92,8 @@ module.exports = {
               width: Math.min(34, Math.max(14, a.title.length + 10)),
               note:
                 plan.grading_scale === 'qualitative'
-                  ? `Literal A, B, C, D o E (o nota de 0 a ${max}). Vacío = sin cambios. Peso: ${Number(a.weight_percent)}% del lapso.`
-                  : `Nota de 0 a ${max} (admite decimales). Vacío = sin cambios. Peso: ${Number(a.weight_percent)}% del lapso.`,
+                  ? `Literal A, B, C, D o E (o nota de 0 a ${max}). Vacío = sin cambios. Peso: ${Number(a.weight_percent)}% del período.`
+                  : `Nota de 0 a ${max} (admite decimales). Vacío = sin cambios. Peso: ${Number(a.weight_percent)}% del período.`,
               max,
             },
           ],

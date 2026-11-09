@@ -1,4 +1,5 @@
 const { ApiError } = require('../../utils/ApiError');
+const { seedTerms } = require('./evaluationPeriods.service');
 const { notExcludedSql } = require('./sectionSubjects');
 const tuition = require('../payments/tuition.service');
 
@@ -11,14 +12,12 @@ async function listSchoolPeriods(trx, tenantId) {
     .orderBy('sp.start_date', 'desc');
 }
 
-/** Todo año escolar nace con sus 3 lapsos (Lapso 1, 2 y 3; las fechas se completan después). */
+/** Todo año escolar nace con la estructura de períodos del colegio (las fechas se completan después). */
 async function createSchoolPeriod(trx, tenantId, { name, startDate, endDate }) {
   const [period] = await trx('school_periods')
     .insert({ tenant_id: tenantId, name, start_date: startDate, end_date: endDate })
     .returning('*');
-  for (const n of [1, 2, 3]) {
-    await trx('terms').insert({ tenant_id: tenantId, school_period_id: period.id, name: `Lapso ${n}`, term_number: n });
-  }
+  await seedTerms(trx, tenantId, period.id);
   return period;
 }
 
@@ -249,6 +248,9 @@ async function updateSection(trx, tenantId, id, data) {
  * Devuelve { enrollment, tuitionResult, reactivated }.
  */
 async function upsertEnrollment(trx, tenantId, studentId, sectionId) {
+  const student = await trx('students').where({ id: studentId, tenant_id: tenantId }).first('status');
+  if (student?.status === 'withdrawn') throw ApiError.conflict('El alumno está retirado: reactívalo antes de inscribirlo.');
+
   const existing = await trx('enrollments')
     .where({ student_id: studentId, section_id: sectionId })
     .first();
@@ -261,9 +263,12 @@ async function upsertEnrollment(trx, tenantId, studentId, sectionId) {
   let reactivated = false;
   if (existing) {
     // Registro previo retirado → reactivar en lugar de insertar.
+    // Un retiro la dejó cerrada y con la boleta congelada: vuelve a cursar en vivo.
+    const reopen = existing.status === 'withdrawn' ? { closed_at: null, closed_by: null, final_average: null, failed_subjects: null, outcome_notes: null, evaluation_rules: null } : {};
+    if (existing.status === 'withdrawn') await trx('enrollment_subject_results').where({ enrollment_id: existing.id }).delete();
     [enrollment] = await trx('enrollments')
       .where({ id: existing.id })
-      .update({ status: 'active', enrolled_at: trx.fn.now() })
+      .update({ status: 'active', enrolled_at: trx.fn.now(), ...reopen })
       .returning('*');
     reactivated = true;
   } else {

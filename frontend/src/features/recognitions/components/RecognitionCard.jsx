@@ -5,8 +5,8 @@ import Icon from '../../../components/ui/Icon';
  * (Mismas claves que la restricción CHECK de student_recognitions.)
  */
 export const RECOGNITION_CATEGORIES = {
-  excellence: { label: 'Excelencia académica', icon: 'graduation', tone: 'gold', suggestions: ['Cuadro de honor', 'Mejor promedio del lapso', 'Excelencia en Matemática'] },
-  effort: { label: 'Esfuerzo y superación', icon: 'trendingUp', tone: 'coral', suggestions: ['Gran esfuerzo y constancia', 'Superación personal', 'Mayor progreso del lapso'] },
+  excellence: { label: 'Excelencia académica', icon: 'graduation', tone: 'gold', suggestions: ['Cuadro de honor', 'Mejor promedio del período', 'Excelencia en Matemática'] },
+  effort: { label: 'Esfuerzo y superación', icon: 'trendingUp', tone: 'coral', suggestions: ['Gran esfuerzo y constancia', 'Superación personal', 'Mayor progreso del período'] },
   conduct: { label: 'Conducta ejemplar', icon: 'shield', tone: 'teal', suggestions: ['Conducta ejemplar', 'Respeto y responsabilidad', 'Puntualidad y orden'] },
   leadership: { label: 'Liderazgo', icon: 'award', tone: 'violet', suggestions: ['Líder positivo del aula', 'Jefe de sección destacado'] },
   solidarity: { label: 'Compañerismo y solidaridad', icon: 'users', tone: 'rose', suggestions: ['Mejor compañero', 'Espíritu solidario'] },

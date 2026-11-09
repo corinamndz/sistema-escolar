@@ -7,16 +7,13 @@ import Button from '../../../components/ui/Button';
 import { DEFAULT_SCHOOL_LOGO } from '../../../components/ui/SchoolLogo';
 import { isQualitative, literalFor } from '../gradingScale';
 import { anyProvisional, anyRank, rankText } from '../sectionRank';
+import { averageRuleText } from '../averageRule';
 
 const fmt = (n) => (n === null || n === undefined ? '' : Number(n).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-const mean = (values) => {
-  const v = values.filter((x) => x !== null && x !== undefined);
-  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-};
 const today = () => new Date().toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' });
 
 /**
- * Nota de una materia en un lapso para la boleta: la definitiva si el plan ya
+ * Nota de una materia en un período para la boleta: la definitiva si el plan ya
  * se evaluó completo; si no, lo acumulado a la fecha (marcado como parcial).
  */
 function termGrade(cell) {
@@ -43,10 +40,13 @@ function RankMark({ rank }) {
  * hoja A4) y, al imprimir, `@media print` deja SOLO la hoja: oculta el menú,
  * los botones y el resto del panel (ver .boleta-print en index.css).
  *
- *   student  alumno del resumen (/grading/summary): sección, materias y lapsos
- *   terms    lapsos del año · schoolPeriod { name } · scale · passing
+ *   student  alumno del resumen (/grading/summary): sección, materias y períodos
+ *   terms    períodos del año · schoolPeriod { name } · scale · passing
+ *   rules    normativa del año (cómo se promedian los períodos)
+ * Los promedios vienen calculados del servidor (student.report y student.overall):
+ * son los mismos del detalle, el puesto y la promoción.
  */
-function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onClose }) {
+function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, rules, onClose }) {
   const { settings } = useTenant();
   // Docente titular (Inicial/Primaria) o guía (Secundaria) de la sección, para la firma.
   const { data: staff } = useFetch(
@@ -73,12 +73,13 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onCl
     return fmt(value);
   };
   const rows = student.subjects.map((sub) => {
-    const grades = terms.map((t) => termGrade(sub.terms[t.id]));
-    return { sub, grades, average: mean(grades.map((g) => g?.value ?? null)) };
+    const annual = student.report?.subjects?.[sub.key];
+    return { sub, grades: terms.map((t) => termGrade(sub.terms[t.id])), average: annual?.definitive ?? null, averagePartial: Boolean(annual?.partial && annual?.definitive !== null) };
   });
-  const termAverages = terms.map((t, i) => mean(rows.map((r) => r.grades[i]?.value ?? null)));
-  const overall = mean(rows.map((r) => r.average));
-  const anyPartial = rows.some((r) => r.grades.some((g) => g?.partial));
+  const termAverages = terms.map((t) => student.report?.term_averages?.[t.id]?.value ?? null);
+  const overall = student.overall ?? null;
+  const anyPartial = rows.some((r) => r.averagePartial || r.grades.some((g) => g?.partial));
+  const averageRule = averageRuleText(rules);
   const anyAdjusted = rows.some((r) => r.grades.some((g) => g?.adjusted));
   const contact = [settings.contactPhone, settings.contactEmail].filter(Boolean).join(' · ');
   const issuedAt = today();
@@ -124,7 +125,7 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onCl
               {student.last_name}, {student.first_name}
             </dd>
           </div>
-          {/* Puesto anual en la sección; el de cada lapso está al pie de la tabla. */}
+          {/* Puesto anual en la sección; el de cada período está al pie de la tabla. */}
           <div className="boleta-student__rank">
             <dt>Puesto en sección</dt>
             <dd>{student.ranks?.annual ? <RankMark rank={student.ranks.annual} /> : <span className="boleta-student__norank">Aún sin calificaciones</span>}</dd>
@@ -146,18 +147,18 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onCl
         {rows.length === 0 ? (
           <p className="boleta-empty">El alumno aún no tiene calificaciones registradas en este año escolar.</p>
         ) : (
-          <table className="boleta-table">
+          <table className={`boleta-table ${terms.length > 8 ? 'boleta-table--tight' : terms.length > 4 ? 'boleta-table--dense' : ''}`}>
             <thead>
               <tr>
                 <th className="boleta-table__subject">Asignatura / área de formación</th>
                 {terms.map((t) => (
                   <th key={t.id}>{t.name}</th>
                 ))}
-                <th>Promedio</th>
+                <th>{terms.length > 8 ? 'Prom.' : 'Promedio'}</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ sub, grades, average }) => (
+              {rows.map(({ sub, grades, average, averagePartial }) => (
                 <tr key={sub.key}>
                   <td className="boleta-table__subject">{sub.name}</td>
                   {grades.map((g, i) => (
@@ -167,19 +168,22 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onCl
                       {g?.adjusted && <sup>(a)</sup>}
                     </td>
                   ))}
-                  <td className={`boleta-table__avg ${average !== null && !qualitative && average < passing ? 'is-low' : ''}`}>{show(average)}</td>
+                  <td className={`boleta-table__avg ${average !== null && !qualitative && average < passing ? 'is-low' : ''}`}>
+                    {show(average)}
+                    {averagePartial && <sup>*</sup>}
+                  </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
-                <td className="boleta-table__subject">Promedio del lapso</td>
+                <td className="boleta-table__subject">Promedio del período</td>
                 {termAverages.map((v, i) => (
                   <td key={terms[i].id}>{show(v)}</td>
                 ))}
                 <td className="boleta-table__avg">{show(overall)}</td>
               </tr>
-              {/* Puesto en la sección, por lapso y anual (e: empate, p: provisional). */}
+              {/* Puesto en la sección, por período y anual (e: empate, p: provisional). */}
               {anyRank(student.ranks) && (
                 <tr className="boleta-table__rank">
                   <td className="boleta-table__subject">Puesto en la sección</td>
@@ -202,7 +206,8 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, onCl
             {qualitative
               ? 'Escala cualitativa (literales). '
               : `Escala de calificación: 0 a ${scale} puntos. Nota mínima aprobatoria: ${passing} puntos. `}
-            {anyPartial && '(*) Calificación parcial: lo acumulado a la fecha de emisión; el lapso aún no se ha evaluado completo. '}
+            {averageRule && `${averageRule} `}
+            {anyPartial && '(*) Calificación parcial: lo acumulado a la fecha de emisión; aún falta evaluar por completo el período o, en el promedio, alguno de los períodos. '}
             {anyRank(student.ranks) && 'Puesto: por promedio entre los alumnos de la sección con notas; (e) empate: el mismo promedio comparte puesto. '}
             {anyProvisional(student.ranks) && '(p) Puesto provisional: puede cambiar porque el período no está cerrado o faltan notas. '}
             {anyAdjusted && '(a) Calificación definitiva ajustada por la dirección del plantel, con constancia en el historial de ajustes.'}

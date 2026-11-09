@@ -10102,12 +10102,12 @@ body.is-printing-boleta { overflow: hidden; }
 @media (max-width: 480px) { .adj-form__now { grid-template-columns: 1fr; } }
 
 /* ---- Resumen de calificaciones: estado y cierre de lapsos ---- */
-.term-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; padding: 12px; margin-bottom: 16px; }
-.term-bar__item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--color-surface-muted); color: var(--color-text-secondary); }
-.term-bar__item > svg { flex-shrink: 0; }
-.term-bar__item.is-closed { color: var(--color-success-text); background: var(--color-success-soft); }
-.term-bar__text { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 12.5px; }
-.term-bar__text strong { font-size: 14px; color: var(--color-text); }
+.term-close { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; padding: 12px; margin-bottom: 16px; }
+.term-close__item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--color-surface-muted); color: var(--color-text-secondary); }
+.term-close__item > svg { flex-shrink: 0; }
+.term-close__item.is-closed { color: var(--color-success-text); background: var(--color-success-soft); }
+.term-close__text { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 12.5px; }
+.term-close__text strong { font-size: 14px; color: var(--color-text); }
 
 /* ---- Puesto del alumno en su sección ---- */
 .gd-rank { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; white-space: nowrap; }
@@ -10117,3 +10117,42 @@ body.is-printing-boleta { overflow: hidden; }
 .boleta-table tfoot tr.boleta-table__rank td { background: #fff; white-space: nowrap; }
 @media (max-width: 640px) { .gd-rank { align-items: flex-start; } }
 .grades-summary__rank-note { display: block; font-size: 11.5px; color: var(--color-text-secondary); }
+
+/* ---- Períodos de evaluación configurables ---- */
+/* Retiro de alumnos: qué ocurre al confirmar. */
+.wd-effects { list-style: none; margin: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; border-radius: 10px; background: var(--color-surface-muted); font-size: 13.5px; color: var(--color-text-secondary); }
+.wd-effects li { display: flex; align-items: flex-start; gap: 8px; }
+.wd-effects svg { flex-shrink: 0; margin-top: 2px; }
+.ep-year { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 14px; font-size: 14px; color: var(--color-text-secondary); }
+.ep-year svg { flex-shrink: 0; margin-top: 2px; color: var(--color-primary); }
+.ep-generator { margin-bottom: 16px; }
+.ep-generator__row { display: grid; grid-template-columns: minmax(180px, 1fr) 110px auto; gap: 12px; align-items: end; margin-top: 10px; }
+.ep-list { display: flex; flex-direction: column; gap: 12px; }
+.ep-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.ep-row { display: grid; grid-template-columns: 30px minmax(180px, 2fr) minmax(140px, 1fr) minmax(140px, 1fr) minmax(150px, auto); gap: 12px; align-items: start; padding: 12px; border-radius: 12px; background: var(--color-surface-muted); }
+.ep-row__pos { display: grid; place-items: center; width: 30px; height: 30px; margin-top: 26px; border-radius: 50%; font-weight: 700; font-size: 13px; color: var(--color-primary); background: var(--color-primary-soft); }
+.ep-row__side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-top: 4px; }
+.ep-row__actions { display: inline-flex; gap: 4px; }
+.ep-icon { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-text-secondary); cursor: pointer; }
+.ep-icon:hover:not(:disabled) { color: var(--color-primary); border-color: var(--color-primary); }
+.ep-icon.is-danger:hover:not(:disabled) { color: var(--color-danger); border-color: var(--color-danger); }
+.ep-icon:disabled { opacity: .4; cursor: not-allowed; }
+.ep-list__actions { justify-content: space-between; }
+@media (max-width: 760px) {
+  .ep-generator__row { grid-template-columns: 1fr; }
+  .ep-row { grid-template-columns: 30px 1fr; }
+  .ep-row > .field, .ep-row > div { grid-column: 2; }
+  .ep-row__pos { margin-top: 0; }
+  .ep-row__side { flex-direction: row; align-items: center; justify-content: space-between; }
+}
+/* Boleta: con muchos períodos las columnas se ajustan para caber en la hoja. */
+.boleta-table--dense, .boleta-table--tight { table-layout: fixed; }
+.boleta-table--dense th.boleta-table__subject, .boleta-table--tight th.boleta-table__subject { width: 26%; }
+.boleta-table--dense { font-size: 8.5pt; }
+.boleta-table--dense th, .boleta-table--dense td { padding: 5px 3px; }
+.boleta-table--dense thead th { font-size: 7pt; letter-spacing: 0; }
+.boleta-table--tight { font-size: 7pt; }
+.boleta-table--tight th, .boleta-table--tight td { padding: 4px 1px; overflow-wrap: anywhere; }
+.boleta-table--tight thead th { font-size: 6pt; letter-spacing: 0; }
+.boleta-table--dense .boleta-table__subject, .boleta-table--tight .boleta-table__subject { padding-left: 6px; overflow-wrap: anywhere; }
+.boleta-table--dense tfoot tr.boleta-table__rank td, .boleta-table--tight tfoot tr.boleta-table__rank td { white-space: normal; }

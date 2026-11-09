@@ -7,7 +7,7 @@ const round2 = (n) => Math.round(Number(n) * 100) / 100;
 /**
  * Registra o actualiza la nota de un alumno en una actividad y calcula
  * `weighted_score` = (raw_score / max_score) × porcentaje de la actividad (lo
- * que se acumula para la nota del lapso), igual en los dos formatos:
+ * que se acumula para la nota del período), igual en los dos formatos:
  *
  *  - Actividad simple: `rawScore` sobre `maxScore` (por defecto el de la actividad).
  *  - Actividad con indicadores (formato detallado): `indicatorScores` con la

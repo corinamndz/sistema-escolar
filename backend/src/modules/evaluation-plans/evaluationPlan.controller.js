@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { MAX_TERMS } = require('../academics/evaluationPeriods.service');
 const service = require('./evaluationPlan.service');
 const duplication = require('./planDuplication.service');
 const acknowledgments = require('../portal/planAcknowledgment.service');
@@ -66,25 +67,15 @@ const getSectionAssignmentOptions = asyncHandler(async (req, res) => {
   });
 });
 
-// ---- Lapsos ----
+// ---- Períodos ----
 const listTerms = asyncHandler(async (req, res) => {
   res.status(200).json(await service.listTerms(req.db, req.tenantId, { schoolPeriodId: req.query.schoolPeriodId }));
-});
-const createTerm = asyncHandler(async (req, res) => {
-  const schema = z.object({
-    schoolPeriodId: z.string().uuid(),
-    name: z.string().min(1),
-    startDate: z.string().optional(),
-    endDate: z.string().optional(),
-    termNumber: z.coerce.number().int().min(1).max(3).optional(),
-  });
-  res.status(201).json(await service.createTerm(req.db, req.tenantId, schema.parse(req.body)));
 });
 
 // ---- Planes ----
 const listPlans = asyncHandler(async (req, res) => {
   const { sectionId, termId, teacherId } = req.query;
-  const termNumber = req.query.termNumber ? z.coerce.number().int().min(1).max(3).parse(req.query.termNumber) : undefined;
+  const termNumber = req.query.termNumber ? z.coerce.number().int().min(1).max(MAX_TERMS).parse(req.query.termNumber) : undefined;
   const rows = await service.listPlans(req.db, req.tenantId, { sectionId, termId, termNumber, teacherId });
   // Docente: solo los planes de materias y secciones de su carga.
   const scope = await teacherScope.getAccessScope(req);
@@ -101,8 +92,8 @@ const createPlan = asyncHandler(async (req, res) => {
     // Una sección (sectionId) o varias del mismo grado (sectionIds): el plan se aplica a todas.
     sectionId: z.string().uuid().optional(),
     sectionIds: z.array(z.string().uuid()).min(1).max(20).optional(),
-    // Lapso académico: termNumber 1 | 2 | 3 (Lapso I, II, III) o, por compatibilidad, termId.
-    termNumber: z.coerce.number({ invalid_type_error: 'Elige el lapso.' }).int().min(1, 'Elige el lapso.').max(3, 'Elige el lapso.').optional(),
+    // Período de evaluación: su posición en el año (termNumber) o, por compatibilidad, termId.
+    termNumber: z.coerce.number({ invalid_type_error: 'Elige el período.' }).int().min(1, 'Elige el período.').max(MAX_TERMS, 'Elige el período.').optional(),
     termId: z.string().uuid().optional(),
     format: z.enum(['simple', 'detailed']).default('simple'),
     // Secundaria: subjectId (el profesor se toma de la asignación). Inicial/Primaria: subject + teacherId.
@@ -142,7 +133,7 @@ const updatePlan = asyncHandler(async (req, res) => {
     .object({
       format: z.enum(['simple', 'detailed']).optional(),
       sectionIds: z.array(z.string().uuid()).min(1).max(20).optional(),
-      termNumber: z.coerce.number().int().min(1).max(3).optional(),
+      termNumber: z.coerce.number().int().min(1).max(MAX_TERMS).optional(),
       termId: z.string().uuid().optional(),
       // Mover el plan (sin notas) a otra sección: se creó en la sección equivocada.
       moveToSectionId: z.string().uuid().optional(),
@@ -284,7 +275,7 @@ const reopenPlan = asyncHandler(async (req, res) => {
 
 /**
  * POST /evaluation-plans/:planId/duplicate — { toPeriodId }: copia el plan (actividades,
- * criterios, fechas y proyecto, sin notas) al mismo grado, secciones y lapso de otro año.
+ * criterios, fechas y proyecto, sin notas) al mismo grado, secciones y período de otro año.
  */
 const duplicatePlan = asyncHandler(async (req, res) => {
   const { toPeriodId } = z.object({ toPeriodId: z.string().uuid('Elige el año escolar de destino.') }).parse(req.body);
@@ -313,7 +304,6 @@ module.exports = {
   closePlan,
   reopenPlan,
   listTerms,
-  createTerm,
   listPlans,
   getPlan,
   createPlan,

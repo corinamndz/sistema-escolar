@@ -23,7 +23,7 @@ const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
 /**
  * Libreta de un plan: alumnos de todas sus secciones (filtrable por sección),
- * una columna por actividad y el acumulado del lapso. Las actividades del
+ * una columna por actividad y el acumulado del período. Las actividades del
  * formato detallado se califican por indicador (la nota es la suma).
  *
  * Grado con escala CUALITATIVA (Configuración → Escalas de calificación): las

@@ -7,7 +7,7 @@ const { currentPeriodOrder } = require('../../utils/schoolPeriods');
  * Convivencia: sanciones disciplinarias de los alumnos.
  *
  * Gravedad: leve (amarillo), media (naranja), grave (rojo).
- * Cada sanción queda en un año escolar y, si se puede determinar, en un lapso
+ * Cada sanción queda en un año escolar y, si se puede determinar, en un período
  * (el indicado, o el que contiene la fecha de la falta) y con la sección en que
  * el alumno cursaba. Se audita quién la registró y quién la editó por última vez.
  */
@@ -18,7 +18,7 @@ const SEVERITY_KEYS = Object.keys(SEVERITIES);
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-/** Sanciones con alumno, año, lapso, sección y usuario que la registró. */
+/** Sanciones con alumno, año, período, sección y usuario que la registró. */
 function baseQuery(trx, tenantId) {
   return trx('student_sanctions as ss')
     .join('students as s', 's.id', 'ss.student_id')
@@ -88,9 +88,9 @@ async function loadSanction(trx, tenantId, id) {
 }
 
 /**
- * Año, lapso y sección de una sanción:
+ * Año, período y sección de una sanción:
  *   - año: el indicado o el de la inscripción vigente del alumno;
- *   - lapso: el indicado (número 1–3) o el que contiene la fecha de la falta;
+ *   - período: el indicado (número 1–3) o el que contiene la fecha de la falta;
  *   - sección: la del alumno en ese año.
  */
 async function resolveContext(trx, tenantId, studentId, { schoolPeriodId, termNumber, occurredOn }) {
@@ -114,7 +114,7 @@ async function resolveContext(trx, tenantId, studentId, { schoolPeriodId, termNu
   let term = null;
   if (termNumber) {
     term = await trx('terms').where({ tenant_id: tenantId, school_period_id: periodId, term_number: termNumber }).first();
-    if (!term) throw ApiError.badRequest(`El año ${period.name} no tiene el lapso ${termNumber}.`, [{ path: 'termNumber', message: 'Lapso inválido.' }]);
+    if (!term) throw ApiError.badRequest(`El año ${period.name} no tiene el período ${termNumber}.`, [{ path: 'termNumber', message: 'Período inválido.' }]);
   } else {
     term = await trx('terms')
       .where({ tenant_id: tenantId, school_period_id: periodId })
@@ -179,7 +179,7 @@ async function updateSanction(trx, tenantId, userId, id, data) {
     updated_at: trx.fn.now(),
   };
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
-  // Sin lapso explícito ni fecha nueva, se conserva el lapso que tenía.
+  // Sin período explícito ni fecha nueva, se conserva el período que tenía.
   if (!data.termNumber && !data.occurredOn && !data.schoolPeriodId) payload.term_id = current.term_id;
   await trx('student_sanctions').where({ id }).update(payload);
   return format(await baseQuery(trx, tenantId).andWhere('ss.id', id).first());
@@ -193,7 +193,7 @@ async function deleteSanction(trx, tenantId, id) {
 
 /**
  * Historial disciplinario para el PORTAL del representante: solo lo que la
- * familia necesita (gravedad, tipo de falta, motivo, medida, fecha, lapso y
+ * familia necesita (gravedad, tipo de falta, motivo, medida, fecha, período y
  * sección), sin datos internos (quién la registró o editó).
  */
 async function getStudentSanctionsForGuardian(trx, tenantId, studentId) {

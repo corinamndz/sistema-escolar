@@ -8,6 +8,10 @@ const studentsApi = {
   academicHistory: (id) => axiosClient.get(`/students/${id}/academic-history`).then((r) => r.data),
   create: (data) => axiosClient.post('/students', data).then((r) => r.data),
   update: (id, data) => axiosClient.put(`/students/${id}`, data).then((r) => r.data),
+  /** Retiro lógico: { withdrawnOn?, reason? } → { closed_enrollments, cancelled_tuition, left_clubs } */
+  withdraw: (id, data) => axiosClient.post(`/students/${id}/withdraw`, data).then((r) => r.data),
+  /** → { restored[], not_restored[{ reason }], restored_tuition } */
+  reactivate: (id) => axiosClient.post(`/students/${id}/reactivate`).then((r) => r.data),
   linkGuardian: (id, data) => axiosClient.post(`/students/${id}/guardians`, data).then((r) => r.data),
   unlinkGuardian: (id, guardianId) =>
     axiosClient.delete(`/students/${id}/guardians/${guardianId}`).then((r) => r.data),

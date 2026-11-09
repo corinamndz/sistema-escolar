@@ -249,11 +249,11 @@ function EvaluationPlanDetailPage() {
           periods={periods}
           items={[
             `${plan.activities.length} ${plan.activities.length === 1 ? 'actividad' : 'actividades'} con sus porcentajes${plan.format === 'detailed' ? ', criterios e indicadores' : ''}`,
-            'Fechas corridas al lapso equivalente del año de destino',
+            'Fechas corridas al período equivalente del año de destino',
             ...(plan.pedagogicalProject ? ['El proyecto pedagógico y sus competencias'] : []),
             ...(plan.subject_id ? ['Los temas que evalúa (se crean en el temario del destino si faltan)'] : []),
           ]}
-          note="Va al mismo grado, secciones (por nombre) y lapso del otro año, a nombre del docente que dicta la materia allí. Las notas no se copian."
+          note="Va al mismo grado, secciones (por nombre) y período del otro año, a nombre del docente que dicta la materia allí. Las notas no se copian."
           onConfirm={(toPeriodId) => evaluationPlansApi.duplicate(plan.id, toPeriodId)}
           renderResult={(r) => (
             <>
@@ -272,7 +272,7 @@ function EvaluationPlanDetailPage() {
         />
       )}
 
-      <Card title="Configuración del plan" subtitle="Lapso académico, tipo de formato y secciones a las que se aplica">
+      <Card title="Configuración del plan" subtitle="Período académico, tipo de formato y secciones a las que se aplica">
         <PlanSettings plan={plan} canEdit={can('evaluation_plans', 'update')} onChanged={refetch} />
       </Card>
 
@@ -340,7 +340,7 @@ function EvaluationPlanDetailPage() {
 
       <Card
         title={`Actividades de evaluación · ${termLabel(plan.term_number, plan.term_name)}`}
-        subtitle="Incluye el proyecto pedagógico de aula: se pondera y se califica como una actividad más del lapso."
+        subtitle="Incluye el proyecto pedagógico de aula: se pondera y se califica como una actividad más del período."
         actions={
           <RequirePermission module="evaluation_plans" action="create">
             {!closed && (
@@ -390,7 +390,7 @@ function EvaluationPlanDetailPage() {
         {unweightedProject && (
           <div className="project-pending">
             <Alert variant="warning">
-              El proyecto pedagógico «{unweightedProject.title}» aún no tiene ponderación: no cuenta en la nota del lapso. Asígnale su porcentaje
+              El proyecto pedagógico «{unweightedProject.title}» aún no tiene ponderación: no cuenta en la nota del período. Asígnale su porcentaje
               para que se califique dentro del plan.
             </Alert>
             {!closed && can('evaluation_plans', 'create') && (
@@ -548,7 +548,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
     <Drawer title={isEdit ? 'Editar actividad' : 'Nueva actividad'} onClose={onClose} size={detailed ? 'lg' : undefined}>
       <Alert>{localError || error}</Alert>
       <div className="activity-term">
-        <span className="student-card__label">Lapso académico</span>
+        <span className="student-card__label">Período académico</span>
         <TermBadge number={plan.term_number} name={plan.term_name} />
         <span className="text-sm text-muted">
           {plan.subject} · la nota de esta actividad cuenta para el {termLabel(plan.term_number, plan.term_name)}
@@ -614,7 +614,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
           <Field
             label="Fecha estimada"
             error={plannedDateError || fieldErrors.plannedDate}
-            hint={termStart && termEnd ? `Dentro del lapso, de lunes a viernes: ${formatDay(termStart)} – ${formatDay(termEnd)}` : 'Opcional. De lunes a viernes.'}
+            hint={termStart && termEnd ? `Dentro del período, de lunes a viernes: ${formatDay(termStart)} – ${formatDay(termEnd)}` : 'Opcional. De lunes a viernes.'}
           >
             <Input
               type="date"
@@ -670,7 +670,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
                 label="Fechas de aplicación"
                 error={sectionDateErrors.join(' ') || fieldErrors.sectionDates}
                 full
-                hint={termStart && termEnd ? `Dentro del lapso, de lunes a viernes: ${formatDay(termStart)} – ${formatDay(termEnd)}` : 'De lunes a viernes.'}
+                hint={termStart && termEnd ? `Dentro del período, de lunes a viernes: ${formatDay(termStart)} – ${formatDay(termEnd)}` : 'De lunes a viernes.'}
               >
                 <div className="section-dates">
                   {plan.sections.map((sec) => (
@@ -707,7 +707,7 @@ function ActivityFormModal({ plan, planId, initial, remaining, termStart, termEn
 
 /**
  * Proyecto pedagógico de aula como actividad del plan: título, descripción,
- * ponderación (suma al 100% del lapso), fecha y competencias esperadas.
+ * ponderación (suma al 100% del período), fecha y competencias esperadas.
  * Con `existing` (proyecto anterior a la integración) solo se le asigna la
  * ponderación y la fecha: conserva su título y sus competencias.
  */
@@ -790,7 +790,7 @@ function ProjectFormModal({ planId, plan, existing, remaining, onClose, onCreate
           <Field
             label="Fecha estimada"
             error={plannedDateError || fieldErrors.plannedDate}
-            hint={plan.term_start && plan.term_end ? `Dentro del lapso, de lunes a viernes: ${formatDay(plan.term_start)} – ${formatDay(plan.term_end)}` : 'Opcional. De lunes a viernes.'}
+            hint={plan.term_start && plan.term_end ? `Dentro del período, de lunes a viernes: ${formatDay(plan.term_start)} – ${formatDay(plan.term_end)}` : 'Opcional. De lunes a viernes.'}
           >
             <Input
               type="date"

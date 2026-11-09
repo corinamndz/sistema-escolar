@@ -476,7 +476,7 @@ function groupStudents(students, grades) {
  */
 function PromotionGroup({ group, open, onToggle, rows, preview, canEdit, canCreate, running, expanded, onExpand, targetGradeOf, setRow, changeAction, selectMany, suggestMany, execute }) {
   const list = group.students;
-  // Lapsos del año (normalmente 3): una columna por lapso con el promedio de todas las materias.
+  // Períodos del año (normalmente 3): una columna por período con el promedio de todas las materias.
   const terms = preview.rules?.terms || [];
   const passingGrade = preview.passing_grade;
   const bodyId = `promotion-group-${group.key}`;
@@ -582,7 +582,7 @@ function PromotionGroup({ group, open, onToggle, rows, preview, canEdit, canCrea
                           onClick={() => onExpand(s.enrollment_id)}
                           aria-expanded={isExpanded}
                           aria-controls={`grades-${s.enrollment_id}`}
-                          title={isExpanded ? 'Ocultar notas por materia' : 'Ver notas por materia y lapso'}
+                          title={isExpanded ? 'Ocultar notas por materia' : 'Ver notas por materia y período'}
                         >
                           <Icon name="chevronDown" size={15} className="promotion-table__chevron" />
                           {s.student.last_name}, {s.student.first_name}
@@ -611,7 +611,7 @@ function PromotionGroup({ group, open, onToggle, rows, preview, canEdit, canCrea
                       <td style={{ textAlign: 'center' }} className={s.failed_subjects ? 'text-danger' : undefined}>
                         {s.graded ? s.failed_subjects : '—'}
                         {s.pending_subjects > 0 && (
-                          <div className="cell-person__sub text-warning" title="Materias sin nota en todos los lapsos: su promedio es provisional">
+                          <div className="cell-person__sub text-warning" title="Materias sin nota en todos los períodos: su promedio es provisional">
                             {s.pending_subjects} provisional{s.pending_subjects === 1 ? '' : 'es'}
                           </div>
                         )}

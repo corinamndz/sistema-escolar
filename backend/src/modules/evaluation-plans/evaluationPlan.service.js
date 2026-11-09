@@ -3,10 +3,7 @@ const { exclusionOf } = require('../academics/sectionSubjects');
 const { assertContentForPlan, sortByProgram } = require('../programmatic-content/programmaticContent.service');
 const { weekendDay, weekendMessage } = require('../../utils/weekdays');
 
-// ---------- Lapsos/periodos ----------
-
-/** Lapsos académicos del año: siempre 3 (Lapso I, II, III), identificados por `term_number`. */
-const TERM_NUMBERS = [1, 2, 3];
+// ---------- Períodos/periodos ----------
 
 async function listTerms(trx, tenantId, { schoolPeriodId } = {}) {
   const query = trx('terms').where({ tenant_id: tenantId }).orderByRaw('term_number NULLS LAST, start_date NULLS LAST, name');
@@ -14,55 +11,19 @@ async function listTerms(trx, tenantId, { schoolPeriodId } = {}) {
   return query;
 }
 
-async function createTerm(trx, tenantId, { schoolPeriodId, name, startDate, endDate, termNumber }) {
-  // Los 3 lapsos se crean con el año: si ya existe uno con ese nombre (o número),
-  // se completan sus fechas en lugar de duplicarlo.
-  const existing = await trx('terms')
-    .where({ tenant_id: tenantId, school_period_id: schoolPeriodId })
-    .andWhere((q) => {
-      q.where('name', name.trim());
-      if (termNumber) q.orWhere('term_number', termNumber);
-    })
-    .first();
-  if (existing) {
-    const [term] = await trx('terms')
-      .where({ id: existing.id })
-      .update({ start_date: startDate || existing.start_date, end_date: endDate || existing.end_date })
-      .returning('*');
-    return term;
-  }
-  // Sin número explícito toma el primero libre (1–3); un lapso adicional queda sin número.
-  const used = await trx('terms').where({ tenant_id: tenantId, school_period_id: schoolPeriodId }).whereNotNull('term_number').pluck('term_number');
-  const number = termNumber ?? TERM_NUMBERS.find((n) => !used.includes(n)) ?? null;
-  const [term] = await trx('terms')
-    .insert({ tenant_id: tenantId, school_period_id: schoolPeriodId, name, start_date: startDate, end_date: endDate, term_number: number })
-    .returning('*');
-  return term;
-}
-
-/**
- * Lapso N (1–3) de un año escolar; si el año aún no lo tiene, lo crea
- * ("Lapso N"). Un lapso con ese nombre pero sin número se numera.
- */
+/** Período en la posición N del año; si el año no la tiene, error (se configuran en Configuración → Períodos de evaluación). */
 async function ensureTerm(trx, tenantId, schoolPeriodId, termNumber) {
   const found = await trx('terms').where({ tenant_id: tenantId, school_period_id: schoolPeriodId, term_number: termNumber }).first();
   if (found) return found;
-  const byName = await trx('terms').where({ tenant_id: tenantId, school_period_id: schoolPeriodId, name: `Lapso ${termNumber}` }).whereNull('term_number').first();
-  if (byName) {
-    const [t] = await trx('terms').where({ id: byName.id }).update({ term_number: termNumber }).returning('*');
-    return t;
-  }
-  const [t] = await trx('terms')
-    .insert({ tenant_id: tenantId, school_period_id: schoolPeriodId, name: `Lapso ${termNumber}`, term_number: termNumber })
-    .returning('*');
-  return t;
+  const period = await trx('school_periods').where({ id: schoolPeriodId, tenant_id: tenantId }).first('name');
+  throw ApiError.unprocessable(`El año escolar ${period?.name || ''} no tiene el período ${termNumber}: configúralo en Configuración → Períodos de evaluación.`, [{ path: 'termNumber', message: 'Período inexistente.' }]);
 }
 
-/** Lapso del plan a partir de `termNumber` (1–3, preferido) o de `termId`. */
+/** Período del plan a partir de su posición (`termNumber`) o de `termId`. */
 async function resolveTermId(trx, tenantId, schoolPeriodId, { termId, termNumber }) {
   if (termNumber) return (await ensureTerm(trx, tenantId, schoolPeriodId, termNumber)).id;
   if (termId) return termId;
-  throw ApiError.badRequest('Indica el lapso académico (I, II o III).', [{ path: 'termNumber', message: 'Requerido.' }]);
+  throw ApiError.badRequest('Indica el período de evaluación.', [{ path: 'termNumber', message: 'Requerido.' }]);
 }
 
 // ---------- Planes de evaluación ----------
@@ -78,7 +39,7 @@ async function listPlans(trx, tenantId, { sectionId, termId, termNumber, teacher
     .where('ep.tenant_id', tenantId)
     .select(
       'ep.*',
-      // Clave y nombre de la materia para agrupar (Materia → Lapso → planes):
+      // Clave y nombre de la materia para agrupar (Materia → Período → planes):
       // la del catálogo si el plan tiene subject_id; si no (Inicial), el área escrita.
       trx.raw("COALESCE(ep.subject_id::text, 'txt:' || lower(trim(ep.subject))) AS subject_key"),
       trx.raw('COALESCE(sub.name, ep.subject) AS subject_name'),
@@ -100,7 +61,7 @@ async function listPlans(trx, tenantId, { sectionId, termId, termNumber, teacher
       trx.raw('(SELECT count(*)::int FROM evaluation_activities a WHERE a.evaluation_plan_id = ep.id) AS activity_count'),
       trx.raw('(SELECT COALESCE(sum(a.weight_percent), 0)::float FROM evaluation_activities a WHERE a.evaluation_plan_id = ep.id) AS total_weight')
     )
-    // Orden lógico: Materia (A-Z) → Lapso (I, II, III) → grado (jerarquía escolar) → sección.
+    // Orden lógico: Materia (A-Z) → Período (I, II, III) → grado (jerarquía escolar) → sección.
     .orderByRaw('lower(COALESCE(sub.name, ep.subject)), t.term_number NULLS LAST, el.sort_order, g.sort_order, sec.name, ep.created_at');
   // Filtrar por sección incluye los planes compartidos en los que participa.
   if (sectionId) {
@@ -358,7 +319,7 @@ async function resolveSectionTeacher(trx, section, { teacherId: requestedTeacher
 /**
  * Valida un conjunto de secciones para un plan: mismo grado y año escolar, el
  * mismo docente en todas (según su asignación), y que ninguna tenga ya un plan
- * de esa materia en ese lapso. Devuelve { sections, teacherId, subject, subjectId }.
+ * de esa materia en ese período. Devuelve { sections, teacherId, subject, subjectId }.
  */
 async function resolvePlanSections(trx, tenantId, sectionIds, input, { termId, excludePlanId = null }) {
   const ids = [...new Set(sectionIds)];
@@ -374,7 +335,7 @@ async function resolvePlanSections(trx, tenantId, sectionIds, input, { termId, e
 
   const term = await trx('terms').where({ id: termId, tenant_id: tenantId }).first();
   if (!term || term.school_period_id !== main.school_period_id) {
-    throw ApiError.badRequest('El lapso no pertenece al año escolar de la sección.', [{ path: 'termId', message: 'Lapso inválido.' }]);
+    throw ApiError.badRequest('El período no pertenece al año escolar de la sección.', [{ path: 'termId', message: 'Período inválido.' }]);
   }
 
   let resolved = null;
@@ -392,7 +353,7 @@ async function resolvePlanSections(trx, tenantId, sectionIds, input, { termId, e
     resolved = resolved || r;
   }
 
-  // Una sección no puede tener dos planes de la misma materia, lapso y docente.
+  // Una sección no puede tener dos planes de la misma materia, período y docente.
   const taken = await trx('evaluation_plan_sections as x')
     .join('evaluation_plans as o', 'o.id', 'x.plan_id')
     .join('sections as s', 's.id', 'x.section_id')
@@ -403,7 +364,7 @@ async function resolvePlanSections(trx, tenantId, sectionIds, input, { termId, e
     .select('s.name')
     .first();
   if (taken) {
-    throw ApiError.conflict(`La sección ${taken.name} ya tiene un plan de ${resolved.subject} para este lapso y docente.`, [
+    throw ApiError.conflict(`La sección ${taken.name} ya tiene un plan de ${resolved.subject} para este período y docente.`, [
       { path: 'sectionIds', message: 'Sección con plan.' },
     ]);
   }
@@ -440,10 +401,10 @@ async function createPlan(trx, tenantId, { sectionId, sectionIds, termId: reques
 }
 
 /**
- * Cambia el formato, el lapso académico o las secciones de un plan.
- *  - Lapso: el plan (con sus actividades y notas) pasa a otro lapso del mismo
+ * Cambia el formato, el período académico o las secciones de un plan.
+ *  - Período: el plan (con sus actividades y notas) pasa a otro período del mismo
  *    año, si el plan está abierto y ninguna de sus secciones tiene ya un plan
- *    de esa materia y docente en el lapso destino.
+ *    de esa materia y docente en el período destino.
  *  - detallado → simple: solo si ninguna actividad tiene criterios/indicadores.
  *  - Quitar una sección: solo si sus alumnos no tienen notas en el plan.
  *  - Agregar: mismas reglas que al crear (grado, docente, sin plan duplicado).
@@ -469,7 +430,7 @@ async function planHasGrades(trx, planId) {
  * permite mientras ningún alumno tenga notas en él. Valida el destino con las
  * mismas reglas que al crear: mismo año escolar, materia en el plan de
  * estudios del grado, docente de la materia en esa sección y sin otro plan de
- * la misma materia, lapso y docente. El plan queda solo en esa sección.
+ * la misma materia, período y docente. El plan queda solo en esa sección.
  */
 async function movePlanToSection(trx, tenantId, plan, targetSectionId) {
   const current = await trx('evaluation_plan_sections').where({ plan_id: plan.id }).pluck('section_id');
@@ -517,10 +478,10 @@ async function updatePlan(trx, tenantId, planId, { format, sectionIds, termNumbe
     const period = (await trx('terms').where({ id: plan.term_id }).first()).school_period_id;
     const newTermId = await resolveTermId(trx, tenantId, period, { termId, termNumber });
     if (newTermId !== plan.term_id) {
-      if (plan.status === 'closed') throw ApiError.conflict('El plan está cerrado: reábrelo para cambiar su lapso.', [{ path: 'termNumber', message: 'Plan cerrado.' }]);
+      if (plan.status === 'closed') throw ApiError.conflict('El plan está cerrado: reábrelo para cambiar su período.', [{ path: 'termNumber', message: 'Plan cerrado.' }]);
       const target = await trx('terms').where({ id: newTermId, tenant_id: tenantId }).first();
       if (!target || target.school_period_id !== period) {
-        throw ApiError.badRequest('El lapso no pertenece al año escolar del plan.', [{ path: 'termNumber', message: 'Lapso inválido.' }]);
+        throw ApiError.badRequest('El período no pertenece al año escolar del plan.', [{ path: 'termNumber', message: 'Período inválido.' }]);
       }
       const current = await trx('evaluation_plan_sections').where({ plan_id: planId }).pluck('section_id');
       await resolvePlanSections(
@@ -601,7 +562,7 @@ async function updatePlan(trx, tenantId, planId, { format, sectionIds, termNumbe
  * Proyecto pedagógico de aula = una actividad del plan (categoría 'project')
  * con su ponderación, más sus competencias (evaluación cualitativa). La
  * actividad pasa por upsertActivity: plan abierto, suma ≤ 100% y fecha dentro
- * del lapso, igual que cualquier otra. Un proyecto anterior a la integración
+ * del período, igual que cualquier otra. Un proyecto anterior a la integración
  * (sin actividad) se pondera con esta misma llamada.
  */
 async function createPedagogicalProject(trx, tenantId, planId, { title, description, weightPercent, plannedDate, competencies = [] }) {
@@ -690,7 +651,7 @@ async function getOpenPlan(trx, tenantId, planId) {
   return plan;
 }
 
-/** "Primer Lapso (del 2026-09-14 al 2026-12-18)" para mensajes de fecha fuera de rango. */
+/** "Primer Período (del 2026-09-14 al 2026-12-18)" para mensajes de fecha fuera de rango. */
 function termRange(plan) {
   if (plan.term_start && plan.term_end) return plan.term_name + ' (del ' + plan.term_start + ' al ' + plan.term_end + ')';
   if (plan.term_start) return plan.term_name + ' (desde el ' + plan.term_start + ')';
@@ -704,7 +665,7 @@ const round2 = (n) => Math.round(Number(n) * 100) / 100;
  * Valida y normaliza la estructura detallada de una actividad:
  *  - criterios con al menos un indicador; indicadores con puntaje > 0;
  *  - la suma de puntajes de los indicadores = puntaje máximo de la actividad;
- *  - fechas de aplicación: una por sección DEL PLAN, dentro del lapso y de lunes a viernes.
+ *  - fechas de aplicación: una por sección DEL PLAN, dentro del período y de lunes a viernes.
  */
 function validateDetailed(plan, planSections, { maxScore, criteria, sectionDates }) {
   if (criteria.length) {
@@ -745,7 +706,7 @@ function validateDetailed(plan, planSections, { maxScore, criteria, sectionDates
     }
     if ((plan.term_start && d.date < plan.term_start) || (plan.term_end && d.date > plan.term_end)) {
       throw ApiError.unprocessable(`La fecha de la sección ${allowed.get(d.sectionId)} debe estar dentro de ${termRange(plan)}.`, [
-        { path: 'sectionDates', message: 'Fuera del lapso.' },
+        { path: 'sectionDates', message: 'Fuera del período.' },
       ]);
     }
   });
@@ -888,10 +849,10 @@ async function upsertActivity(
     throw ApiError.badRequest(weekendMessage(plannedDate), [{ path: 'plannedDate', message: `Es ${weekendDay(plannedDate)}: elige un día de lunes a viernes.` }]);
   }
 
-  // La fecha estimada debe caer dentro del lapso (si el lapso tiene fechas).
+  // La fecha estimada debe caer dentro del período (si el período tiene fechas).
   if (plannedDate && ((plan.term_start && plannedDate < plan.term_start) || (plan.term_end && plannedDate > plan.term_end))) {
     throw ApiError.unprocessable('La fecha estimada debe estar dentro de ' + termRange(plan) + '.', [
-      { path: 'plannedDate', message: 'Fuera del lapso.' },
+      { path: 'plannedDate', message: 'Fuera del período.' },
     ]);
   }
 
@@ -1081,7 +1042,6 @@ module.exports = {
   closePlan,
   reopenPlan,
   listTerms,
-  createTerm,
   listPlans,
   getPlanWithActivities,
   createPlan,

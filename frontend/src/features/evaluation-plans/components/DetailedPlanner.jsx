@@ -10,7 +10,7 @@ import Badge from '../../../components/ui/Badge';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
-import { TermSelect, termLabel } from '../terms';
+import { TermSelect, termLabel, useTerms } from '../terms';
 import { GRADING_SCALES } from '../../grading/gradingScale';
 import { INSTRUMENT_LABELS } from '../instruments';
 
@@ -404,20 +404,22 @@ export function PlanSettings({ plan, canEdit, onChanged }) {
     }
   };
 
+  const { data: terms } = useTerms(plan.school_period_id);
   const changeTerm = async (termNumber) => {
     if (!termNumber || termNumber === plan.term_number) return;
+    const targetName = termLabel(termNumber, (terms || []).find((t) => t.term_number === termNumber)?.name);
     const ok = await confirm({
-      title: `¿Mover el plan al ${termLabel(termNumber)}?`,
-      message: `Sus actividades${plan.activities.length ? ` (${plan.activities.length})` : ''} y las notas ya cargadas pasan a contar en el ${termLabel(termNumber)}. Revisa luego las fechas de aplicación.`,
-      confirmLabel: 'Cambiar lapso',
+      title: `¿Mover el plan a ${targetName}?`,
+      message: `Sus actividades${plan.activities.length ? ` (${plan.activities.length})` : ''} y las notas ya cargadas pasan a contar en ${targetName}. Revisa luego las fechas de aplicación.`,
+      confirmLabel: 'Cambiar período',
     });
     if (!ok) return;
     try {
       await evaluationPlansApi.update(plan.id, { termNumber });
-      toast.success('Lapso actualizado', `${plan.subject} · ${termLabel(termNumber)}`);
+      toast.success('Período actualizado', `${plan.subject} · ${targetName}`);
       onChanged();
     } catch (err) {
-      toast.error('No se pudo cambiar el lapso', getErrorMessage(err));
+      toast.error('No se pudo cambiar el período', getErrorMessage(err));
     }
   };
 
@@ -425,10 +427,10 @@ export function PlanSettings({ plan, canEdit, onChanged }) {
     <div className="plan-settings">
       <div className="plan-settings__term">
         <label className="student-card__label" htmlFor="plan-term">
-          Lapso académico
+          Período académico
         </label>
-        <TermSelect id="plan-term" value={plan.term_number} onChange={changeTerm} disabled={!canEdit || plan.status === 'closed'} required />
-        <span className="form-hint">Las actividades de este plan se califican en este lapso.</span>
+        <TermSelect id="plan-term" value={plan.term_number} onChange={changeTerm} terms={terms} disabled={!canEdit || plan.status === 'closed'} required />
+        <span className="form-hint">Las actividades de este plan se califican en este período.</span>
       </div>
       <div>
         <span className="student-card__label">Escala de calificación</span>

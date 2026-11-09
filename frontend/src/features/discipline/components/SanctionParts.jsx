@@ -8,7 +8,8 @@ import Select from '../../../components/ui/Select';
 import Button from '../../../components/ui/Button';
 import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
-import { termLabel } from '../../evaluation-plans/terms';
+import { termLabel, useTerms } from '../../evaluation-plans/terms';
+import { useAcademicYear } from '../../../context/AcademicYearContext';
 import StudentPicker from '../../students/components/StudentPicker';
 
 /**
@@ -119,6 +120,9 @@ export function SanctionFormModal({ initial, studentId: fixedStudentId, students
     termNumber: initial?.term_number || '',
   });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  // Períodos del año de la sanción (al crearla, el año en curso: el del alumno).
+  const { currentId } = useAcademicYear();
+  const { data: terms } = useTerms(initial?.school_period_id || currentId);
   const { run, loading, error, fieldErrors } = useMutation((data) =>
     isEdit ? disciplineApi.update(initial.id, data) : disciplineApi.create(form.studentId, data)
   );
@@ -186,12 +190,14 @@ export function SanctionFormModal({ initial, studentId: fixedStudentId, students
           <Field label="Medida aplicada" hint="Opcional. Ej. amonestación escrita, citación al representante.">
             <Input value={form.measure} onChange={set('measure')} maxLength={200} />
           </Field>
-          <Field label="Lapso" hint="Opcional: si no lo eliges, se toma el lapso de la fecha.">
+          <Field label="Período" hint="Opcional: si no lo eliges, se toma el período de la fecha.">
             <Select value={form.termNumber} onChange={set('termNumber')}>
               <option value="">Según la fecha</option>
-              <option value="1">Lapso I</option>
-              <option value="2">Lapso II</option>
-              <option value="3">Lapso III</option>
+              {(terms || []).map((t) => (
+                <option key={t.id} value={t.term_number}>
+                  {t.name}
+                </option>
+              ))}
             </Select>
           </Field>
         </div>

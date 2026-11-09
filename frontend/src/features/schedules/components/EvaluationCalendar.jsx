@@ -52,7 +52,7 @@ function EvaluationCalendar({ sectionId, termNumber, fetcher, fetchKey }) {
   const [selectedId, setSelectedId] = useState(null); // evaluación abierta en el modal de detalle
   const [level, setLevel] = useState(''); // filtro por ponderación ('' = todas)
 
-  // Al cargar: el mes/semana de hoy si cae en el lapso; si no, el de la primera evaluación o el inicio del lapso.
+  // Al cargar: el mes/semana de hoy si cae en el período; si no, el de la primera evaluación o el inicio del período.
   useEffect(() => {
     if (!data?.summary) return; // sin sección (alumno no inscrito): nada que ubicar
     const { from, to } = data.summary;
@@ -186,7 +186,7 @@ function EvaluationCalendar({ sectionId, termNumber, fetcher, fetchKey }) {
         )}
 
         <p className="form-hint evalcal__legend">
-          <WeightDot level="high" label />: examen, proyecto o {data.rules.heavy_weight}% o más del lapso · <WeightDot level="medium" label />: del{' '}
+          <WeightDot level="high" label />: examen, proyecto o {data.rules.heavy_weight}% o más del período · <WeightDot level="medium" label />: del{' '}
           {data.rules.medium_weight ?? 10}% al {data.rules.heavy_weight}% · <WeightDot level="low" label />: menos de {data.rules.medium_weight ?? 10}%. En rojo, los
           días cargados ({data.rules.overloaded.heavy}+ de ponderación alta o {data.rules.overloaded.total}+ evaluaciones). Las fechas vienen de los planes de
           evaluación y la hora, del horario de clases de la sección. Toca una evaluación para ver su detalle.
@@ -284,7 +284,7 @@ function WeekView({ monday, byDate, dayInfo, slots, inTerm, onSelect }) {
   const unplaced = week.filter((e) => !e.time_slot_id);
   const days = dates.map((d, i) => ({
     day: i + 1,
-    name: `${WEEKDAYS[i]} ${short(parse(d))}${dayInfo.get(d)?.overloaded ? ' · cargado' : ''}${inTerm(d) ? '' : ' (fuera del lapso)'}`,
+    name: `${WEEKDAYS[i]} ${short(parse(d))}${dayInfo.get(d)?.overloaded ? ' · cargado' : ''}${inTerm(d) ? '' : ' (fuera del período)'}`,
   }));
 
   return (

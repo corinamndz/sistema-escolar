@@ -14,7 +14,7 @@ import PlanAcknowledgment from './PlanAcknowledgment';
 const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('es', { maximumFractionDigits: 2 }));
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-/** Lapso por defecto: el último con alguna nota cargada (o el primero). */
+/** Período por defecto: el último con alguna nota cargada (o el primero). */
 function defaultTermId(terms, subjects) {
   const graded = new Set(subjects.flatMap((s) => s.plans.filter((p) => p.graded_count > 0).map((p) => p.term_id)));
   const withGrades = terms.filter((t) => graded.has(t.id));
@@ -75,8 +75,8 @@ function PortalEvaluationPlan({ studentId }) {
         </Select>
       )}
       {terms.length > 0 && (
-        <div className="level-filter" role="group" aria-label="Lapso">
-          {[...terms, { id: '', name: 'Todos los lapsos' }].map((t) => (
+        <div className="level-filter" role="group" aria-label="Período">
+          {[...terms, { id: '', name: 'Todos los períodos' }].map((t) => (
             <button
               key={t.id || 'all'}
               type="button"
@@ -164,7 +164,7 @@ function SubjectCard({ subject, termName, onOpen }) {
         </span>
         {!single && (
           <span>
-            <strong>{plans.length}</strong> lapsos
+            <strong>{plans.length}</strong> períodos
           </span>
         )}
       </span>

@@ -12,7 +12,7 @@ const PDFDocument = require('pdfkit');
  *   │                         se otorga a                                          │
  *   │                   Nombre Completo del Alumno                                 │
  *   │                 4to Año · Sección A · 2026-2027                              │
- *   │                 por  «Cuadro de honor del 1er lapso»                          │
+ *   │                 por  «Cuadro de honor del 1er período»                          │
  *   │                   [ Excelencia académica ]                                   │
  *   │            "mensaje personalizado, en cursiva"                               │
  *   │  Fecha ________           (sello)            ________ Quien otorga           │

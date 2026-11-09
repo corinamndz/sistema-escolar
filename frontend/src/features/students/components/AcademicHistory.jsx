@@ -14,7 +14,7 @@ const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleSt
 /**
  * Historial académico de un alumno: un bloque por año escolar (el más reciente
  * primero) con grado, sección, resultado (Cursando / Promovido / Repite /
- * Egresado / Retirado), promedio y la boleta por materia y lapso. Los años
+ * Egresado / Retirado), promedio y la boleta por materia y período. Los años
  * cerrados muestran la boleta congelada al momento de la promoción.
  * `data` viene de GET /students/:id/academic-history o /portal/students/:id/history.
  * `initiallyOpen`: todos los años desplegados (impresión, "Expandir todo").
@@ -47,8 +47,7 @@ function AcademicHistory({ data, initiallyOpen = false }) {
       {data.years.map((y) => {
         const isOpen = open.has(y.enrollment_id);
         const termNames = [...new Set(y.subjects.flatMap((s) => s.terms.map((t) => t.term_name)))];
-        // Encabezado uniforme (Lapso I, II, III) aunque el lapso se llame "Primer Lapso".
-        const headerOf = (name) => termLabel(y.subjects.flatMap((s) => s.terms).find((x) => x.term_name === name)?.term_number, name);
+        const headerOf = (name) => name;
         return (
           <section key={y.enrollment_id} className={`history-year ${isOpen ? 'is-open' : ''}`}>
             <button type="button" className="history-year__head" onClick={() => toggle(y.enrollment_id)} aria-expanded={isOpen}>

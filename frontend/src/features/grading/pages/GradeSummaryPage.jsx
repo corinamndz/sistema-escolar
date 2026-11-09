@@ -14,6 +14,7 @@ import { LevelBadge, LevelFilter } from '../../academics/levels';
 import { isQualitative, literalFor } from '../gradingScale';
 import LiteralBadge from '../components/LiteralBadge';
 import OfficialReportCard from '../components/OfficialReportCard';
+import { averageRuleText } from '../averageRule';
 import GradeDetailDrawer, { AdjustedMark } from '../components/GradeDetailDrawer';
 import TermClosureBar from '../components/TermClosureBar';
 import { useAuth } from '../../../context/AuthContext';
@@ -25,7 +26,7 @@ const normalize = (v) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, ''
 const searchText = (s) => [fullName(s), s.national_id, s.grade_name, s.section_name].join(' ');
 /** 16.3 → "16,3" */
 const fmt = (n, digits = 1) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('es', { maximumFractionDigits: digits }));
-const shortTerm = (t) => (t.term_number ? `Lapso ${['I', 'II', 'III', 'IV'][t.term_number - 1] || t.term_number}` : t.name);
+const shortTerm = (t) => t.name;
 
 function readView() {
   try {
@@ -36,7 +37,7 @@ function readView() {
 }
 
 /**
- * Lo acumulado en un lapso (de una materia o el promedio del alumno):
+ * Lo acumulado en un período (de una materia o el promedio del alumno):
  * "12,4 /20" + "Prom. 17,7 · 70% evaluado". Rojo si el rendimiento no alcanza la
  * nota mínima. En escala cualitativa, el literal del rendimiento.
  */
@@ -71,7 +72,7 @@ function TermValue({ cell, scale, passing, qualitative, compact = false }) {
   );
 }
 
-/** Boleta del alumno: una fila por materia y una columna por lapso, con el promedio de cada lapso al pie. */
+/** Boleta del alumno: una fila por materia y una columna por período, con el promedio de cada período al pie. */
 function ReportCard({ student, terms, scale, passing }) {
   const qualitative = isQualitative(student.grading_scale);
   if (!student.section_id) return <p className="text-muted text-sm">El alumno no está inscrito en ninguna sección de este año escolar.</p>;
@@ -103,7 +104,7 @@ function ReportCard({ student, terms, scale, passing }) {
         </tbody>
         <tfoot>
           <tr className="gsum-report__total">
-            <td data-label="Resumen">Promedio del lapso</td>
+            <td data-label="Resumen">Promedio del período</td>
             {terms.map((t) => (
               <td key={t.id} data-label={t.name}>
                 <TermValue cell={student.terms[t.id]} scale={scale} passing={passing} qualitative={qualitative} />
@@ -116,7 +117,7 @@ function ReportCard({ student, terms, scale, passing }) {
   );
 }
 
-/** Tarjeta colapsable de un alumno: cabecera con el acumulado por lapso; al abrir, su boleta. */
+/** Tarjeta colapsable de un alumno: cabecera con el acumulado por período; al abrir, su boleta. */
 function StudentCard({ student, terms, scale, passing, open, onToggle, onPrint, onDetail }) {
   const qualitative = isQualitative(student.grading_scale);
   const { can } = useAuth();
@@ -166,7 +167,7 @@ function StudentCard({ student, terms, scale, passing, open, onToggle, onPrint, 
 
 /**
  * Resumen de calificaciones (Administración): todos los alumnos activos con lo
- * acumulado en cada lapso del año escolar. Dos vistas: tabla (con "Ver
+ * acumulado en cada período del año escolar. Dos vistas: tabla (con "Ver
  * calificaciones" → boleta) y tarjetas colapsables por alumno.
  */
 function GradeSummaryPage() {
@@ -252,21 +253,26 @@ function GradeSummaryPage() {
       render: (s) => (s.section_id ? sectionOf(s) : <span className="text-muted">Sin inscripción</span>),
       sortValue: (s) => (s.section_id ? `${s.level_sort}-${String(s.grade_sort).padStart(3, '0')}-${s.section_name}` : '~'),
     },
-    ...termColumns,
+    // Antes de los períodos: siempre a la vista, sean cuantos sean.
     {
       key: 'overall',
       header: 'Promedio',
-      align: 'right',
       render: (s) =>
         s.overall === null ? (
-          <span className="text-muted">—</span>
-        ) : isQualitative(s.grading_scale) ? (
-          <LiteralBadge level={literalFor(s.overall)} />
+          <span className="text-muted">{s.overall_pending ? 'Pendiente' : '—'}</span>
         ) : (
-          <strong className={s.overall < passing ? 'grade--fail' : 'grade--pass'}>{fmt(s.overall)}</strong>
+          <span className="gsum-value">
+            {isQualitative(s.grading_scale) ? (
+              <LiteralBadge level={literalFor(s.overall)} />
+            ) : (
+              <strong className={s.overall < passing ? 'grade--fail' : 'grade--pass'}>{fmt(s.overall)}</strong>
+            )}
+            {s.overall_partial && <span className="cell-person__sub">A la fecha</span>}
+          </span>
         ),
       sortValue: (s) => s.overall,
     },
+    ...termColumns,
   ];
 
   const exportColumns = [
@@ -279,7 +285,8 @@ function GradeSummaryPage() {
       { header: `${t.name} · promedio`, value: (s) => s.terms[t.id]?.average ?? '', width: 16 },
       { header: `${t.name} · % evaluado`, value: (s) => s.terms[t.id]?.evaluated ?? '', width: 16 },
     ]),
-    { header: 'Promedio de lo evaluado', value: (s) => s.overall ?? '', width: 18 },
+    { header: 'Promedio del año', value: (s) => s.overall ?? '', width: 18 },
+    { header: 'Estado del promedio', value: (s) => (s.overall_pending ? 'Pendiente' : s.overall === null ? '' : s.overall_partial ? 'A la fecha' : 'Definitivo'), width: 16 },
   ];
 
   const filters = (
@@ -355,7 +362,7 @@ function GradeSummaryPage() {
   );
 
   const note = data?.school_period
-    ? `Año escolar ${data.school_period.name} · Escala de 0 a ${scale}, se aprueba con ${passing}. Acumulado = puntos ganados hasta hoy; Prom. = rendimiento en lo ya evaluado.`
+    ? `Año escolar ${data.school_period.name} · Escala de 0 a ${scale}, se aprueba con ${passing}. Acumulado = puntos ganados hasta hoy; Prom. = rendimiento en lo ya evaluado. ${averageRuleText(data.rules)}`
     : null;
 
   const toggle = (id) =>
@@ -368,9 +375,9 @@ function GradeSummaryPage() {
 
   return (
     <div>
-      <PageHeader title="Resumen de calificaciones" subtitle="Lo que lleva acumulado cada alumno en cada lapso, con su boleta por materia." actions={viewToggle} />
+      <PageHeader title="Resumen de calificaciones" subtitle="Lo que lleva acumulado cada alumno en cada período, con su boleta por materia." actions={viewToggle} />
 
-      {/* Lapsos: quienes ajustan definitivas ven su estado; el Administrador los cierra o reabre. */}
+      {/* Períodos: quienes ajustan definitivas ven su estado; el Administrador los cierra o reabre. */}
       {data?.school_period && (data.can_adjust || data.can_close_terms) && (
         <TermClosureBar terms={terms} canManage={data.can_close_terms} yearClosed={data.school_period.closed} onChanged={refetch} />
       )}
@@ -472,7 +479,7 @@ function GradeSummaryPage() {
         </>
       )}
 
-      {/* Detalle por materia y lapso, con definitiva y aprobada / reprobada (sin descargar el PDF). */}
+      {/* Detalle por materia y período, con definitiva y aprobada / reprobada (sin descargar el PDF). */}
       {viewing && (
         <GradeDetailDrawer
           studentId={viewing.id}
@@ -493,6 +500,7 @@ function GradeSummaryPage() {
           schoolPeriod={data?.school_period}
           scale={scale}
           passing={passing}
+          rules={data?.rules}
           onClose={closePrint}
         />
       )}

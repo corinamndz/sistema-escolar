@@ -795,7 +795,7 @@ function GuardianFormModal({ initial, onClose, onSaved }) {
   const { can } = useAuth();
   // Asociar alumnos es editar alumnos (el backend exige el mismo permiso).
   const canLinkStudents = can('students', 'read') && can('students', 'update');
-  const { data: students } = useFetch(() => (canLinkStudents ? studentsApi.list() : Promise.resolve([])), [canLinkStudents]);
+  const { data: students } = useFetch(() => (canLinkStudents ? studentsApi.list({ includeWithdrawn: true }) : Promise.resolve([])), [canLinkStudents]);
   const { data: detail, loading: loadingDetail } = useFetch(
     () => (isEdit && canLinkStudents ? studentsApi.getGuardian(initial.id) : Promise.resolve(null)),
     [initial.id, canLinkStudents]

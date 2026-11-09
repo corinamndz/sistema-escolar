@@ -43,7 +43,7 @@ async function summaryAccess(req, res, next) {
   }
 }
 
-// Resumen de calificaciones del colegio (Administración): acumulado por lapso de cada alumno.
+// Resumen de calificaciones del colegio (Administración): acumulado por período de cada alumno.
 router.get(
   '/summary',
   summaryAccess,
@@ -55,7 +55,7 @@ router.get(
 );
 /**
  * GET /grading/summary/students/:studentId?schoolPeriodId= — desglose de UN alumno:
- * notas por materia y lapso, definitiva y estado (aprobada / reprobada) según la escala del año,
+ * notas por materia y período, definitiva y estado (aprobada / reprobada) según la escala del año,
  * con el historial de ajustes directivos y si el usuario puede ajustar (can_adjust).
  */
 router.get(
@@ -71,7 +71,7 @@ router.get(
 );
 /**
  * POST /grading/summary/students/:studentId/adjustments — ajuste directivo de la definitiva
- * de una materia en un lapso cerrado. Motivo OBLIGATORIO (mín. 10 caracteres); queda en
+ * de una materia en un período cerrado. Motivo OBLIGATORIO (mín. 10 caracteres); queda en
  * grade_audit_logs y en la bitácora de auditoría. newGrade null = quitar el ajuste.
  *   { schoolPeriodId, termId, subjectKey, newGrade, reason } → detalle actualizado
  */
@@ -83,7 +83,7 @@ router.post(
     const data = z
       .object({
         schoolPeriodId: z.string().uuid('Año escolar inválido.'),
-        termId: z.string().uuid('Lapso inválido.'),
+        termId: z.string().uuid('Período inválido.'),
         subjectKey: z.string().trim().min(1, 'Materia inválida.').max(200),
         newGrade: z.number({ invalid_type_error: 'Escribe la nota nueva.' }).min(0, 'Mínimo 0.').max(20, 'Máximo 20.').nullable(),
         reason: z.string({ required_error: 'El motivo es obligatorio.' }).trim().min(adjustments.MIN_REASON, `Explica el motivo del ajuste (al menos ${adjustments.MIN_REASON} caracteres).`).max(500, 'Máximo 500 caracteres.'),
@@ -94,16 +94,16 @@ router.post(
   })
 );
 
-// Cerrar o reabrir un lapso de todo el colegio: solo el Administrador.
+// Cerrar o reabrir un período de todo el colegio: solo el Administrador.
 router.post(
   '/summary/terms/:termId/close',
   requireAdmin,
-  asyncHandler(async (req, res) => res.status(200).json(await adjustments.setTermClosed(req, z.string().uuid('Lapso inválido.').parse(req.params.termId), true)))
+  asyncHandler(async (req, res) => res.status(200).json(await adjustments.setTermClosed(req, z.string().uuid('Período inválido.').parse(req.params.termId), true)))
 );
 router.post(
   '/summary/terms/:termId/reopen',
   requireAdmin,
-  asyncHandler(async (req, res) => res.status(200).json(await adjustments.setTermClosed(req, z.string().uuid('Lapso inválido.').parse(req.params.termId), false)))
+  asyncHandler(async (req, res) => res.status(200).json(await adjustments.setTermClosed(req, z.string().uuid('Período inválido.').parse(req.params.termId), false)))
 );
 
 module.exports = router;

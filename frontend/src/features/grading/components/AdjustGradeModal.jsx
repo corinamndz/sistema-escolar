@@ -15,7 +15,7 @@ const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleSt
 const SUGGESTIONS = ['Aprobación en jornada de revisión de notas', 'Recalificación de prueba final', 'Corrección de un error de transcripción'];
 
 /**
- * Ajuste directivo de la definitiva de una materia en un lapso (Administrador o
+ * Ajuste directivo de la definitiva de una materia en un período (Administrador o
  * Coordinador del nivel). Pide la nota nueva y un motivo OBLIGATORIO; el
  * servidor lo valida de nuevo y lo deja en el historial de ajustes y en la
  * bitácora de auditoría. Si la nota ya está ajustada, permite quitar el ajuste

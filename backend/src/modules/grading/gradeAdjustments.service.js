@@ -7,7 +7,7 @@ const { logAudit } = require('../../services/audit/audit.service');
  * Ajuste directivo de calificaciones definitivas (migración 084).
  *
  * El Administrador, o el Coordinador del NIVEL del alumno, cambian la
- * definitiva de una materia en un lapso ya cerrado, con un motivo obligatorio.
+ * definitiva de una materia en un período ya cerrado, con un motivo obligatorio.
  * Cada ajuste es un renglón de grade_audit_logs (historial inalterable); la
  * nota vigente es la del último renglón (new_grade NULL = se quitó el ajuste).
  *
@@ -19,8 +19,8 @@ const { logAudit } = require('../../services/audit/audit.service');
  * Cuándo se puede ajustar:
  *   - el año escolar no está finalizado y la matrícula del alumno sigue activa
  *     (si ya se promovió, sus resultados están congelados: hay que deshacer la promoción);
- *   - el lapso está cerrado (lo cerró el Administrador o su fecha de fin ya pasó) o la materia ya tiene su
- *     definitiva del lapso (plan evaluado al 100 %).
+ *   - el período está cerrado (lo cerró el Administrador o su fecha de fin ya pasó) o la materia ya tiene su
+ *     definitiva del período (plan evaluado al 100 %).
  */
 
 const MIN_REASON = 10;
@@ -30,7 +30,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const num = (v) => (v === null || v === undefined ? null : Number(v));
 
 /**
- * Ajustes VIGENTES (el último de cada alumno × año × lapso × materia, si no se quitó).
+ * Ajustes VIGENTES (el último de cada alumno × año × período × materia, si no se quitó).
  * → Map `${studentId}|${termId}` → [{ subject_id, subject_name, grade, previous, computed, reason, by, role, at }]
  */
 async function loadEffective(trx, tenantId, { studentIds, periodIds }) {
@@ -106,14 +106,14 @@ async function adjusterRole(req, levelCode = undefined) {
   return 'coordinacion';
 }
 
-/** La fecha de fin del lapso ya pasó. */
+/** La fecha de fin del período ya pasó. */
 const endDatePassed = (term) => Boolean(term?.end_date && new Date(`${String(term.end_date).slice(0, 10)}T23:59:59`) < new Date());
 
-/** Lapso cerrado: manualmente (migración 085) o porque terminó por fecha. */
+/** Período cerrado: manualmente (migración 085) o porque terminó por fecha. */
 const termEnded = (term) => Boolean(term?.closed_at) || endDatePassed(term);
 
 /**
- * Cierra o reabre un lapso (solo el Administrador: lo exige la ruta). El lapso es
+ * Cierra o reabre un período (solo el Administrador: lo exige la ruta). El período es
  * de todo el colegio. Reabrir no quita los ajustes ya hechos.
  */
 async function setTermClosed(req, termId, closed) {
@@ -123,8 +123,8 @@ async function setTermClosed(req, termId, closed) {
     .where({ 't.id': termId, 't.tenant_id': tenantId })
     .forUpdate('t')
     .first('t.id', 't.name', 't.end_date', 't.closed_at', 'sp.name as period_name', 'sp.closed_at as period_closed_at');
-  if (!term) throw ApiError.notFound('Lapso no encontrado.');
-  if (term.period_closed_at) throw ApiError.conflict(`El año escolar ${term.period_name} está finalizado: sus lapsos ya no se pueden cambiar.`);
+  if (!term) throw ApiError.notFound('Período no encontrado.');
+  if (term.period_closed_at) throw ApiError.conflict(`El año escolar ${term.period_name} está finalizado: sus períodos ya no se pueden cambiar.`);
   if (closed && termEnded(term)) throw ApiError.conflict(`${term.name} ya está cerrado.`);
   if (!closed && !term.closed_at) throw ApiError.conflict(endDatePassed(term) ? `${term.name} está cerrado por su fecha de fin: cámbiala para reabrirlo.` : `${term.name} no está cerrado.`);
   if (!closed && endDatePassed(term)) throw ApiError.conflict(`La fecha de fin de ${term.name} ya pasó: cámbiala para reabrirlo.`);
@@ -163,7 +163,7 @@ async function adjust(req, studentId, { schoolPeriodId, termId, subjectKey, newG
   if (!period) throw ApiError.notFound('Año escolar no encontrado.');
   if (period.closed_at) throw ApiError.conflict(`El año escolar ${period.name} está finalizado: sus notas ya no se pueden ajustar.`);
   const term = await trx('terms').where({ id: termId, tenant_id: tenantId, school_period_id: period.id }).first('id', 'name', 'end_date', 'closed_at');
-  if (!term) throw ApiError.badRequest('Ese lapso no pertenece al año escolar.', [{ path: 'termId', message: 'Lapso inválido.' }]);
+  if (!term) throw ApiError.badRequest('Ese período no pertenece al año escolar.', [{ path: 'termId', message: 'Período inválido.' }]);
 
   // Matrícula del alumno en ese año (con su nivel, para el Coordinador).
   const enr = await trx('enrollments as e')
@@ -181,7 +181,7 @@ async function adjust(req, studentId, { schoolPeriodId, termId, subjectKey, newG
     throw ApiError.conflict('El alumno ya cerró este año (promoción): sus resultados quedaron congelados. Deshaz su promoción para ajustar una nota.');
   }
 
-  // Nota actual de la materia en el lapso (con el ajuste vigente, si lo hay).
+  // Nota actual de la materia en el período (con el ajuste vigente, si lo hay).
   const detail = await summary.getStudentDetail(trx, tenantId, studentId, { schoolPeriodId: period.id });
   const subject = detail.subjects.find((s) => s.key === subjectKey);
   if (!subject) throw ApiError.badRequest('Esa materia no está en las calificaciones del alumno.', [{ path: 'subjectKey', message: 'Materia inválida.' }]);
@@ -192,10 +192,10 @@ async function adjust(req, studentId, { schoolPeriodId, termId, subjectKey, newG
 
   if (grade === null && !current) throw ApiError.conflict('Esa nota no tiene un ajuste vigente que quitar.');
   if (grade !== null && previous !== null && Math.abs(previous - grade) < 0.005) throw ApiError.conflict('La nota nueva es igual a la actual.');
-  // «Al cierre del lapso»: está cerrado, o la materia ya tiene su definitiva.
+  // «Al cierre del período»: está cerrado, o la materia ya tiene su definitiva.
   const hasFinal = Boolean(cell && (cell.adjustment || (cell.final !== null && cell.final !== undefined && !cell.partial)));
   if (!termEnded(term) && !hasFinal) {
-    throw ApiError.conflict(`${term.name} aún no ha cerrado y ${subject.name} no tiene su definitiva: se ajusta al cierre del lapso.`);
+    throw ApiError.conflict(`${term.name} aún no ha cerrado y ${subject.name} no tiene su definitiva: se ajusta al cierre del período.`);
   }
 
   const user = await trx('users').where({ id: req.user.id }).first('full_name', 'username');

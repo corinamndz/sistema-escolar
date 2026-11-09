@@ -59,6 +59,7 @@ const updateRules = asyncHandler(async (req, res) => {
       maxFailedSubjects: z.coerce.number().int().min(0).max(20),
       termAverageMode: z.enum(['arithmetic', 'weighted']),
       gradeRounding: z.enum(['none', 'integer']),
+      incompleteAveragePolicy: z.enum(['evaluated_terms', 'all_terms_closed']),
       termWeights: z
         .array(z.object({ termId: uuid, weightPercent: z.coerce.number().min(0).max(100).nullable() }))
         .max(12)

@@ -14,7 +14,7 @@ import AcademicHistory from './AcademicHistory';
 const fmt = (n) => (n === null || n === undefined ? '' : Number(n));
 
 /**
- * Una fila por materia y año, con la nota de cada lapso (para Excel). Los años
+ * Una fila por materia y año, con la nota de cada período (para Excel). Los años
  * sin notas quedan con una fila que dice el resultado del año.
  */
 function exportRows(data) {
@@ -29,13 +29,10 @@ function exportRows(data) {
     };
     if (!y.subjects.length) return [{ ...base, subject: '(sin calificaciones)' }];
     return y.subjects.map((s) => {
-      const term = (n) => fmt(s.terms.find((t) => t.term_number === n)?.grade);
       return {
         ...base,
         subject: s.subject_name,
-        t1: term(1),
-        t2: term(2),
-        t3: term(3),
+        byTerm: Object.fromEntries(s.terms.map((t) => [t.term_number, fmt(t.grade)])),
         final: fmt(s.final_grade),
         result: s.passed === null ? 'Sin notas' : s.passed ? 'Aprobada' : 'Reprobada',
       };
@@ -43,7 +40,25 @@ function exportRows(data) {
   });
 }
 
-const EXPORT_COLUMNS = [
+/**
+ * Una columna por posición de período. El título es su nombre si todos los años
+ * lo llaman igual; si difiere entre años, «Período N».
+ */
+function termColumns(data) {
+  const names = new Map();
+  (data?.years || []).forEach((y) => y.subjects.forEach((s) => s.terms.forEach((t) => {
+    if (!t.term_number) return;
+    if (!names.has(t.term_number)) names.set(t.term_number, new Set());
+    names.get(t.term_number).add(t.term_name);
+  })));
+  return [...names.keys()].sort((a, b) => a - b).map((n) => ({
+    header: names.get(n).size === 1 ? [...names.get(n)][0] : `Período ${n}`,
+    value: (r) => r.byTerm?.[n] ?? '',
+    width: 11,
+  }));
+}
+
+const exportColumns = (data) => [
   { header: 'Año escolar', value: (r) => r.period, width: 12 },
   { header: 'Grado', value: (r) => r.grade, width: 16 },
   { header: 'Sección', value: (r) => r.section, width: 9 },
@@ -51,9 +66,7 @@ const EXPORT_COLUMNS = [
   { header: 'Promedio del año', value: (r) => r.average, width: 14 },
   { header: 'Boleta', value: (r) => r.frozen, width: 10 },
   { header: 'Materia', value: (r) => r.subject, width: 28 },
-  { header: 'Lapso I', value: (r) => r.t1 ?? '', width: 9 },
-  { header: 'Lapso II', value: (r) => r.t2 ?? '', width: 9 },
-  { header: 'Lapso III', value: (r) => r.t3 ?? '', width: 9 },
+  ...termColumns(data),
   { header: 'Nota final', value: (r) => r.final ?? '', width: 10 },
   { header: 'Estado', value: (r) => r.result ?? '', width: 12 },
 ];
@@ -61,7 +74,7 @@ const EXPORT_COLUMNS = [
 /**
  * "Historial académico" desde la lista de Alumnos: el recorrido del alumno por
  * año escolar (grado, sección, resultado, promedio y la boleta por materia y
- * lapso). Los años cerrados muestran la boleta congelada al promover: las
+ * período). Los años cerrados muestran la boleta congelada al promover: las
  * notas de años anteriores no se pierden ni cambian. Se puede exportar a Excel
  * o imprimir (todos los años desplegados, con el encabezado del colegio).
  */
@@ -111,7 +124,7 @@ function AcademicHistoryDrawer({ student, onClose }) {
                     <Button size="sm" variant="ghost" icon={expandAll ? 'chevronLeft' : 'chevronDown'} onClick={toggleAll}>
                       {expandAll ? 'Contraer todo' : 'Expandir todo'}
                     </Button>
-                    <ExportButton size="sm" filename={`historial-academico-${name}`} columns={EXPORT_COLUMNS} rows={exportRows(data)} />
+                    <ExportButton size="sm" filename={`historial-academico-${name}`} columns={exportColumns(data)} rows={exportRows(data)} />
                     <Button size="sm" variant="secondary" icon="file" onClick={() => setPrinting(true)}>
                       Imprimir
                     </Button>

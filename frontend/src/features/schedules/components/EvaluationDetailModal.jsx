@@ -40,7 +40,7 @@ function Fact({ icon, label, children }) {
 
 /**
  * Detalle de una evaluación del horario de evaluaciones (al hacer clic en su
- * tarjeta): actividad, materia y docente, lapso, fecha y hora (del horario de
+ * tarjeta): actividad, materia y docente, período, fecha y hora (del horario de
  * clases), peso, descripción (y, en formato detallado, estrategia y
  * contenidos), y estado de calificación en la sección. Se cierra con la X,
  * haciendo clic fuera o con Esc. Accesos directos al plan y a la libreta
@@ -96,12 +96,12 @@ function EvaluationDetailModal({ evaluation: e, section, onClose }) {
           <Fact icon="user" label="Docente">
             {e.teacher_name ? `Prof. ${e.teacher_name}` : <span className="text-muted">Sin docente</span>}
           </Fact>
-          <Fact icon="layers" label="Lapso y sección">
+          <Fact icon="layers" label="Período y sección">
             {e.term_name}
             {section ? ` · ${section.grade_name} ${section.name}` : ''}
           </Fact>
           <Fact icon="trendingUp" label="Ponderación">
-            <strong>{e.weight_percent}%</strong> del lapso · sobre {e.max_score} puntos
+            <strong>{e.weight_percent}%</strong> del período · sobre {e.max_score} puntos
           </Fact>
           <Fact icon="clipboard" label="Formato del plan">
             {e.plan_format === 'detailed' ? 'Detallado (criterios e indicadores)' : 'Simple'}

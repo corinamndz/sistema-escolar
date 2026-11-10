@@ -23,6 +23,8 @@ const enrollmentFormsApi = {
   submission: (id) => axiosClient.get(`/enrollment-forms/submissions/${id}`).then(data),
   /** { status: rejected | changes_requested, note } — aprobar va por `approve`. */
   review: (id, body) => axiosClient.post(`/enrollment-forms/submissions/${id}/review`, body).then(data),
+  /** Solo el Administrador, en cualquier estado. Lo que creó la aprobación (alumno, inscripción) queda. */
+  deleteSubmission: (id) => axiosClient.delete(`/enrollment-forms/submissions/${id}`).then(data),
   /** Historial de planillas de un alumno → { student, submissions: [{ school_period_name, grade_name, section_name, status, … }] } */
   studentHistory: (studentId) => axiosClient.get(`/enrollment-forms/students/${studentId}/history`).then(data),
   /** Bandeja de todas las planillas recibidas → { rows, counts, forms }. Filtros: status, formId, kind (new|renewal), q. */

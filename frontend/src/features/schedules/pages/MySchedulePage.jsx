@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import schedulesApi from '../../../api/endpoints/schedules.api';
 import evaluationPlansApi from '../../../api/endpoints/evaluationPlans.api';
 import { useFetch } from '../../../hooks/useFetch';
@@ -9,20 +9,52 @@ import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import ScheduleGrid, { hueOf } from '../components/ScheduleGrid';
 
+const sectionLabel = (s) => `${s.grade_name} · Sección ${s.name}`;
+
 /**
- * "Mi horario" del docente (solo lectura): su semana completa, con la sección
- * de cada clase, y el horario de cualquiera de SUS secciones.
+ * "Mi horario" del docente (solo lectura). El selector de la cabecera elige qué
+ * se ve: su semana completa (con la sección de cada clase) o el horario de una
+ * de SUS secciones. La elección queda en la URL (?seccion=), así sobrevive a
+ * recargar la página y se puede compartir el enlace.
  */
 function MySchedulePage() {
   const { data, loading, error } = useFetch(() => schedulesApi.mine(), []);
   const { data: sections } = useFetch(() => evaluationPlansApi.listSectionOptions(), []);
-  const [sectionId, setSectionId] = useState('');
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('seccion') || '';
+  // Una sección que ya no es suya (o de otro año) vuelve a «Mi semana».
+  const section = (sections || []).find((s) => s.id === requested) || null;
+  const pick = (id) => setParams(id ? { seccion: id } : {}, { replace: true });
 
   return (
     <div>
-      <PageHeader title="Mi horario" subtitle="Tus clases de la semana y el horario de tus secciones (solo lectura)." />
+      <PageHeader
+        title="Mi horario"
+        subtitle={section ? `Horario completo de ${sectionLabel(section)} (solo lectura).` : 'Tus clases de la semana y el horario de tus secciones (solo lectura).'}
+        actions={
+          sections?.length > 0 && (
+            <label className="my-schedule__picker">
+              <span>Ver</span>
+              <Select value={section ? section.id : ''} onChange={(e) => pick(e.target.value)} aria-label="Ver el horario de">
+                <option value="">Mi semana (todas mis clases)</option>
+                <optgroup label="Horario de una sección">
+                  {[...sections]
+                    .sort((a, b) => sectionLabel(a).localeCompare(sectionLabel(b), 'es', { numeric: true }))
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {sectionLabel(s)}
+                      </option>
+                    ))}
+                </optgroup>
+              </Select>
+            </label>
+          )
+        }
+      />
       <Alert>{error}</Alert>
-      {loading ? (
+      {section ? (
+        <SectionSchedule section={section} />
+      ) : loading ? (
         <Spinner />
       ) : !data?.periods.length ? (
         <Card>
@@ -41,33 +73,25 @@ function MySchedulePage() {
           </Card>
         ))
       )}
-
-      {sections?.length > 0 && (
-        <Card title="Horario de mis secciones">
-          <Select sorted value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Sección" style={{ maxWidth: 320 }}>
-            <option value="">Elige una sección…</option>
-            {sections.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.grade_name} · Sección {s.name}
-              </option>
-            ))}
-          </Select>
-          {sectionId && <SectionSchedule sectionId={sectionId} />}
-        </Card>
-      )}
     </div>
   );
 }
 
-function SectionSchedule({ sectionId }) {
-  const { data, loading, error } = useFetch(() => schedulesApi.getSection(sectionId), [sectionId]);
-  if (loading) return <Spinner />;
-  if (error) return <Alert>{error}</Alert>;
-  if (!data.slots.length) return <p className="text-muted">Esta sección aún no tiene horario.</p>;
+/** Horario completo de una sección (todas sus materias, no solo las del docente). */
+function SectionSchedule({ section }) {
+  const { data, loading, error } = useFetch(() => schedulesApi.getSection(section.id), [section.id]);
   return (
-    <div style={{ marginTop: 12 }}>
-      <ScheduleGrid days={data.days} slots={data.slots} entries={data.entries} colorOf={(e) => hueOf(e.subject_id)} />
-    </div>
+    <Card title={`Horario de ${sectionLabel(section)}`} subtitle={data?.entries ? `${data.entries.length} clase${data.entries.length === 1 ? '' : 's'} por semana` : undefined}>
+      {loading ? (
+        <Spinner />
+      ) : error ? (
+        <Alert>{error}</Alert>
+      ) : !data.slots.length ? (
+        <p className="text-muted">Esta sección aún no tiene horario.</p>
+      ) : (
+        <ScheduleGrid days={data.days} slots={data.slots} entries={data.entries} colorOf={(e) => hueOf(e.subject_id)} />
+      )}
+    </Card>
   );
 }
 

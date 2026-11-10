@@ -24,7 +24,8 @@ const certificatesApi = {
   /** Elimina el diseño propio de ese alcance: vuelve a usar el que hereda. */
   remove: (scope) => axiosClient.delete('/certificate-template', { params: params(scope) }).then(data),
   /** Lo que pueden descargar las familias en el portal. */
-  setPublished: (scope, published) => axiosClient.put('/certificate-template/publish', { published }, { params: params(scope) }).then(data),
+  /** confirmActiveYear: publicar aunque el año escolar siga activo (si no, 409 SCHOOL_YEAR_ACTIVE). */
+  setPublished: (scope, published, { confirmActiveYear = false } = {}) => axiosClient.put('/certificate-template/publish', { published, ...(confirmActiveYear && { confirmActiveYear }) }, { params: params(scope) }).then(data),
   saveFields: (scope, fields) => axiosClient.put('/certificate-template', { fields }, { params: params(scope) }).then(data),
   /** PDF con datos de ejemplo y las posiciones aún sin guardar. */
   preview: (scope, fields) => axiosClient.post('/certificate-template/preview', { fields }, { params: params(scope), responseType: 'blob' }).then(data),

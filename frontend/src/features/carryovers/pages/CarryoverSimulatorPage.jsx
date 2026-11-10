@@ -17,7 +17,7 @@ const key = () => {
   seq += 1;
   return `s${seq}`;
 };
-const momentRow = (n, description = '') => ({ key: key(), name: `Momento ${n}`, description });
+const momentRow = (n, description = '', passing = '') => ({ key: key(), name: `Momento ${n}`, description, passing });
 
 const DEFAULT_SCENARIO = {
   studentName: 'Luis Pérez (ficticio)',
@@ -48,6 +48,7 @@ function ScenarioForm({ value, onChange, onStart, realItems }) {
     sourceFinal === null && `La nota del año reprobado va de 0 a ${SCALE_MAX}.`,
     passing !== null && sourceFinal !== null && sourceFinal >= passing && 'Con esa nota el alumno habría aprobado: no tendría la materia pendiente.',
     value.moments.some((m) => !m.name.trim()) && 'Cada momento necesita un nombre.',
+    value.moments.some((m) => m.passing !== '' && (parseGrade(m.passing) === null || (passing !== null && parseGrade(m.passing) < passing))) && `La nota mínima de un momento va de ${value.passing || "la del año"} a ${SCALE_MAX}: puede exigir más que la del año, no menos.`,
   ].filter(Boolean);
 
   const copyReal = (id) => {
@@ -60,7 +61,7 @@ function ScenarioForm({ value, onChange, onStart, realItems }) {
       sourceGrade: c.source_grade_name || '',
       sourceFinal: c.source_final_grade === null ? '' : String(c.source_final_grade),
       passing: String(c.passing_grade),
-      moments: c.moments.length ? c.moments.map((m) => ({ key: key(), name: m.name, description: m.description || '' })) : DEFAULT_SCENARIO.moments.map((m) => ({ ...m, key: key() })),
+      moments: c.moments.length ? c.moments.map((m) => ({ key: key(), name: m.name, description: m.description || '', passing: m.passing_grade !== null && m.passing_grade !== undefined && m.passing_grade !== c.passing_grade ? String(m.passing_grade) : '' })) : DEFAULT_SCENARIO.moments.map((m) => ({ ...m, key: key() })),
     });
   };
 
@@ -101,12 +102,14 @@ function ScenarioForm({ value, onChange, onStart, realItems }) {
       </div>
 
       <h4 className="sim-subtitle">Plan de evaluación especial</h4>
+      <p className="text-sm text-muted sim-hint">Nombre, actividad y nota mínima de cada momento (vacía: la del año).</p>
       <ol className="sim-moments">
         {value.moments.map((m, i) => (
           <li key={m.key}>
             <span className="sim-moments__n">{i + 1}</span>
             <Input value={m.name} onChange={(e) => setMoment(m.key, { name: e.target.value })} maxLength={80} aria-label={`Nombre del momento ${i + 1}`} />
             <Input value={m.description} onChange={(e) => setMoment(m.key, { description: e.target.value })} maxLength={200} placeholder="Actividad (opcional)" aria-label={`Actividad del momento ${i + 1}`} />
+            <Input type="number" inputMode="decimal" min={0} max={SCALE_MAX} step="0.01" value={m.passing} onChange={(e) => setMoment(m.key, { passing: e.target.value })} placeholder={value.passing || "Mín."} title="Nota mínima de este momento (vacío: la del año)" aria-label={`Nota mínima del momento ${i + 1}`} />
             <button type="button" className="ep-icon is-danger" onClick={() => set({ moments: value.moments.filter((x) => x.key !== m.key) })} disabled={value.moments.length === 1} title="Quitar" aria-label={`Quitar ${m.name}`}>
               <Icon name="trash" size={14} />
             </button>
@@ -230,7 +233,7 @@ function CarryoverSimulatorPage() {
     const opened = openCarryover(passing);
     const { next, events } = savePlan(
       opened,
-      scenario.moments.map((m) => ({ name: m.name.trim(), description: m.description.trim() }))
+      scenario.moments.map((m) => ({ name: m.name.trim(), description: m.description.trim(), passingGrade: m.passing === '' ? null : parseGrade(m.passing) }))
     );
     setSim({
       carryover: next,
@@ -348,10 +351,10 @@ function CarryoverSimulatorPage() {
                 <MomentTimeline
                   moments={moments}
                   renderExtra={(m) => {
-                    if (m.status === 'open') return <GradeControls key={`g${m.position}`} moment={m} passing={c.passing_grade} onGrade={(v) => grade(m, v)} />;
+                    if (m.status === 'open') return <GradeControls key={`g${m.position}`} moment={m} passing={m.passing_grade} onGrade={(v) => grade(m, v)} />;
                     if (lastGraded?.position === m.position)
                       return correcting ? (
-                        <GradeControls key={`c${m.position}`} moment={m} passing={c.passing_grade} correcting onGrade={(v) => grade(m, v)} onCancel={() => setCorrecting(false)} />
+                        <GradeControls key={`c${m.position}`} moment={m} passing={m.passing_grade} correcting onGrade={(v) => grade(m, v)} onCancel={() => setCorrecting(false)} />
                       ) : (
                         <button type="button" className="link-button sim-fix" onClick={() => setCorrecting(true)}>
                           Corregir esta nota

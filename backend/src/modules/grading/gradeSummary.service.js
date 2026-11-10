@@ -2,6 +2,7 @@ const { ApiError } = require('../../utils/ApiError');
 const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 const adjustments = require('./gradeAdjustments.service');
 const { loadRules, roundGrade, annualAverage, yearAverage } = require('./gradeAverages');
+const carryoverResults = require('../carryovers/carryoverResults');
 
 /**
  * Resumen de calificaciones (Administración): todos los alumnos activos con lo
@@ -263,6 +264,8 @@ async function getSummary(trx, tenantId, { schoolPeriodId, studentId = null, lev
   const ranks = await sectionRanks(trx, tenantId, period.id, terms, rules, [...new Set(students.map((x) => x.section_id).filter(Boolean))]);
 
   const passing = period.passing_grade === null || period.passing_grade === undefined ? PASSING : Number(period.passing_grade);
+  // Materias que el alumno arrastra de este año y su recuperación (solo al ver a un alumno: su boleta).
+  const recoveries = studentId ? await carryoverResults.recoveriesForPeriod(trx, tenantId, period.id, [studentId]) : new Map();
 
   return {
     periods: periods.map(({ passing_grade: _p, ...p }) => p),
@@ -272,8 +275,19 @@ async function getSummary(trx, tenantId, { schoolPeriodId, studentId = null, lev
     scale: SCALE,
     passing_grade: passing,
     students: students.map((s) => {
-      const subjects = [...(byStudent.get(s.id)?.values() || [])].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      const subjects = [...(byStudent.get(s.id)?.values() || [])]
+        .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+        .map((sub) => {
+          const recovery = carryoverResults.recoveryOf(recoveries.get(s.id), sub);
+          return recovery ? { ...sub, recovery } : sub;
+        });
       const averages = averagesOf(subjects, terms, rules);
+      // Aprobada en recuperación: la nota original se conserva y el promedio del año usa la de recuperación.
+      const recovered = averages.subjects.filter((x) => subjects.find((sub) => sub.key === x.key)?.recovery?.status === 'passed');
+      const recalculated = recovered.length > 0 && averages.overall !== null;
+      const overall = recalculated
+        ? yearAverage(averages.subjects.map((x) => ({ final: recovered.includes(x) ? subjects.find((sub) => sub.key === x.key).recovery.grade : x.definitive, pending: x.pending })), rules)
+        : averages.overall;
       const termSummary = Object.fromEntries(
         terms.map((t) => {
           const cells = subjects.map((sub) => sub.terms[t.id]).filter(Boolean);
@@ -310,7 +324,10 @@ async function getSummary(trx, tenantId, { schoolPeriodId, studentId = null, lev
         grading_scale: s.grading_scale || 'quantitative',
         terms: termSummary,
         // Promedio del año: el mismo de la boleta, el detalle, el puesto y la promoción.
-        overall: averages.overall,
+        overall,
+        // Recalculado con las materias aprobadas en recuperación; el original, aparte.
+        overall_recalculated: recalculated,
+        overall_original: recalculated ? averages.overall : undefined,
         overall_partial: averages.overallPartial,
         overall_pending: averages.overallPending,
         // Promedios ya calculados para la boleta, que no debe recalcularlos.

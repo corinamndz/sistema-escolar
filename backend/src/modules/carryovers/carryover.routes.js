@@ -37,6 +37,8 @@ router.put(
               name: z.string().trim().min(1, 'Escribe el nombre del momento.').max(80, 'Máximo 80 caracteres.'),
               description: text(500),
               scheduledOn: z.preprocess((v) => (v === '' ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida.').nullable().optional()),
+              // Nota mínima del momento (0 a 20); sin ella, la del año.
+              passingGrade: z.preprocess((v) => (v === '' ? null : v), z.coerce.number().min(0, 'Entre 0 y 20.').max(20, 'Entre 0 y 20.').nullable().optional()),
             })
           )
           .max(service.MAX_MOMENTS, `Máximo ${service.MAX_MOMENTS} momentos por materia.`),

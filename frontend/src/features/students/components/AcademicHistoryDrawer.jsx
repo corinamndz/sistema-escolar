@@ -10,6 +10,7 @@ import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import ExportButton from '../../../components/ui/ExportButton';
 import AcademicHistory from './AcademicHistory';
+import { recoveryText } from '../../carryovers/recovery';
 
 const fmt = (n) => (n === null || n === undefined ? '' : Number(n));
 
@@ -34,7 +35,8 @@ function exportRows(data) {
         subject: s.subject_name,
         byTerm: Object.fromEntries(s.terms.map((t) => [t.term_number, fmt(t.grade)])),
         final: fmt(s.final_grade),
-        result: s.passed === null ? 'Sin notas' : s.passed ? 'Aprobada' : 'Reprobada',
+        result: s.recovery?.status === 'passed' ? 'Aprobada en recuperación' : s.passed === null ? 'Sin notas' : s.passed ? 'Aprobada' : 'Reprobada',
+        recovery: recoveryText(s),
       };
     });
   });
@@ -69,6 +71,7 @@ const exportColumns = (data) => [
   ...termColumns(data),
   { header: 'Nota final', value: (r) => r.final ?? '', width: 10 },
   { header: 'Estado', value: (r) => r.result ?? '', width: 12 },
+  { header: 'Recuperación (materia pendiente)', value: (r) => r.recovery ?? '', width: 34 },
 ];
 
 /**

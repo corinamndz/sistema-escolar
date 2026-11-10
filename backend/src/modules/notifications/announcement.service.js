@@ -1,3 +1,4 @@
+const notifications = require('./notification.service');
 const sanitizeHtml = require('sanitize-html');
 const { ApiError } = require('../../utils/ApiError');
 const { isStoredAnnouncementImage } = require('../../services/storage/announcementImageStorage');
@@ -299,6 +300,17 @@ async function listSent(trx, tenantId, { limit = 50 } = {}) {
   return rows.map((r) => ({ ...r, scope_label: r.data?.scope_label || null, category_label: CATEGORIES[r.category] || null }));
 }
 
+/**
+ * Log de lectura de UN comunicado (el contador «1/5 leído» del historial): los
+ * destinatarios con su estado, la hora de lectura y su sección o área. Solo
+ * comunicados: los demás avisos se auditan desde el Log de notificaciones.
+ */
+async function readLog(trx, tenantId, id) {
+  const n = await trx('notifications').where({ id, tenant_id: tenantId, type: 'announcement' }).first('id');
+  if (!n) throw ApiError.notFound('Comunicado no encontrado.');
+  return notifications.readAudit(trx, tenantId, id);
+}
+
 /** Opciones del formulario: grados y secciones de los años abiertos, representantes y personal con acceso. */
 async function options(trx, tenantId) {
   const grades = await trx('grades as g')
@@ -326,4 +338,4 @@ async function options(trx, tenantId) {
   return { categories: CATEGORIES, levels: LEVEL_NAMES, grades, sections, guardians, staff };
 }
 
-module.exports = { CATEGORIES, sanitizeMessage, toPlainText, resolveRecipients, preview, send, listSent, options };
+module.exports = { CATEGORIES, sanitizeMessage, toPlainText, resolveRecipients, preview, send, listSent, options, readLog };

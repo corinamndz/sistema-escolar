@@ -13,6 +13,7 @@ import UpcomingEvents from '../../portal/components/UpcomingEvents';
 import { formatAmounts, formatDate, formatMoney } from '../../payments/paymentStatus';
 import MyAppointments from '../../appointments/components/MyAppointments';
 import { usePortalViews } from '../../../lib/portalViews';
+import PortalCertificates from '../../certificates/components/PortalCertificates';
 import enrollmentFormsApi from '../../../api/endpoints/enrollmentForms.api';
 import EnrollmentReminder from '../../enrollment-forms/components/EnrollmentReminder';
 
@@ -225,6 +226,9 @@ function GuardianPanel() {
       {isOn('appointments') && <MyAppointments />}
 
       {isOn('events') && <UpcomingEvents />}
+
+      {/* Certificados de todos los alumnos, uno por alumno (mismo acceso que el historial). */}
+      {isOn('history') && <PortalCertificates />}
 
       <section className="card">
         <div className="card__header">

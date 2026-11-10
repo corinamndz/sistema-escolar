@@ -268,6 +268,46 @@ const RECIPIENTS_CTE = `
     LEFT JOIN guardians g ON g.user_id = p.user_id AND g.tenant_id = :tenantId
   )`;
 
+const STAFF_AREA = { teaching: 'Docente', administrative: 'Administrativo', support: 'Apoyo', coordinator: 'Coordinación' };
+
+/**
+ * Sección o área de cada destinatario, para el log de lectura:
+ *   representante → sus alumnos activos con grado y sección del año en curso
+ *                   («Luis Pérez · 4to año «A»»);
+ *   personal      → su tipo (Docente, Administrativo, Apoyo) o, si coordina,
+ *                   «Coordinación · Primaria».
+ * → Map userId → { area, students: [texto] }
+ */
+async function affiliationsOf(trx, tenantId, userIds) {
+  const out = new Map(userIds.map((id) => [id, { area: null, students: [] }]));
+  if (!userIds.length) return out;
+  const { rows: kids } = await trx.raw(
+    `SELECT DISTINCT ON (g.user_id, s.id) g.user_id, s.first_name, s.last_name, gr.name AS grade_name, sec.name AS section_name
+     FROM guardians g
+     JOIN student_guardians sg ON sg.guardian_id = g.id
+     JOIN students s ON s.id = sg.student_id AND s.status = 'active'
+     LEFT JOIN enrollments e ON e.student_id = s.id AND e.status = 'active'
+     LEFT JOIN sections sec ON sec.id = e.section_id
+     LEFT JOIN grades gr ON gr.id = sec.grade_id
+     LEFT JOIN school_periods sp ON sp.id = sec.school_period_id
+     WHERE g.tenant_id = ? AND g.user_id = ANY(?)
+     ORDER BY g.user_id, s.id, sp.is_active DESC NULLS LAST, sp.start_date DESC NULLS LAST`,
+    [tenantId, userIds]
+  );
+  kids
+    .sort((a, b) => `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`, 'es'))
+    .forEach((k) => out.get(k.user_id).students.push(`${k.first_name} ${k.last_name}${k.grade_name ? ` · ${k.grade_name} «${k.section_name}»` : ''}`));
+  const staff = await trx('staff as st')
+    .leftJoin('education_levels as el', 'el.code', 'st.coordination_level')
+    .where('st.tenant_id', tenantId)
+    .whereIn('st.user_id', userIds)
+    .select('st.user_id', 'st.staff_type', 'el.name as level_name');
+  staff.forEach((s) => {
+    out.get(s.user_id).area = s.level_name && s.staff_type === 'coordinator' ? `Coordinación · ${s.level_name}` : STAFF_AREA[s.staff_type] || null;
+  });
+  return out;
+}
+
 /**
  * GET /notifications/:id/audit — trazabilidad de lectura de un aviso:
  * { notification, stats: { sent, read, pending, read_percent, guardians: {sent, read}, staff: {sent, read} }, recipients }
@@ -299,6 +339,7 @@ async function readAudit(trx, tenantId, id) {
   );
 
   const { links, ...data } = n.data || {};
+  const affiliations = await affiliationsOf(trx, tenantId, recipients.map((r) => r.user_id));
   return {
     notification: { id: n.id, type: n.type, title: n.title, body: n.body, data, created_at: n.created_at, audience: n.audience },
     stats: {
@@ -318,6 +359,9 @@ async function readAudit(trx, tenantId, id) {
       username: r.username,
       roles: r.roles,
       is_guardian: Boolean(r.guardian_id),
+      // Sección o área: los alumnos que representa, o su tipo de personal.
+      area: affiliations.get(r.user_id)?.area || null,
+      students: affiliations.get(r.user_id)?.students || [],
       user_active: r.user_status === 'active',
       status: r.read_at ? 'read' : 'pending',
       sent_at: r.sent_at,

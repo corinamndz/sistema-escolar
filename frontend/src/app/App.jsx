@@ -38,6 +38,7 @@ import AuditPage from '../features/audit/pages/AuditPage';
 import SupportPage from '../features/support/pages/SupportPage';
 import GradeSummaryPage from '../features/grading/pages/GradeSummaryPage';
 import CarryoversPage from '../features/carryovers/pages/CarryoversPage';
+import CarryoverSimulatorPage from '../features/carryovers/pages/CarryoverSimulatorPage';
 import CertificateEditorPage from '../features/certificates/pages/CertificateEditorPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
@@ -165,6 +166,7 @@ function App() {
             {/* Materias pendientes: dirección, coordinación y el profesor asignado (el backend filtra). */}
             <Route element={<PermissionRoute carryoverUsers />}>
               <Route path="carryovers" element={<CarryoversPage />} />
+              <Route path="carryovers/simulator" element={<CarryoverSimulatorPage />} />
             </Route>
             {/* Resumen de calificaciones: también el Coordinador (su nivel), para ajustar definitivas. */}
             <Route element={<PermissionRoute module="grading" blockTeacher orCoordinator />}>

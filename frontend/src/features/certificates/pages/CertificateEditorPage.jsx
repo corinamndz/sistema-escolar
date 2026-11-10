@@ -316,11 +316,35 @@ function ScopedEditor({ scope, onScopeChange }) {
     }
   };
 
+  /** Advertencia antes de publicar con el año escolar aún activo. → true si acepta. */
+  const confirmActiveYear = (year) =>
+    confirm({
+      title: 'Advertencia: el año escolar sigue activo',
+      message: `${year.all_years ? `Este diseño se usa en todos los años y el año en curso, ${year.name}, ` : `El año escolar ${year.name} `}aún se encuentra activo. Por lo general, los certificados de promoción se publican al finalizar el período. ¿Desea publicar los certificados de todas formas?`,
+      icon: 'alertTriangle',
+      confirmLabel: 'Sí, publicar de todos modos',
+      cancelLabel: 'Cancelar',
+    });
+
   const togglePublished = async () => {
     const publish = !template.published_at;
+    // Año activo: se pregunta antes (y el servidor lo exige igual, por si cambió entretanto).
+    let accepted = false;
+    if (publish && data.publish_year?.active) {
+      if (!(await confirmActiveYear(data.publish_year))) return;
+      accepted = true;
+    }
     setPublishing(true);
     try {
-      const saved = await certificatesApi.setPublished(scope, publish);
+      let saved;
+      try {
+        saved = await certificatesApi.setPublished(scope, publish, { confirmActiveYear: accepted });
+      } catch (err) {
+        const active = err?.response?.data?.error?.details?.find?.((d) => d.code === 'SCHOOL_YEAR_ACTIVE');
+        if (!active) throw err;
+        if (!(await confirmActiveYear(active))) return;
+        saved = await certificatesApi.setPublished(scope, publish, { confirmActiveYear: true });
+      }
       setData((d) => ({ ...d, template: { ...d.template, published_at: saved.published_at } }));
       toast.success(publish ? 'Certificado publicado' : 'Certificado retirado', publish ? 'Las familias de los alumnos promovidos ya pueden descargarlo.' : 'Las familias ya no lo ven en el portal.');
     } catch (err) {

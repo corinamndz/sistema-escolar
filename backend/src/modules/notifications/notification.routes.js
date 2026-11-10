@@ -94,6 +94,13 @@ router.get(
   teacherScope.denyTeachers,
   asyncHandler(async (req, res) => res.status(200).json(await announcements.listSent(req.db, req.tenantId)))
 );
+// Log de lectura de un comunicado (el contador «1/5 leído»): mismo acceso que su historial.
+router.get(
+  '/broadcast/:id/reads',
+  requirePermission('announcements', 'read'),
+  teacherScope.denyTeachers,
+  asyncHandler(async (req, res) => res.status(200).json(await announcements.readLog(req.db, req.tenantId, z.string().uuid().parse(req.params.id))))
+);
 
 // Conteo de no leídas (aviso al iniciar sesión): más liviano que la lista completa.
 router.get('/unread-count', asyncHandler(async (req, res) => res.status(200).json(await service.unreadSummary(req.db, req.tenantId, req.user.id))));

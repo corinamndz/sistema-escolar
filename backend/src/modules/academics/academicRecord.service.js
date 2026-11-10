@@ -3,6 +3,7 @@ const { exclusionOf } = require('./sectionSubjects');
 const adjustments = require('../grading/gradeAdjustments.service');
 const { studentRanks } = require('../grading/gradeSummary.service');
 const { DEFAULT_RULES, PASSING_GRADE, loadRules, roundGrade, annualAverage, yearAverage } = require('../grading/gradeAverages');
+const { recoveriesFor, withRecoveries } = require('../carryovers/carryoverResults');
 
 /**
  * Expediente académico de una inscripción (alumno en una sección de un año).
@@ -318,7 +319,9 @@ const OUTCOME_LABELS = {
 /**
  * Historial académico de un alumno: todas sus inscripciones (años anteriores
  * y el actual), con grado, sección, resultado y notas por materia (congeladas
- * si el año ya se cerró para él; en vivo si sigue cursando).
+ * si el año ya se cerró para él; en vivo si sigue cursando). En los años cerrados
+ * se anota la recuperación de sus materias pendientes y, si aprobó alguna, el
+ * promedio se recalcula con esa nota (carryovers/carryoverResults.js).
  */
 async function getStudentHistory(trx, tenantId, studentId) {
   const student = await trx('students').where({ id: studentId, tenant_id: tenantId }).select('id', 'first_name', 'last_name', 'status').first();
@@ -355,7 +358,9 @@ async function getStudentHistory(trx, tenantId, studentId) {
   const live = await computeRecords(trx, tenantId, open);
   // Normativa vigente de cada año (para inscripciones cerradas antes de la migración 014).
   const currentRules = await loadRules(trx, tenantId, [...new Set(enrollments.map((e) => e.school_period_id))]);
-  const frozen = await frozenResults(trx, enrollments.filter((e) => e.closed_at).map((e) => e.id));
+  const closedIds = enrollments.filter((e) => e.closed_at).map((e) => e.id);
+  const frozen = await frozenResults(trx, closedIds);
+  const recoveries = await recoveriesFor(trx, tenantId, closedIds);
   // Puesto en la sección de cada año (consultas en serie: comparten la conexión de la transacción).
   const ranksByPeriod = new Map();
   for (const periodId of new Set(enrollments.map((e) => e.school_period_id))) {
@@ -368,6 +373,9 @@ async function getStudentHistory(trx, tenantId, studentId) {
     passing_grade: PASSING_GRADE,
     years: enrollments.map((e) => {
       const rec = e.closed_at ? null : live.get(e.id);
+      const closed = e.closed_at
+        ? withRecoveries({ enrollmentId: e.id, subjects: frozen.get(e.id) || [], finalAverage: e.final_average === null ? null : Number(e.final_average), failedSubjects: e.failed_subjects }, recoveries)
+        : null;
       return {
         enrollment_id: e.id,
         school_period: { id: e.school_period_id, name: e.school_period_name, closed: Boolean(e.period_closed_at) },
@@ -381,13 +389,17 @@ async function getStudentHistory(trx, tenantId, studentId) {
         enrolled_at: e.enrolled_at,
         closed_at: e.closed_at,
         frozen: Boolean(e.closed_at),
-        final_average: e.closed_at ? (e.final_average === null ? null : Number(e.final_average)) : rec.final_average,
-        failed_subjects: e.closed_at ? e.failed_subjects : rec.failed_subjects,
+        final_average: closed ? closed.final_average : rec.final_average,
+        failed_subjects: closed ? closed.failed_subjects : rec.failed_subjects,
+        // Recalculado con las materias aprobadas en recuperación; lo original, aparte.
+        recalculated: closed ? closed.recalculated : false,
+        original_final_average: closed?.recalculated ? closed.original_final_average : undefined,
+        original_failed_subjects: closed?.recalculated ? closed.original_failed_subjects : undefined,
         outcome_notes: e.outcome_notes,
         // Un retiro no compite por el puesto (la matrícula vigente de ese año, sí).
         section_rank: e.status === 'withdrawn' ? null : ranksByPeriod.get(e.school_period_id)?.annual || null,
         rules: e.closed_at ? e.evaluation_rules || publicRules(currentRules.get(e.school_period_id) || { ...DEFAULT_RULES, effective_mode: 'arithmetic', terms: [], warning: null }) : rec.rules,
-        subjects: e.closed_at ? frozen.get(e.id) || [] : rec.subjects,
+        subjects: closed ? closed.subjects : rec.subjects,
       };
     }),
   };

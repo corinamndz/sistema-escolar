@@ -932,16 +932,39 @@ async function deleteOwnSubmission(trx, tenantId, userId, id) {
     throw ApiError.conflict(s.status === PENDING ? 'Esta planilla aún no se ha enviado: no hay nada que eliminar.' : notOpenMessage(s.status, 'eliminar'));
   }
   if (s.form_status !== 'published') throw ApiError.conflict('El colegio ya cerró esta planilla: no se puede eliminar.');
-  await trx('enrollment_form_submissions').where({ id: s.id }).delete();
+  return { photos: await removeSubmission(trx, tenantId, s) };
+}
 
-  // Fotos de esta planilla que no aparecen en ninguna otra (la foto se reutiliza al re-inscribir).
+/**
+ * Borra la planilla y devuelve sus fotos que no aparecen en ninguna otra (la foto
+ * se reutiliza al re-inscribir), para borrarlas del disco cuando se confirme.
+ */
+async function removeSubmission(trx, tenantId, s) {
+  await trx('enrollment_form_submissions').where({ id: s.id }).delete();
   const files = (s.fields_snapshot || []).filter((f) => f.type === 'photo').map((f) => s.answers?.[f.id]).filter(isPhotoName);
   const photos = [];
   for (const file of files) {
     const { rows } = await trx.raw('SELECT 1 FROM enrollment_form_submissions x, jsonb_each_text(x.answers) a WHERE x.tenant_id = ? AND a.value = ? LIMIT 1', [tenantId, file]);
     if (!rows.length) photos.push(file);
   }
-  return { photos };
+  return photos;
+}
+
+/**
+ * DELETE /enrollment-forms/submissions/:id — el Administrador elimina una planilla
+ * en CUALQUIER estado (por ejemplo, las de prueba). Solo se borra la planilla: si
+ * estaba aprobada, el alumno, sus representantes, su inscripción y sus cobros
+ * siguen (un alumno no se borra; se retira desde su ficha).
+ * → { photos, status, student } para el mensaje y la limpieza del disco.
+ */
+async function deleteSubmissionAsAdmin(trx, tenantId, id) {
+  const s = await trx('enrollment_form_submissions')
+    .where({ tenant_id: tenantId, id })
+    .forUpdate()
+    .first('id', 'status', 'answers', 'fields_snapshot', 'student_id');
+  if (!s) throw ApiError.notFound('Planilla no encontrada.');
+  const photos = await removeSubmission(trx, tenantId, s);
+  return { photos, status: s.status, studentId: s.student_id };
 }
 
 /**
@@ -1105,6 +1128,7 @@ module.exports = {
   REVIEW_LABELS,
   prefill,
   deleteOwnSubmission,
+  deleteSubmissionAsAdmin,
   photoFor,
   submissionPdf,
   FIELD_TYPES,

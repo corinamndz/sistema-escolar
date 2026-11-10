@@ -10,6 +10,9 @@ import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
 import { useToast } from '../../../components/ui/Toast';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import RowMenu from '../../../components/ui/RowMenu';
+import { useAuth } from '../../../context/AuthContext';
 import DynamicForm from './DynamicForm';
 import FormPdfButton from './FormPdfButton';
 import ApprovalPanel from './ApprovalPanel';
@@ -17,11 +20,45 @@ import { SUBMISSION_STATUS } from '../fieldTypes';
 
 const when = (iso) => new Date(iso).toLocaleString('es-VE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+/**
+ * Eliminar una planilla (solo el Administrador, en cualquier estado), con
+ * confirmación. Si estaba aprobada, avisa que el alumno y su inscripción quedan.
+ * → (submission) => Promise<boolean>  (true si se eliminó)
+ */
+export function useDeleteSubmission() {
+  const confirm = useConfirm();
+  const toast = useToast();
+  return async (s) => {
+    const approved = s.status === 'approved';
+    const ok = await confirm({
+      title: approved ? `¿Eliminar la planilla aprobada de ${s.student_name}?` : `¿Eliminar la planilla de ${s.student_name}?`,
+      message: approved
+        ? `Se borran la planilla y sus respuestas. ${s.student_name} ya quedó registrado e inscrito al aprobarla: el alumno, su inscripción, sus representantes y sus cobros NO se borran. Si era de prueba, retíralo desde su ficha (Alumnos → Retirar). No se puede deshacer.`
+        : s.status === 'pending'
+          ? 'El representante dejará de verla como planilla por llenar en su portal. No se puede deshacer.'
+          : 'Se borran la planilla y sus respuestas, y el representante deja de verla en su portal. No se puede deshacer.',
+      confirmLabel: 'Eliminar planilla',
+      danger: true,
+    });
+    if (!ok) return false;
+    try {
+      await enrollmentFormsApi.deleteSubmission(s.id);
+      toast.success('Planilla eliminada', approved ? `${s.student_name} sigue inscrito: si era de prueba, retíralo desde su ficha.` : s.student_name);
+      return true;
+    } catch (err) {
+      toast.error('No se pudo eliminar la planilla', getErrorMessage(err));
+      return false;
+    }
+  };
+}
+
 /** Planillas recibidas de un formulario, con filtro por estado y revisión en un panel lateral. */
 function SubmissionsPanel({ formId, canReview }) {
   const { data: rows, loading, error, refetch } = useFetch(() => enrollmentFormsApi.submissions(formId), [formId]);
   const [filter, setFilter] = useState('');
   const [openId, setOpenId] = useState(null);
+  const { user } = useAuth();
+  const remove = useDeleteSubmission();
 
   if (loading) return <Spinner />;
   if (error) return <Alert>{error}</Alert>;
@@ -43,7 +80,7 @@ function SubmissionsPanel({ formId, canReview }) {
       ) : (
         <ul className="ef-subs">
           {list.map((s) => (
-            <li key={s.id}>
+            <li key={s.id} className="ef-sub-row">
               <button type="button" className="ef-sub" onClick={() => setOpenId(s.id)}>
                 <span className="avatar avatar--sm">{(s.student_name || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</span>
                 <span className="ef-sub__main">
@@ -58,6 +95,15 @@ function SubmissionsPanel({ formId, canReview }) {
                 <Badge variant={SUBMISSION_STATUS[s.status].variant}>{SUBMISSION_STATUS[s.status].label}</Badge>
                 <Icon name="chevronRight" size={16} />
               </button>
+              {user?.isAdmin && (
+                <RowMenu
+                  label={`Acciones de la planilla de ${s.student_name}`}
+                  items={[
+                    { key: 'open', label: 'Ver planilla', icon: 'eye', onClick: () => setOpenId(s.id) },
+                    { key: 'delete', label: 'Eliminar planilla', icon: 'trash', danger: true, onClick: async () => (await remove(s)) && refetch() },
+                  ]}
+                />
+              )}
             </li>
           ))}
         </ul>
@@ -87,6 +133,8 @@ export function SubmissionDrawer({ id, canReview, onClose, onReviewed }) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+  const { user } = useAuth();
+  const remove = useDeleteSubmission();
 
   const review = async (status) => {
     setBusy(true);
@@ -161,6 +209,19 @@ export function SubmissionDrawer({ id, canReview, onClose, onReviewed }) {
                   </Button>
                 </div>
               )}
+            </div>
+          )}
+          {user?.isAdmin && !mode && (
+            <div className="ef-review__danger">
+              <button
+                type="button"
+                className="link-button is-danger"
+                onClick={async () => {
+                  if (await remove(s)) onReviewed();
+                }}
+              >
+                <Icon name="trash" size={14} /> Eliminar planilla
+              </button>
             </div>
           )}
         </>

@@ -104,6 +104,7 @@ const EXTRA_TITLES = [
   { prefix: '/portal/students/', label: 'Mi alumno', parent: 'Portal' },
   { prefix: '/enrollment-forms/', label: 'Diseño de planilla', parent: 'Administración' },
   { prefix: '/academics/sections/', label: 'Detalle de sección', parent: 'Académico' },
+  { prefix: '/carryovers/simulator', label: 'Simulador de arrastres', parent: 'Académico' },
 ];
 
 /** Devuelve `{ label, parent }` para la ruta actual (coincidencia más específica). */

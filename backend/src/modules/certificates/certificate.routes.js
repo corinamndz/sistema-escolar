@@ -187,8 +187,9 @@ router.put(
   '/publish',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    const { published } = z.object({ published: z.boolean() }).parse(req.body);
-    res.status(200).json(await service.setPublished(req.db, req.tenantId, req.user.id, scopeOf(req), published));
+    // confirmActiveYear: el administrador aceptó publicar con el año escolar aún activo.
+    const { published, confirmActiveYear } = z.object({ published: z.boolean(), confirmActiveYear: z.boolean().optional() }).parse(req.body);
+    res.status(200).json(await service.setPublished(req.db, req.tenantId, req.user.id, scopeOf(req), published, { confirmActiveYear }));
   })
 );
 

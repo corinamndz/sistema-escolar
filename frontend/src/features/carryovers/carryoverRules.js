@@ -10,7 +10,8 @@
  *   corregir            → solo el último calificado; lo que seguía se recalcula.
  *
  * Una pendencia simulada: { status, final_grade, passing_grade, moments }
- *   moments [{ position, name, description, status, grade }]
+ *   moments [{ position, name, description, passing_grade, status, grade }]
+ * Cada momento se aprueba con su nota mínima: la del año o más alta, nunca menos.
  * Cada operación devuelve la pendencia NUEVA (no modifica la anterior) y los
  * `events`: lo que haría el sistema real, explicado.
  */
@@ -35,9 +36,10 @@ export function savePlan(c, pending) {
   if (graded.length + pending.length < 1) throw new Error('Define al menos un momento.');
   if (graded.length + pending.length > MAX_MOMENTS) throw new Error(`Máximo ${MAX_MOMENTS} momentos por materia.`);
   if (!['pending', 'in_progress', 'failed'].includes(c.status)) throw new Error('Esta materia pendiente ya está cerrada: su plan no se puede cambiar.');
+  if (pending.some((m) => m.passingGrade !== null && m.passingGrade !== undefined && m.passingGrade < c.passing_grade)) throw new Error(`No puede ser menor que la nota mínima del año (${c.passing_grade}).`);
   const moments = [
     ...graded,
-    ...pending.map((m, i) => ({ position: graded.length + i + 1, name: m.name, description: m.description || null, status: i === 0 ? 'open' : 'locked', grade: null })),
+    ...pending.map((m, i) => ({ position: graded.length + i + 1, name: m.name, description: m.description || null, passing_grade: Number(m.passingGrade ?? c.passing_grade), status: i === 0 ? 'open' : 'locked', grade: null })),
   ];
   const events = [];
   if (!pending.length) {
@@ -64,11 +66,11 @@ export function gradeMoment(c, position, grade, { studentName = 'El alumno', sub
   if (correcting && lastGraded.position !== target.position) throw new Error('Solo se puede corregir el último momento calificado.');
   if (!correcting && target.status !== 'open') throw new Error('Este momento aún no está habilitado: el alumno debe presentar antes el anterior.');
 
-  const passed = value >= c.passing_grade;
+  const passed = value >= target.passing_grade;
   const later = c.moments.filter((m) => m.position > position);
   const events = [];
   if (correcting) events.push({ kind: 'info', text: `Corrección: ${target.name} tenía ${fmt(target.grade)}. La nota anterior queda en el historial y lo que seguía se recalcula.` });
-  events.push({ kind: passed ? 'pass' : 'fail', text: `${target.name}: ${fmt(value)} — ${passed ? 'aprobado' : 'reprobado'} (se aprueba con ${fmt(c.passing_grade)}).` });
+  events.push({ kind: passed ? 'pass' : 'fail', text: `${target.name}: ${fmt(value)} — ${passed ? 'aprobado' : 'reprobado'} (este momento se aprueba con ${fmt(target.passing_grade)}).` });
 
   let moments = c.moments.map((m) => {
     if (m.position === position) return { ...m, status: passed ? 'passed' : 'failed', grade: value };

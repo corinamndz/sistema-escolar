@@ -4,11 +4,14 @@ const { isAdmin } = require('../../middlewares/admin.middleware');
 const coordinatorScope = require('../access/coordinatorScope');
 
 /**
- * Materias pendientes (arrastres), migración 090.
+ * Materias pendientes (arrastres), migraciones 090 y 094.
  *
  * Nacen al PROMOVER: cada materia reprobada de la boleta congelada abre una
  * pendencia, en paralelo a la matrícula regular del año nuevo. Un profesor
  * asignado define su plan especial (momentos en cantidad libre) y califica:
+ *
+ * Cada momento tiene su nota mínima (094): por defecto la del año en que se
+ * reprobó la materia, y nunca menor que ella.
  *
  *   aprueba un momento  → se registra la nota, la materia queda liberada y los
  *                         momentos siguientes ya no hacen falta;
@@ -94,7 +97,7 @@ async function withMoments(trx, rows) {
     source_final_grade: num(r.source_final_grade),
     passing_grade: num(r.passing_grade),
     final_grade: num(r.final_grade),
-    moments: moments.filter((m) => m.carryover_id === r.id).map((m) => ({ ...m, grade: num(m.grade) })),
+    moments: moments.filter((m) => m.carryover_id === r.id).map((m) => ({ ...m, grade: num(m.grade), passing_grade: num(m.passing_grade) })),
   }));
 }
 
@@ -224,7 +227,8 @@ async function assignTeacher(req, id, teacherId) {
 
 /**
  * PUT /carryovers/:id/plan — diseña el plan especial. `moments` son los momentos
- * AÚN SIN CALIFICAR, en orden: los calificados no se tocan. El primero queda
+ * AÚN SIN CALIFICAR, en orden: los calificados no se tocan. Cada uno con su nota
+ * mínima (`passingGrade`; sin indicarla, la del año; nunca menor que ella). El primero queda
  * abierto y los demás, bloqueados. Una pendencia reprobada solo se reabre (con
  * momentos nuevos) por decisión de la dirección o la coordinación.
  */
@@ -238,6 +242,11 @@ async function savePlan(req, id, moments) {
   const graded = row.moments.filter((m) => ['passed', 'failed'].includes(m.status));
   if (graded.length + moments.length < 1) throw ApiError.badRequest('Define al menos un momento.', [{ path: 'moments', message: 'Requerido.' }]);
   if (graded.length + moments.length > MAX_MOMENTS) throw ApiError.badRequest(`Máximo ${MAX_MOMENTS} momentos por materia.`, [{ path: 'moments', message: 'Demasiados momentos.' }]);
+  const low = moments.map((m, i) => [m, i]).filter(([m]) => m.passingGrade !== null && m.passingGrade !== undefined && m.passingGrade < row.passing_grade);
+  if (low.length) {
+    const message = `No puede ser menor que la nota mínima del año (${row.passing_grade}).`;
+    throw ApiError.badRequest(message, low.map(([, i]) => ({ path: `moments.${i}.passingGrade`, message })));
+  }
 
   await trx('carryover_moments').where({ carryover_id: id }).whereNotIn('status', ['passed', 'failed']).delete();
   if (moments.length) {
@@ -249,6 +258,7 @@ async function savePlan(req, id, moments) {
         name: m.name,
         description: m.description || null,
         scheduled_on: m.scheduledOn || null,
+        passing_grade: m.passingGrade ?? row.passing_grade,
         status: i === 0 ? 'open' : 'locked',
       }))
     );
@@ -299,7 +309,7 @@ async function gradeMoment(req, momentId, { grade, notes = null }) {
     await trx('carryover_moments').where({ carryover_id: id }).where('position', '>', target.position).update({ status: 'locked' });
   }
 
-  const passed = grade >= row.passing_grade;
+  const passed = grade >= target.passing_grade;
   await trx('carryover_moments').where({ id: momentId }).update({ ...patch, status: passed ? 'passed' : 'failed' });
   const later = row.moments.filter((m) => m.position > target.position);
   let title;
@@ -387,7 +397,7 @@ async function listForStudent(trx, tenantId, studentId) {
     passing_grade: c.passing_grade,
     final_grade: c.final_grade,
     teacher_name: c.teacher_name,
-    moments: c.moments.map((m) => ({ id: m.id, position: m.position, name: m.name, description: m.description, scheduled_on: m.scheduled_on, status: m.status, grade: m.grade, notes: m.notes })),
+    moments: c.moments.map((m) => ({ id: m.id, position: m.position, name: m.name, description: m.description, scheduled_on: m.scheduled_on, passing_grade: m.passing_grade, status: m.status, grade: m.grade, notes: m.notes })),
   }));
 }
 

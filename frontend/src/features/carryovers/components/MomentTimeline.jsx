@@ -52,13 +52,21 @@ function MomentTimeline({ moments, renderExtra }) {
                   {m.grade !== null && m.grade !== undefined ? <b>{fmtGrade(m.grade)}</b> : null} {s.label}
                 </span>
               </div>
-              {(m.scheduled_on || m.description) && (
-                <p className="cm-step__text">
-                  {m.scheduled_on && <span>{fmtDate(m.scheduled_on)}</span>}
-                  {m.scheduled_on && m.description && ' · '}
-                  {m.description}
+              {(m.scheduled_on || m.passing_grade !== undefined) && (
+                <p className="cm-step__meta">
+                  {m.scheduled_on && (
+                    <span>
+                      <Icon name="calendar" size={12} /> {fmtDate(m.scheduled_on)}
+                    </span>
+                  )}
+                  {m.passing_grade !== undefined && m.passing_grade !== null && (
+                    <span>
+                      <Icon name="checkCircle" size={12} /> Se aprueba con {fmtGrade(m.passing_grade)}
+                    </span>
+                  )}
                 </p>
               )}
+              {m.description && <p className="cm-step__text">{m.description}</p>}
               {m.notes && <p className="cm-step__text">Observación: {m.notes}</p>}
               {renderExtra?.(m)}
             </div>

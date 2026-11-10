@@ -5,6 +5,7 @@ const { generateCertificates, inspectBackground, mergeInOrder } = require('../..
 const standard = require('../../services/pdf/standardCertificates');
 const { publicList: fontList } = require('../../services/pdf/certificateFonts');
 const { resolveLogoFile, toPublicUrl } = require('../../services/storage/logoStorage');
+const { currentPeriodOrder } = require('../../utils/schoolPeriods');
 
 /**
  * Certificado de promoción de cada colegio (migraciones 091 y 093).
@@ -112,6 +113,7 @@ async function readBackground(tenantId, row) {
 async function getTemplate(trx, tenantId, scope = GENERAL) {
   await checkScope(trx, tenantId, scope);
   const logo = await schoolLogo(trx, tenantId);
+  const year = await publishYear(trx, tenantId, scope);
   const names = await scopeNames(trx, tenantId);
   const template = await loadExact(trx, tenantId, scope);
   const effective = template || (await resolveFor(trx, tenantId, scope.schoolPeriodId, scope.levelCode));
@@ -140,6 +142,8 @@ async function getTemplate(trx, tenantId, scope = GENERAL) {
     standard_templates: standard.standardList(),
     // El logo que saldrá en el PDF (Configuración → Apariencia), o null si el colegio no tiene.
     logo_url: logo ? toPublicUrl(logo.stored) : null,
+    // El año que mira la publicación: si sigue activo, publicar pide confirmación.
+    publish_year: year ? { id: year.id, name: year.name, active: !year.closed_at, all_years: !scope.schoolPeriodId } : null,
   };
 }
 
@@ -405,6 +409,37 @@ async function publishedEnrollmentIds(trx, tenantId, studentId) {
   return ids;
 }
 
+/**
+ * Certificados de UN alumno para el portal, de todos sus años (el más reciente
+ * primero): cada matrícula en que fue promovido o egresó, y si su diseño (el de
+ * su año y su nivel) está publicado. → { certificates, unpublished, current }
+ *   certificates  [{ enrollment_id, school_year, grade_name, target_grade, status }]
+ *   unpublished   años con derecho a certificado cuyo diseño aún no se publicó
+ *   current       { grade_name, school_year } de lo que cursa ahora, si cursa
+ */
+async function studentCertificates(trx, tenantId, studentId) {
+  const rows = await issuableQuery(trx, tenantId)
+    .where('e.student_id', studentId)
+    .select('g.name as grade_name')
+    .orderByRaw('sp.start_date DESC NULLS LAST');
+  const certificates = [];
+  const unpublished = [];
+  for (const r of rows) {
+    const t = await resolveFor(trx, tenantId, r.period_id, r.level_code);
+    if (t?.published_at && usable(tenantId, t)) {
+      certificates.push({ enrollment_id: r.id, school_year: r.year_name, grade_name: r.grade_name, target_grade: r.status === 'graduated' ? 'Egresado' : r.target_grade || null, status: r.status });
+    } else unpublished.push(r.year_name);
+  }
+  const current = await trx('enrollments as e')
+    .join('sections as sec', 'sec.id', 'e.section_id')
+    .join('grades as g', 'g.id', 'sec.grade_id')
+    .join('school_periods as sp', 'sp.id', 'sec.school_period_id')
+    .where({ 'e.tenant_id': tenantId, 'e.student_id': studentId, 'e.status': 'active' })
+    .orderByRaw('sp.is_active DESC, sp.start_date DESC NULLS LAST')
+    .first('g.name as grade_name', 'sp.name as school_year');
+  return { certificates, unpublished, current: current || null };
+}
+
 /** ¿El colegio tiene algún diseño listo? */
 async function isReady(trx, tenantId) {
   const rows = await trx('certificate_templates').where({ tenant_id: tenantId });
@@ -412,9 +447,32 @@ async function isReady(trx, tenantId) {
 }
 
 /** Publica o retira del portal el diseño de ese alcance. Solo se publica lo ya guardado y completo. */
-async function setPublished(trx, tenantId, userId, scope, published) {
+/**
+ * El año escolar al que apunta la publicación de un diseño: el suyo o, si es de
+ * todos los años (General o por nivel), el año en curso. Activo = no cerrado.
+ */
+function publishYear(trx, tenantId, scope) {
+  const q = trx('school_periods').where({ tenant_id: tenantId });
+  return (scope.schoolPeriodId ? q.where({ id: scope.schoolPeriodId }) : q.orderByRaw(currentPeriodOrder())).first('id', 'name', 'closed_at');
+}
+
+/**
+ * PUT /certificate-template/publish. Publicar con el año escolar aún activo no se
+ * bloquea, pero exige `confirmActiveYear`: sin ella responde 409 con
+ * details [{ code: 'SCHOOL_YEAR_ACTIVE', ... }] para que la pantalla lo pregunte.
+ * Retirar del portal nunca pide confirmación.
+ */
+async function setPublished(trx, tenantId, userId, scope, published, { confirmActiveYear = false } = {}) {
   const row = await requireExact(trx, tenantId, scope, 'Sube primero el fondo del certificado.');
   if (published && !usable(tenantId, row)) throw ApiError.conflict('Coloca y guarda al menos un elemento, con su fondo, antes de publicar el certificado.');
+  if (published && !row.published_at && !confirmActiveYear) {
+    const year = await publishYear(trx, tenantId, scope);
+    if (year && !year.closed_at) {
+      throw ApiError.conflict(`El año escolar ${year.name} aún se encuentra activo. Por lo general, los certificados de promoción se publican al finalizar el período.`, [
+        { code: 'SCHOOL_YEAR_ACTIVE', school_period_id: year.id, name: year.name, all_years: !scope.schoolPeriodId },
+      ]);
+    }
+  }
   await trx('certificate_templates')
     .where({ id: row.id })
     .update(published ? { published_at: trx.fn.now(), published_by: userId } : { published_at: null, published_by: null });
@@ -422,6 +480,7 @@ async function setPublished(trx, tenantId, userId, scope, published) {
 }
 
 module.exports = {
+  studentCertificates,
   VARIABLES,
   GENERAL,
   getTemplate,

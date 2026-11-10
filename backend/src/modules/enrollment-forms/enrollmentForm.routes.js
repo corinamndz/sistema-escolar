@@ -5,7 +5,7 @@ const { TEMPLATE_STYLES } = require('../../services/pdf/enrollmentFormGenerator'
 const { asyncHandler } = require('../../utils/asyncHandler');
 const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
-const { requireAdmissions } = require('../../middlewares/admin.middleware');
+const { requireAdmissions, requireAdmin } = require('../../middlewares/admin.middleware');
 const approval = require('./enrollmentApproval.service');
 const { ApiError } = require('../../utils/ApiError');
 const { enrollmentPhotoUpload } = require('../../middlewares/upload.middleware');
@@ -234,6 +234,22 @@ router.post(
   })
 );
 router.get('/submissions/:id', requireAdmissions, asyncHandler(async (req, res) => res.status(200).json(await service.getSubmission(req.db, req.tenantId, idParam(req)))));
+/**
+ * DELETE /enrollment-forms/submissions/:id — solo el Administrador, en cualquier
+ * estado. Lo que creó una aprobación (alumno, inscripción, representantes) queda.
+ */
+router.delete(
+  '/submissions/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { photos } = await service.deleteSubmissionAsAdmin(req.db, req.tenantId, idParam(req));
+    // Las fotos que quedaron sin uso se borran del disco solo si el cambio se confirmó.
+    res.once('finish', () => {
+      if (res.statusCode === 204) photos.forEach((file) => removePhoto(req.tenantId, file));
+    });
+    res.status(204).send();
+  })
+);
 /** POST /enrollment-forms/submissions/:id/review — { status: approved|rejected|changes_requested, note? } */
 router.post(
   '/submissions/:id/review',

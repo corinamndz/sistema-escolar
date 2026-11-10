@@ -182,6 +182,9 @@ const getAcademicHistory = asyncHandler(async (req, res) => {
         // El promedio general y las reprobadas mezclan materias de otros docentes.
         final_average: null,
         failed_subjects: null,
+        recalculated: false,
+        original_final_average: undefined,
+        original_failed_subjects: undefined,
         restricted: true,
       }));
   }

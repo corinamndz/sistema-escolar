@@ -28,6 +28,35 @@ const getStudentHistory = asyncHandler(async (req, res) => {
   res.status(200).json({ ...history, certificate_enrollment_ids: await certificates.publishedEnrollmentIds(req.db, req.tenantId, studentId) });
 });
 
+/**
+ * GET /portal/certificates — certificados de promoción de TODOS los alumnos del
+ * representante, agrupados por alumno, de todos sus años:
+ *   [{ student: { id, name, status }, current, certificates: [...], unpublished: [años], locked: mensaje | null }]
+ * Con las mismas reglas que el certificado de cada alumno: con cuotas vencidas
+ * ese alumno sale bloqueado (sin certificados) y los demás se muestran igual.
+ */
+const getMyCertificates = asyncHandler(async (req, res) => {
+  const students = await req.db('student_guardians as sg')
+    .join('guardians as g', 'g.id', 'sg.guardian_id')
+    .join('students as s', 's.id', 'sg.student_id')
+    .where({ 'g.tenant_id': req.tenantId, 'g.user_id': req.user.id })
+    .distinct('s.id', 's.first_name', 's.last_name', 's.status')
+    .orderBy(['s.first_name', 's.last_name']);
+  const out = [];
+  for (const s of students) {
+    const item = { student: { id: s.id, name: `${s.first_name} ${s.last_name}`, status: s.status }, current: null, certificates: [], unpublished: [], locked: null };
+    try {
+      await grades.assertGradesUnlocked(req.db, req.tenantId, s.id);
+    } catch (err) {
+      if (err.statusCode !== 403) throw err;
+      out.push({ ...item, locked: err.message });
+      continue;
+    }
+    out.push({ ...item, ...(await certificates.studentCertificates(req.db, req.tenantId, s.id)) });
+  }
+  res.status(200).json(out);
+});
+
 /** GET /portal/students/:studentId/certificate?enrollmentId= — certificado de promoción de un alumno del representante. */
 const getStudentCertificate = asyncHandler(async (req, res) => {
   const studentId = z.string().uuid().parse(req.params.studentId);
@@ -160,4 +189,4 @@ module.exports = {
   getStudentEvaluations,
   getStudentPlanDetail,
   getStudentSubjectProgram,
-  getStudentHistory, getStudentSchedule, getStudentSanctions, getMyPortal, getStudentGrades };
+  getStudentHistory, getMyCertificates, getStudentSchedule, getStudentSanctions, getMyPortal, getStudentGrades };

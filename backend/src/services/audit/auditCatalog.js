@@ -112,6 +112,7 @@ const ACTIONS = {
   'PUT /certificate-template': ['DISENAR_CERTIFICADO', 'Diseñó el certificado de promoción'],
   'POST /certificate-template/standard/:key': ['USAR_PLANTILLA_ESTANDAR', 'Usó una plantilla estándar como fondo del certificado'],
   'POST /certificate-template/customize': ['CREAR_DISENO_CERTIFICADO', 'Creó un diseño de certificado para un nivel o año'],
+  'DELETE /enrollment-forms/submissions/:id': ['ELIMINAR_PLANILLA_RECIBIDA', 'Eliminó una planilla de inscripción recibida'],
   'DELETE /certificate-template': ['ELIMINAR_DISENO_CERTIFICADO', 'Eliminó un diseño de certificado de un nivel o año'],
   'PUT /certificate-template/publish': ['PUBLICAR_CERTIFICADO', 'Cambió la publicación del certificado para las familias'],
   'POST /certificate-template/batch': ['EMITIR_CERTIFICADOS', 'Emitió certificados de promoción en lote'],

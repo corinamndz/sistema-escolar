@@ -25,6 +25,8 @@ router.post('/students/:studentId/evaluation-plans/:planId/acknowledge', view('e
 // Contenido programático de una materia con sus evaluaciones publicadas (sección del alumno).
 router.get('/students/:studentId/subjects/:subjectId/program', view('grades'), controller.getStudentSubjectProgram);
 router.get('/students/:studentId/history', view('history'), controller.getStudentHistory);
+// Certificados de promoción de todos los alumnos del representante, agrupados por alumno.
+router.get('/certificates', view('history'), controller.getMyCertificates);
 // Certificado de promoción: mismas reglas que el historial (bloqueado con cuotas vencidas).
 router.get('/students/:studentId/certificate', view('history'), controller.getStudentCertificate);
 router.get('/students/:studentId/schedule', view('schedule'), controller.getStudentSchedule);

@@ -8,6 +8,7 @@ import { DEFAULT_SCHOOL_LOGO } from '../../../components/ui/SchoolLogo';
 import { isQualitative, literalFor } from '../gradingScale';
 import { anyProvisional, anyRank, rankText } from '../sectionRank';
 import { averageRuleText } from '../averageRule';
+import { recoveryText } from '../../carryovers/recovery';
 
 const fmt = (n) => (n === null || n === undefined ? '' : Number(n).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const today = () => new Date().toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -81,6 +82,8 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, rule
   const anyPartial = rows.some((r) => r.averagePartial || r.grades.some((g) => g?.partial));
   const averageRule = averageRuleText(rules);
   const anyAdjusted = rows.some((r) => r.grades.some((g) => g?.adjusted));
+  // Materias pendientes de este año: la nota original queda; la recuperación se anota (r).
+  const recoveries = student.subjects.filter((sub) => sub.recovery);
   const contact = [settings.contactPhone, settings.contactEmail].filter(Boolean).join(' · ');
   const issuedAt = today();
   const sectionLabel = student.section_id ? `${student.grade_name} · Sección ${student.section_name}` : 'Sin inscripción en el año';
@@ -160,7 +163,10 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, rule
             <tbody>
               {rows.map(({ sub, grades, average, averagePartial }) => (
                 <tr key={sub.key}>
-                  <td className="boleta-table__subject">{sub.name}</td>
+                  <td className="boleta-table__subject">
+                    {sub.name}
+                    {sub.recovery && <sup>(r)</sup>}
+                  </td>
                   {grades.map((g, i) => (
                     <td key={terms[i].id} className={g && !qualitative && g.value < passing ? 'is-low' : undefined}>
                       {g ? show(g.value) : '—'}
@@ -181,7 +187,10 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, rule
                 {termAverages.map((v, i) => (
                   <td key={terms[i].id}>{show(v)}</td>
                 ))}
-                <td className="boleta-table__avg">{show(overall)}</td>
+                <td className="boleta-table__avg">
+                  {show(overall)}
+                  {student.overall_recalculated && <sup>(r)</sup>}
+                </td>
               </tr>
               {/* Puesto en la sección, por período y anual (e: empate, p: provisional). */}
               {anyRank(student.ranks) && (
@@ -212,6 +221,14 @@ function OfficialReportCard({ student, terms, schoolPeriod, scale, passing, rule
             {anyProvisional(student.ranks) && '(p) Puesto provisional: puede cambiar porque el período no está cerrado o faltan notas. '}
             {anyAdjusted && '(a) Calificación definitiva ajustada por la dirección del plantel, con constancia en el historial de ajustes.'}
           </p>
+          {recoveries.length > 0 && (
+            <p className="boleta-notes__recovery">
+              <strong>(r) Materias pendientes:</strong>{' '}
+              {recoveries.map((sub) => `${sub.name}: ${recoveryText(sub)}.`).join(' ')}{' '}
+              Se conserva la nota original del año.
+              {student.overall_recalculated && ` El promedio del año incluye la nota de recuperación (promedio original: ${show(student.overall_original)}).`}
+            </p>
+          )}
         </div>
 
         <footer className="boleta-signatures">

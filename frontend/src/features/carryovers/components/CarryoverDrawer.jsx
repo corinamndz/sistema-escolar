@@ -20,14 +20,24 @@ const newKey = () => {
   return `m${nextKey}`;
 };
 
-/** Editor del plan: los momentos aún sin calificar, en orden. Los ya calificados no se tocan. */
+const MAX_MOMENTS = 12;
+const newRow = (n, passing) => ({ key: newKey(), name: `Momento ${n}`, description: '', scheduledOn: '', passingGrade: String(passing) });
+const parseGrade = (v) => (String(v).trim() === '' ? null : Number(String(v).replace(',', '.')));
+
+/**
+ * Plan de evaluación especial: cuántos momentos y, en cada uno, su nombre, qué
+ * se evaluará, la fecha estimada y la nota mínima para aprobarlo (la del año o
+ * más alta). Edita solo los momentos aún sin calificar; los calificados quedan.
+ */
 function PlanEditor({ carryover, onCancel, onSaved }) {
+  const official = carryover.passing_grade;
   const pending = carryover.moments.filter((m) => !isGraded(m));
   const gradedCount = carryover.moments.length - pending.length;
+  const room = MAX_MOMENTS - gradedCount;
   const [rows, setRows] = useState(() =>
     pending.length
-      ? pending.map((m) => ({ key: m.id, name: m.name, description: m.description || '', scheduledOn: m.scheduled_on ? String(m.scheduled_on).slice(0, 10) : '' }))
-      : [{ key: newKey(), name: `Momento ${gradedCount + 1}`, description: '', scheduledOn: '' }]
+      ? pending.map((m) => ({ key: m.id, name: m.name, description: m.description || '', scheduledOn: m.scheduled_on ? String(m.scheduled_on).slice(0, 10) : '', passingGrade: String(m.passing_grade ?? official) }))
+      : [1, 2, 3].slice(0, Math.max(1, Math.min(3, room))).map((i) => newRow(gradedCount + i, official))
   );
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
@@ -41,18 +51,34 @@ function PlanEditor({ carryover, onCancel, onSaved }) {
       next.splice(i + delta, 0, item);
       return next;
     });
+  // Cantidad de momentos: agrega al final o quita los últimos.
+  const setCount = (n) => setRows((list) => (n > list.length ? [...list, ...Array.from({ length: n - list.length }, (_, i) => newRow(gradedCount + list.length + i + 1, official))] : list.slice(0, n)));
+
+  // Validación local, con los mismos límites que el servidor.
+  const localErrors = {};
+  rows.forEach((r, i) => {
+    if (!r.name.trim()) localErrors[`moments.${i}.name`] = 'Escribe el nombre del momento.';
+    const g = parseGrade(r.passingGrade);
+    if (g === null || !Number.isFinite(g) || g < 0 || g > 20) localErrors[`moments.${i}.passingGrade`] = 'Entre 0 y 20.';
+    else if (g < official) localErrors[`moments.${i}.passingGrade`] = `No puede ser menor que ${fmtGrade(official)}, la mínima del año.`;
+  });
+  const shown = errors;
 
   const save = async (e) => {
     e.preventDefault();
+    if (Object.keys(localErrors).length) {
+      setErrors(localErrors);
+      return;
+    }
     setSaving(true);
     setErrors({});
     setFormError(null);
     try {
       const saved = await carryoversApi.savePlan(
         carryover.id,
-        rows.map((r) => ({ name: r.name, description: r.description || null, scheduledOn: r.scheduledOn || null }))
+        rows.map((r) => ({ name: r.name.trim(), description: r.description.trim() || null, scheduledOn: r.scheduledOn || null, passingGrade: parseGrade(r.passingGrade) }))
       );
-      toast.success('Plan especial guardado', `${carryover.subject_name}: ${saved.moments.length} momento${saved.moments.length === 1 ? '' : 's'}`);
+      toast.success('Plan de evaluación especial guardado', `${carryover.subject_name}: ${saved.moments.length} momento${saved.moments.length === 1 ? '' : 's'}. ${saved.moments.find((m) => m.status === 'open')?.name || ''} queda habilitado para calificar.`);
       onSaved();
     } catch (err) {
       setErrors(getFieldErrors(err));
@@ -66,39 +92,65 @@ function PlanEditor({ carryover, onCancel, onSaved }) {
     <form onSubmit={save} noValidate className="cm-plan">
       <Alert>{formError}</Alert>
       <p className="text-sm text-muted">
-        Define cuántos momentos necesita este alumno; no dependen de los períodos del colegio. Se presentan en orden: el siguiente se habilita solo si reprueba el anterior.
-        {gradedCount > 0 && ` Los ${gradedCount} ya calificados no se pueden cambiar.`}
+        Cada momento es una oportunidad completa de aprobar la materia, no una parte de la nota. Se presentan en orden: el siguiente se habilita solo si el alumno reprueba el anterior.
+        {gradedCount > 0 && ` Los ${gradedCount} ya calificados no cambian; aquí defines los que siguen.`}
       </p>
+      <div className="cm-plan__count">
+        <Field label={gradedCount ? 'Momentos por presentar' : 'Cantidad de momentos'} hint={`Máximo ${MAX_MOMENTS} en total.`}>
+          <Select value={rows.length} onChange={(e) => setCount(Number(e.target.value))}>
+            {Array.from({ length: room }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>
+                {n} momento{n === 1 ? '' : 's'}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <p className="cm-plan__official">
+          <Icon name="info" size={15} />
+          <span>
+            Nota mínima del año: <strong>{fmtGrade(official)}</strong>. Un momento puede exigir más, no menos.
+          </span>
+        </p>
+      </div>
       <ol className="cm-plan__rows">
-        {rows.map((r, i) => (
-          <li key={r.key} className="cm-plan__row">
-            <div className="cm-plan__fields">
-              <Field label={`Momento ${gradedCount + i + 1}`} required error={errors[`moments.${i}.name`]}>
-                <Input value={r.name} onChange={(e) => patch(r.key, { name: e.target.value })} maxLength={80} placeholder="Ej.: Prueba escrita" />
-              </Field>
-              <Field label="Fecha" error={errors[`moments.${i}.scheduledOn`]}>
-                <Input type="date" value={r.scheduledOn} onChange={(e) => patch(r.key, { scheduledOn: e.target.value })} />
-              </Field>
-              <Field label="Qué se evaluará" full error={errors[`moments.${i}.description`]}>
-                <Input value={r.description} onChange={(e) => patch(r.key, { description: e.target.value })} maxLength={500} placeholder="Opcional" />
-              </Field>
-            </div>
-            <span className="ep-row__actions">
-              <button type="button" className="ep-icon" onClick={() => move(i, -1)} disabled={i === 0} title="Subir" aria-label={`Subir ${r.name || 'momento'}`}>
-                <Icon name="chevronUp" size={15} />
-              </button>
-              <button type="button" className="ep-icon" onClick={() => move(i, 1)} disabled={i === rows.length - 1} title="Bajar" aria-label={`Bajar ${r.name || 'momento'}`}>
-                <Icon name="chevronDown" size={15} />
-              </button>
-              <button type="button" className="ep-icon is-danger" onClick={() => setRows((list) => list.filter((x) => x.key !== r.key))} disabled={rows.length === 1 && gradedCount === 0} title="Quitar" aria-label={`Quitar ${r.name || 'momento'}`}>
-                <Icon name="trash" size={15} />
-              </button>
-            </span>
-          </li>
-        ))}
+        {rows.map((r, i) => {
+          const err = (k) => shown[`moments.${i}.${k}`];
+          return (
+            <li key={r.key} className="cm-plan__row">
+              <span className="cm-plan__n" aria-hidden="true">
+                {gradedCount + i + 1}
+              </span>
+              <div className="cm-plan__fields">
+                <Field label="Nombre del momento" required error={err('name')}>
+                  <Input value={r.name} onChange={(e) => patch(r.key, { name: e.target.value })} maxLength={80} placeholder="Ej.: Recuperación parcial" />
+                </Field>
+                <Field label="Fecha estimada" error={err('scheduledOn')}>
+                  <Input type="date" value={r.scheduledOn} onChange={(e) => patch(r.key, { scheduledOn: e.target.value })} />
+                </Field>
+                <Field label="Nota mínima para aprobar" required error={err('passingGrade')}>
+                  <Input type="number" inputMode="decimal" min={official} max={20} step="0.01" value={r.passingGrade} onChange={(e) => patch(r.key, { passingGrade: e.target.value })} />
+                </Field>
+                <Field label="Estrategia de evaluación" error={err('description')} hint={`Qué contendrá la prueba o el trabajo. ${r.description.length}/500`}>
+                  <textarea className="input cm-plan__text" rows={2} value={r.description} onChange={(e) => patch(r.key, { description: e.target.value })} maxLength={500} placeholder="Ej.: Prueba escrita de análisis de textos y ortografía." />
+                </Field>
+              </div>
+              <span className="ep-row__actions">
+                <button type="button" className="ep-icon" onClick={() => move(i, -1)} disabled={i === 0} title="Subir" aria-label={`Subir ${r.name || 'momento'}`}>
+                  <Icon name="chevronUp" size={15} />
+                </button>
+                <button type="button" className="ep-icon" onClick={() => move(i, 1)} disabled={i === rows.length - 1} title="Bajar" aria-label={`Bajar ${r.name || 'momento'}`}>
+                  <Icon name="chevronDown" size={15} />
+                </button>
+                <button type="button" className="ep-icon is-danger" onClick={() => setRows((list) => list.filter((x) => x.key !== r.key))} disabled={rows.length === 1 && gradedCount === 0} title="Quitar" aria-label={`Quitar ${r.name || 'momento'}`}>
+                  <Icon name="trash" size={15} />
+                </button>
+              </span>
+            </li>
+          );
+        })}
       </ol>
       <div className="form-actions ep-list__actions">
-        <Button type="button" variant="ghost" icon="plus" disabled={gradedCount + rows.length >= 12} onClick={() => setRows((list) => [...list, { key: newKey(), name: `Momento ${gradedCount + list.length + 1}`, description: '', scheduledOn: '' }])}>
+        <Button type="button" variant="ghost" icon="plus" disabled={gradedCount + rows.length >= MAX_MOMENTS} onClick={() => setCount(rows.length + 1)}>
           Agregar momento
         </Button>
         <span className="cm-plan__save">
@@ -124,7 +176,8 @@ function GradeForm({ moment, carryover, correcting, onCancel, onSaved }) {
   const toast = useToast();
   const value = grade === '' ? null : Number(String(grade).replace(',', '.'));
   const valid = value !== null && Number.isFinite(value) && value >= 0 && value <= 20;
-  const passes = valid && value >= carryover.passing_grade;
+  const passing = moment.passing_grade ?? carryover.passing_grade;
+  const passes = valid && value >= passing;
   const later = carryover.moments.filter((m) => m.position > moment.position);
 
   const submit = async (e) => {
@@ -157,7 +210,7 @@ function GradeForm({ moment, carryover, correcting, onCancel, onSaved }) {
     <form onSubmit={submit} noValidate className="cm-grade">
       <Alert>{formError}</Alert>
       <div className="cm-grade__fields">
-        <Field label={`Nota (0 a 20; se aprueba con ${fmtGrade(carryover.passing_grade)})`} required error={errors.grade}>
+        <Field label={`Nota (0 a 20; este momento se aprueba con ${fmtGrade(passing)})`} required error={errors.grade}>
           <Input type="number" inputMode="decimal" min={0} max={20} step="0.01" value={grade} onChange={(e) => setGrade(e.target.value)} autoFocus={correcting} />
         </Field>
         <Field label="Observación" error={errors.notes}>
@@ -268,10 +321,10 @@ function CarryoverDrawer({ carryover: c, canManage, onClose, onChanged }) {
       {closedFailed && <Alert variant="warning">Completó el plan sin aprobar. {canManage ? 'Puedes agregar más momentos o anular la pendencia.' : 'La dirección o la coordinación indicarán cómo continuar.'}</Alert>}
 
       <div className="cm-section-head">
-        <h3 className="card__title">Plan especial</h3>
-        {canPlan && !editing && (
+        <h3 className="card__title">Plan de evaluación especial</h3>
+        {canPlan && !editing && c.moments.length > 0 && (
           <Button size="sm" variant="secondary" icon="pencil" onClick={() => setEditing(true)}>
-            {c.moments.length ? 'Editar momentos' : 'Diseñar plan'}
+            Configurar momentos
           </Button>
         )}
       </div>
@@ -305,7 +358,18 @@ function CarryoverDrawer({ carryover: c, canManage, onClose, onChanged }) {
           }}
         />
       ) : (
-        <p className="text-sm text-muted">{c.teacher_name ? 'Aún no se han definido los momentos de recuperación.' : 'Asígnale un profesor para que diseñe el plan.'}</p>
+        <div className="cm-plan-empty">
+          <Icon name="clipboard" size={22} />
+          <div>
+            <strong>Aún no tiene plan de evaluación especial</strong>
+            <span>{canPlan ? 'Define cuántos momentos tendrá, qué se evaluará en cada uno, su fecha estimada y la nota para aprobarlo.' : c.teacher_name ? 'El profesor aún no ha definido los momentos.' : 'Asígnale un profesor para que diseñe el plan.'}</span>
+          </div>
+          {canPlan && (
+            <Button size="sm" icon="plus" onClick={() => setEditing(true)}>
+              Configurar momentos
+            </Button>
+          )}
+        </div>
       )}
 
       {canManage && (live || closedFailed) && !cancelling && (

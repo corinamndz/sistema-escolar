@@ -11,7 +11,9 @@ import Select from '../../../components/ui/Select';
 import Alert from '../../../components/ui/Alert';
 import Spinner from '../../../components/ui/Spinner';
 import Icon from '../../../components/ui/Icon';
-import { SubmissionDrawer } from '../components/SubmissionsPanel';
+import RowMenu from '../../../components/ui/RowMenu';
+import { useAuth } from '../../../context/AuthContext';
+import { SubmissionDrawer, useDeleteSubmission } from '../components/SubmissionsPanel';
 import { SUBMISSION_STATUS } from '../fieldTypes';
 
 const when = (iso) => new Date(iso).toLocaleString('es-VE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -31,6 +33,8 @@ function EnrollmentSubmissionsPage() {
   const [search, setSearch] = useState('');
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState(null);
+  const { user } = useAuth();
+  const remove = useDeleteSubmission();
   // Año escolar global (barra superior); «Todos los años» lo ignora solo en esta bandeja.
   const { periodId: yearId, period: year } = useAcademicYear();
   const [allYears, setAllYears] = useState(false);
@@ -119,7 +123,7 @@ function EnrollmentSubmissionsPage() {
         ) : (
           <ul className="ef-subs es-list" aria-busy={loading || undefined}>
             {data.rows.map((s) => (
-              <li key={s.id}>
+              <li key={s.id} className="ef-sub-row">
                 <button type="button" className="ef-sub" onClick={() => setOpenId(s.id)}>
                   <span className="avatar avatar--sm">{initials(s.student_name)}</span>
                   <span className="ef-sub__main">
@@ -134,6 +138,16 @@ function EnrollmentSubmissionsPage() {
                   <Badge variant={SUBMISSION_STATUS[s.status].variant}>{SUBMISSION_STATUS[s.status].label}</Badge>
                   <Icon name="chevronRight" size={16} />
                 </button>
+                {/* Acciones rápidas: solo el Administrador puede eliminar (también aprobadas). */}
+                {user?.isAdmin && (
+                  <RowMenu
+                    label={`Acciones de la planilla de ${s.student_name}`}
+                    items={[
+                      { key: 'open', label: 'Ver planilla', icon: 'eye', onClick: () => setOpenId(s.id) },
+                      { key: 'delete', label: 'Eliminar planilla', icon: 'trash', danger: true, onClick: async () => (await remove(s)) && refetch() },
+                    ]}
+                  />
+                )}
               </li>
             ))}
           </ul>

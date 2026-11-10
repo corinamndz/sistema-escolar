@@ -4,6 +4,7 @@ import Badge from '../../../components/ui/Badge';
 import Icon from '../../../components/ui/Icon';
 import { LevelBadge } from '../../academics/levels';
 import { termLabel } from '../../evaluation-plans/terms';
+import { recoveredOk, recoveryState } from '../../carryovers/recovery';
 
 const STATUS_VARIANT = { active: 'info', promoted: 'success', retained: 'warning', graduated: 'primary', withdrawn: 'neutral' };
 
@@ -62,6 +63,12 @@ function AcademicHistory({ data, initiallyOpen = false }) {
                 {y.final_average !== null ? (
                   <>
                     Promedio <strong>{fmt(y.final_average)}</strong>/{data.scale}
+                    {y.recalculated && (
+                      <span className="history-year__recalc" title={`Promedio original de la boleta: ${fmt(y.original_final_average)}`}>
+                        {' '}
+                        (con recuperación; original {fmt(y.original_final_average)})
+                      </span>
+                    )}
                     {y.failed_subjects > 0 && <span className="text-danger"> · {y.failed_subjects} reprobada{y.failed_subjects === 1 ? '' : 's'}</span>}
                   </>
                 ) : (
@@ -82,6 +89,7 @@ function AcademicHistory({ data, initiallyOpen = false }) {
                 {y.frozen ? (
                   <p className="form-hint">
                     <Icon name="lock" size={13} /> Boleta cerrada el {new Date(y.closed_at).toLocaleDateString('es')}: estas notas no cambian.
+                    {y.subjects.some((s) => s.recovery) && ' Las materias pendientes muestran aparte su recuperación; si la aprobó, cuenta como aprobada y su nota entra en el promedio.'}
                     {y.outcome_notes && <> Observación: {y.outcome_notes}</>}
                   </p>
                 ) : (
@@ -119,10 +127,16 @@ function AcademicHistory({ data, initiallyOpen = false }) {
                               );
                             })}
                             <td style={{ textAlign: 'center' }}>
-                              <strong className={s.passed === false ? 'text-danger' : undefined}>{fmt(s.final_grade)}</strong>
+                              <strong className={s.passed === false && !recoveredOk(s) ? 'text-danger' : undefined}>{fmt(s.final_grade)}</strong>
+                              {recoveredOk(s) && <span className="history-recovery__grade">{fmt(s.recovery.grade)}</span>}
                             </td>
                             <td>
-                              {s.passed === null ? (
+                              {recoveryState(s) ? (
+                                <>
+                                  <Badge variant={recoveryState(s).variant}>{recoveryState(s).label}</Badge>
+                                  <span className="cell-person__sub history-recovery__note">{recoveryState(s).note}</span>
+                                </>
+                              ) : s.passed === null ? (
                                 <span className="text-muted text-sm">Sin notas</span>
                               ) : s.passed ? (
                                 <Badge variant="success">Aprobada</Badge>

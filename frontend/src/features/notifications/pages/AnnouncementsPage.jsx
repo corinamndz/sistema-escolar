@@ -17,6 +17,8 @@ import RichTextView, { ANNOUNCEMENT_CATEGORIES, sanitizePreview } from '../../..
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { useToast } from '../../../components/ui/Toast';
 import { refreshNotifications } from '../../../lib/notificationEvents';
+import Drawer from '../../../components/ui/Drawer';
+import { ReadAudit } from '../components/NotificationDetailDrawer';
 
 const SCOPES = [
   { key: 'school', label: 'Todo el colegio', icon: 'school' },
@@ -341,32 +343,54 @@ function AnnouncementsPage() {
   );
 }
 
+/**
+ * Un comunicado enviado. El título despliega el mensaje; el contador «1/5 leído»
+ * abre el log de lectura (quién lo recibió, quién lo leyó y cuándo).
+ */
 function SentItem({ item: a }) {
   const [open, setOpen] = useState(false);
+  const [reads, setReads] = useState(false);
   const pct = a.recipients ? Math.round((a.reads / a.recipients) * 100) : 0;
   const cat = ANNOUNCEMENT_CATEGORIES[a.category];
   return (
     <li className={`ann-history__item ${open ? 'is-open' : ''}`}>
-      <button type="button" className="ann-history__head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span className={`ann-history__icon ann-history__icon--${a.category}`}>
-          <Icon name={cat?.icon || 'megaphone'} size={16} />
-        </span>
-        <span className="ann-history__main">
-          <strong>{a.title}</strong>
-          <span className="ann-history__meta">
-            {cat?.label} · {when(a.created_at)} · {a.scope_label || '—'}
-            {a.sender_name ? ` · ${a.sender_name}` : ''}
+      <div className="ann-history__row">
+        <button type="button" className="ann-history__head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          <span className={`ann-history__icon ann-history__icon--${a.category}`}>
+            <Icon name={cat?.icon || 'megaphone'} size={16} />
           </span>
-        </span>
-        <span className="ann-history__reads" title={`${a.reads} de ${a.recipients} lo leyeron`}>
+          <span className="ann-history__main">
+            <strong>{a.title}</strong>
+            <span className="ann-history__meta">
+              {cat?.label} · {when(a.created_at)} · {a.scope_label || '—'}
+              {a.sender_name ? ` · ${a.sender_name}` : ''}
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className="ann-history__reads"
+          onClick={() => setReads(true)}
+          title="Ver quién lo leyó y quién no"
+          aria-label={`${a.reads} de ${a.recipients} lo leyeron. Ver el log de lectura`}
+        >
           <span className="ann-history__bar">
             <span style={{ width: `${pct}%` }} />
           </span>
-          {a.reads}/{a.recipients} leído
-        </span>
-        <Icon name="chevronDown" size={16} className="ann-history__chevron" />
-      </button>
+          <span className="ann-history__count">
+            {a.reads}/{a.recipients} leído <Icon name="chevronRight" size={13} />
+          </span>
+        </button>
+        <button type="button" className="ann-history__toggle" onClick={() => setOpen((o) => !o)} tabIndex={-1} aria-hidden="true">
+          <Icon name="chevronDown" size={16} className="ann-history__chevron" />
+        </button>
+      </div>
       {open && <RichTextView html={a.body_html} className="ann-history__body" />}
+      {reads && (
+        <Drawer title={a.title} subtitle={`Log de lectura · enviado ${when(a.created_at)}`} icon="eye" size="lg" onClose={() => setReads(false)}>
+          <ReadAudit id={a.id} load={notificationsApi.broadcastReads} />
+        </Drawer>
+      )}
     </li>
   );
 }

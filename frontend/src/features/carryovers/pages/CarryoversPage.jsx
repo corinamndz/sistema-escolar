@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import carryoversApi from '../../../api/endpoints/carryovers.api';
 import { getErrorMessage } from '../../../api/axiosClient';
 import { useFetch } from '../../../hooks/useFetch';
@@ -142,6 +143,11 @@ function CarryoversPage() {
       <PageHeader
         title="Materias pendientes"
         subtitle={canManage ? 'Arrastres de los alumnos promovidos: asigna el profesor y sigue el avance de sus momentos de recuperación.' : 'Las materias que tienes asignadas: diseña los momentos y califica a cada alumno.'}
+        actions={
+          <Link to="/carryovers/simulator" className="btn btn--secondary">
+            <Icon name="sparkles" size={16} /> Simulador
+          </Link>
+        }
       />
       <Alert>{error}</Alert>
 

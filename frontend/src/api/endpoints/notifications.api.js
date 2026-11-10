@@ -33,6 +33,8 @@ const notificationsApi = {
   },
   /** Comunicados enviados con destinatarios y lecturas. */
   broadcastHistory: () => axiosClient.get('/notifications/broadcast').then((r) => r.data),
+  /** Log de lectura de un comunicado: { notification, stats, recipients: [{ name, roles, area, students, status, read_at }] }. */
+  broadcastReads: (id) => axiosClient.get(`/notifications/broadcast/${id}/reads`).then((r) => r.data),
 };
 
 export default notificationsApi;

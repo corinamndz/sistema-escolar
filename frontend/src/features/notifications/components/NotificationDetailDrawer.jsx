@@ -99,8 +99,13 @@ function NotificationDetailDrawer({ notification: n, canAudit, onClose, onOpenLi
   );
 }
 
-function ReadAudit({ id }) {
-  const { data, loading, error } = useFetch(() => notificationsApi.audit(id), [id]);
+/**
+ * Trazabilidad de lectura: quiénes lo recibieron, su estado (Leído con fecha y
+ * hora, o Pendiente), su rol y su sección o área. `load`: de dónde se pide
+ * (por defecto el Log de notificaciones; los comunicados usan su propio permiso).
+ */
+export function ReadAudit({ id, load = notificationsApi.audit }) {
+  const { data, loading, error } = useFetch(() => load(id), [id]);
   const [filter, setFilter] = useState('all');
 
   if (loading) return <Spinner />;
@@ -131,25 +136,45 @@ function ReadAudit({ id }) {
       sortValue: (r) => r.roles.join(', '),
     },
     {
-      key: 'status',
-      header: 'Estado',
+      key: 'area',
+      header: 'Sección / área',
       render: (r) =>
-        r.status === 'read' ? <Badge variant="success">Leído</Badge> : <Badge variant="warning">Pendiente</Badge>,
-      sortValue: (r) => (r.status === 'read' ? 0 : 1),
+        r.students?.length ? (
+          <div className="nd__area">
+            {r.students.map((s) => {
+              // «Nombre · grado «sección»»: el alumno arriba y su grado debajo.
+              const [name, ...rest] = s.split(' · ');
+              return (
+                <span key={s}>
+                  {name}
+                  {rest.length > 0 && <small>{rest.join(' · ')}</small>}
+                </span>
+              );
+            })}
+          </div>
+        ) : r.area && !r.roles.some((role) => role.toLowerCase() === r.area.toLowerCase()) ? (
+          r.area
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+      sortValue: (r) => r.students?.[0] || r.area || '',
     },
     {
-      key: 'read_at',
-      header: 'Leído el',
+      // Estado y, si lo leyó, la fecha y hora exactas de lectura.
+      key: 'status',
+      header: 'Estado · leído el',
       render: (r) =>
         r.read_at ? (
-          <div>
+          <div className="nd__state">
+            <Badge variant="success">Leído</Badge>
             <div className="nd__time">{shortDate(r.read_at)}</div>
             <div className="cell-person__sub">{r.late ? 'Acceso posterior al envío' : `${delay(notification.created_at, r.read_at)} después del envío`}</div>
           </div>
         ) : (
-          <span className="text-muted">—</span>
+          <Badge variant="warning">Pendiente</Badge>
         ),
-      sortValue: (r) => r.read_at || '',
+      // Leídos primero, del más reciente; luego los pendientes.
+      sortValue: (r) => (r.read_at ? `0-${9999999999999 - new Date(r.read_at).getTime()}` : '1'),
     },
   ];
 
@@ -208,7 +233,7 @@ function ReadAudit({ id }) {
             pageSize={10}
             canCreate={false}
             searchPlaceholder="Buscar destinatario…"
-            getSearchText={(r) => [r.name, r.username, ...r.roles].join(' ')}
+            getSearchText={(r) => [r.name, r.username, ...r.roles, r.area || '', ...(r.students || [])].join(' ')}
             filters={
               <div className="segmented" role="tablist" aria-label="Estado de lectura">
                 {FILTERS.map((f) => (

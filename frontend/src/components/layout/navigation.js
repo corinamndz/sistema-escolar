@@ -1,4 +1,5 @@
 import { isPortalViewOn } from '../../lib/portalViews';
+import { isFeatureOn } from '../../lib/features';
 
 /**
  * Menú principal agrupado por secciones. `moduleCode` se valida contra los
@@ -53,7 +54,7 @@ const NAV_SECTIONS = [
       { moduleCode: 'evaluation_plans', label: 'Contenido programático', icon: 'layers', path: '/programmatic-content', reviewBadge: 'content' },
       { moduleCode: 'evaluation_plans', label: 'Planes de evaluación', icon: 'clipboard', path: '/evaluation-plans', reviewBadge: 'plan' },
       // Materias pendientes (arrastres): dirección y coordinación las asignan; el profesor las evalúa.
-      { moduleCode: 'carryovers', label: 'Materias pendientes', icon: 'refresh', path: '/carryovers', carryoverUsers: true },
+      { moduleCode: 'carryovers', label: 'Materias pendientes', icon: 'refresh', path: '/carryovers', carryoverUsers: true, feature: 'carryovers' },
       // Resumen de calificaciones del colegio: acumulado por período de cada alumno (administración).
       // El Coordinador también lo ve (solo su nivel) para el ajuste directivo de definitivas.
       { moduleCode: 'grading', label: 'Resumen de calificaciones', icon: 'trendingUp', path: '/grading/summary', blockTeacher: true, coordinatorToo: true },
@@ -140,6 +141,8 @@ function hasDashboard({ can, user }) {
 
 /** ¿Se muestra este ítem del menú al usuario? */
 function isNavItemVisible(item, { can, user, portalViews }) {
+  // Módulo apagado temporalmente (lib/features.js): no aparece para nadie.
+  if (!isFeatureOn(item.feature)) return false;
   if (item.home) return hasDashboard({ can, user });
   if (!isPortalViewOn(portalViews, item.portalView)) return false;
   if (item.adminOnly) return Boolean(user?.isAdmin);

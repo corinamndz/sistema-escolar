@@ -47,8 +47,13 @@ function PaymentsPage() {
   const confirm = useConfirm();
   const toast = useToast();
   const { data: periods } = useFetch(() => paymentsApi.schoolPeriodOptions(), []);
-  const [status, setStatus] = useState('due');
-  const [schoolPeriodId, setSchoolPeriodId] = useState('');
+  // ?estado=overdue (p. ej. desde la tarjeta de morosidad del inicio) abre esa pestaña.
+  const [status, setStatus] = useState(() => {
+    const wanted = new URLSearchParams(window.location.search).get('estado');
+    return wanted !== null && FILTERS.some((t) => t.key === wanted) ? wanted : 'due';
+  });
+  // ?anio= (desde la tarjeta de morosidad del inicio): el año de esas mensualidades.
+  const [schoolPeriodId, setSchoolPeriodId] = useState(() => new URLSearchParams(window.location.search).get('anio') || '');
   // Arranca en el año escolar en curso ("Todos los años" sigue disponible en el selector).
   useDefaultSchoolPeriod(periods, schoolPeriodId, setSchoolPeriodId, { allowAll: true });
   // Tasas de las monedas activas + moneda en que se muestran los equivalentes (se recuerda).
@@ -436,7 +441,8 @@ function mergeAmounts(amounts) {
  * selectores), también si la lista de años llega DESPUÉS de abrir el modal.
  */
 function usePeriodChoice(periods) {
-  const [schoolPeriodId, setSchoolPeriodId] = useState('');
+  // ?anio= (desde la tarjeta de morosidad del inicio): el año de esas mensualidades.
+  const [schoolPeriodId, setSchoolPeriodId] = useState(() => new URLSearchParams(window.location.search).get('anio') || '');
   useDefaultSchoolPeriod(periods, schoolPeriodId, setSchoolPeriodId); // arranca en el año global
   return [schoolPeriodId, setSchoolPeriodId];
 }

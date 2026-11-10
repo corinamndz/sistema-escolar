@@ -4,6 +4,8 @@
  * usuario puede leer ese módulo (`permissions`).
  */
 const { restrictStaffToLevel } = require('../access/coordinatorScope');
+const { currentPeriodOrder } = require('../../utils/schoolPeriods');
+const { DISPLAY_STATUS_SQL } = require('../payments/payment.service');
 
 const LEVEL_ORDER = ['initial', 'primary', 'secondary'];
 
@@ -82,11 +84,115 @@ async function guardianSolvency(trx, tenantId) {
   ];
 }
 
-async function getSummary(trx, tenantId, permissions, { levelCode = null, coordinator = false } = {}) {
+/**
+ * Inscripción del año escolar (el elegido en la barra superior o, sin elegir, el
+ * año en curso). Inscrito = alumno activo con una planilla de inscripción
+ * APROBADA de una convocatoria de ese año; con la planilla sin enviar, en
+ * revisión o por corregir, NO cuenta como inscrito.
+ *   approved    alumnos con planilla aprobada del año
+ *   total       los cupos del año (suma de max_students de sus secciones) o, si
+ *               ninguna sección tiene cupo, los alumnos activos  → total_basis
+ *   active      alumnos activos del colegio
+ *   in_review   con planilla enviada o por corregir (aún sin aprobar)
+ *   without     alumnos activos sin planilla aprobada ni en revisión
+ *   forms       convocatorias del año (0: el colegio aún no publica la planilla)
+ */
+async function enrollmentProgress(trx, tenantId, schoolPeriodId) {
+  const q = trx('school_periods').where({ tenant_id: tenantId });
+  const year = (schoolPeriodId ? await q.clone().where({ id: schoolPeriodId }).first('id', 'name') : null) || (await q.orderByRaw(currentPeriodOrder()).first('id', 'name'));
+  if (!year) return null;
+  const { rows: [r] } = await trx.raw(
+    `WITH sub AS (
+       SELECT x.student_id, x.status
+       FROM enrollment_form_submissions x
+       JOIN enrollment_forms f ON f.id = x.form_id AND f.school_period_id = :periodId
+       JOIN students s ON s.id = x.student_id AND s.status = 'active'
+       WHERE x.tenant_id = :tenantId
+     )
+     SELECT
+       (SELECT count(DISTINCT student_id) FROM sub WHERE status = 'approved')::int AS approved,
+       (SELECT count(DISTINCT student_id) FROM sub WHERE status IN ('submitted', 'changes_requested')
+          AND student_id NOT IN (SELECT student_id FROM sub WHERE status = 'approved'))::int AS in_review,
+       (SELECT count(*) FROM students s WHERE s.tenant_id = :tenantId AND s.status = 'active')::int AS active,
+       (SELECT sum(max_students) FROM sections WHERE tenant_id = :tenantId AND school_period_id = :periodId)::int AS capacity,
+       (SELECT count(*) FROM enrollment_forms WHERE tenant_id = :tenantId AND school_period_id = :periodId)::int AS forms`,
+    { tenantId, periodId: year.id }
+  );
+  const byCapacity = r.capacity > 0;
+  return {
+    school_period: year,
+    approved: r.approved,
+    total: byCapacity ? r.capacity : r.active,
+    total_basis: byCapacity ? 'capacity' : 'students',
+    active: r.active,
+    in_review: r.in_review,
+    without: Math.max(0, r.active - r.approved - r.in_review),
+    forms: r.forms,
+  };
+}
+
+/**
+ * Morosidad de las mensualidades del MES EN CURSO (billing_month), con la misma
+ * regla de estados que el módulo de Pagos (DISPLAY_STATUS_SQL):
+ *   billed     mensualidades del mes ya emitidas (pagadas, pendientes, vencidas o en revisión)
+ *   overdue    vencidas sin pagar → morosidad = overdue / billed
+ *   amounts    por moneda ([{ currency, total }], como Pagos): lo que falta cobrar del mes y lo vencido
+ *   next_due   próximo vencimiento de las que aún no vencen (para explicar un 0 %)
+ */
+async function monthDelinquency(trx, tenantId) {
+  const { rows } = await trx.raw(
+    `WITH m AS (
+       SELECT p.amount, p.currency, p.due_date, (${DISPLAY_STATUS_SQL}) AS st
+       FROM payments p
+       WHERE p.tenant_id = ? AND p.kind = 'tuition' AND p.cancelled_at IS NULL
+         AND p.billing_month = date_trunc('month', current_date)::date
+     )
+     SELECT st, currency, count(*)::int AS n, sum(amount)::float AS amount, min(due_date) AS next_due
+     FROM m WHERE st IN ('paid', 'pending', 'overdue', 'reported')
+     GROUP BY st, currency`,
+    [tenantId]
+  );
+  const count = (st) => rows.filter((r) => r.st === st).reduce((s, r) => s + r.n, 0);
+  const amounts = (sts) => {
+    const by = new Map();
+    rows.filter((r) => sts.includes(r.st)).forEach((r) => by.set(r.currency, (by.get(r.currency) || 0) + r.amount));
+    return [...by].map(([currency, total]) => ({ currency, total: Math.round(total * 100) / 100 }));
+  };
+  const billed = rows.reduce((s, r) => s + r.n, 0);
+  const overdue = count('overdue');
+  const nextDue = rows.filter((r) => r.st === 'pending').map((r) => r.next_due).sort()[0] || null;
+  const month = await trx.raw("SELECT to_char(date_trunc('month', current_date), 'YYYY-MM') AS m");
+  // Año escolar de esas mensualidades (el enlace a Pagos abre ese año, no el de la barra).
+  const year = await trx('payments')
+    .where({ tenant_id: tenantId, kind: 'tuition' })
+    .whereNull('cancelled_at')
+    .whereRaw("billing_month = date_trunc('month', current_date)::date")
+    .whereNotNull('school_period_id')
+    .groupBy('school_period_id')
+    .orderByRaw('count(*) DESC')
+    .first('school_period_id');
+  return {
+    month: month.rows[0].m,
+    billed,
+    paid: count('paid'),
+    overdue,
+    pending: count('pending'),
+    reported: count('reported'),
+    rate: billed ? Math.round((overdue / billed) * 1000) / 10 : null,
+    due_amounts: amounts(['pending', 'overdue', 'reported']),
+    overdue_amounts: amounts(['overdue']),
+    next_due: nextDue,
+    school_period_id: year?.school_period_id || null,
+  };
+}
+
+async function getSummary(trx, tenantId, permissions, { levelCode = null, coordinator = false, schoolPeriodId = null } = {}) {
   const summary = { generated_at: new Date().toISOString() };
 
   if (canRead(permissions, 'students')) {
     summary.enrollment = await enrollmentByLevel(trx, tenantId);
+    // Esperados vs. inscritos del año elegido (tarjeta ejecutiva).
+    summary.enrollment_progress = await enrollmentProgress(trx, tenantId, schoolPeriodId);
   }
   if (canRead(permissions, 'guardians') || canRead(permissions, 'students')) {
     const linked = await trx('guardians as g')
@@ -121,6 +227,8 @@ async function getSummary(trx, tenantId, permissions, { levelCode = null, coordi
   }
   if (canRead(permissions, 'payments')) {
     summary.solvency = await guardianSolvency(trx, tenantId);
+    // Morosidad de las mensualidades del mes en curso (tarjeta ejecutiva).
+    summary.delinquency = await monthDelinquency(trx, tenantId);
   }
   return summary;
 }

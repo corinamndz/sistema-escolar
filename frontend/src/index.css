@@ -1078,6 +1078,41 @@ img.sidebar__logo {
 
 /* ---------- KPI / Stat cards ---------- */
 
+/* Inicio: tarjetas ejecutivas (ExecutiveMetrics.jsx). */
+.exec-metrics { margin-bottom: 24px; }
+.exec-card { display: flex; flex-direction: column; gap: 10px; }
+.exec-card__head { display: flex; align-items: center; gap: 10px; }
+.exec-card__head h3 { margin: 0; font-size: 15px; color: var(--color-text); }
+.exec-card__head p { margin: 2px 0 0; font-size: 12.5px; color: var(--color-text-muted); text-transform: none; }
+.exec-card__icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; }
+.exec-card__icon--primary { background: var(--color-primary-soft); color: var(--color-primary); }
+.exec-card__icon--success { background: var(--color-success-soft); color: var(--color-success); }
+.exec-card__icon--warning { background: var(--color-warning-soft); color: var(--color-warning-text); }
+.exec-card__icon--danger { background: var(--color-danger-soft); color: var(--color-danger); }
+.exec-card__value { margin: 0; font-size: 32px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; color: var(--color-text); font-variant-numeric: tabular-nums; }
+.exec-card__value span { font-size: 16px; font-weight: 600; color: var(--color-text-muted); }
+.exec-card__value--warning { color: var(--color-warning-text); }
+.exec-card__value--danger { color: var(--color-danger); }
+.exec-card__value--success { color: var(--color-success-text, var(--color-success)); }
+.exec-card__caption { margin: 0; font-size: 13px; color: var(--color-text-secondary); }
+.exec-card__bar { display: flex; height: 8px; border-radius: 999px; background: var(--color-border); overflow: hidden; }
+.exec-card__bar > span { display: block; height: 100%; background: var(--color-primary); transition: width .4s ease; }
+.exec-card__bar--split > span { border-radius: 0; }
+.exec-card__bar .is-paid { background: var(--color-success); }
+.exec-card__bar .is-reported { background: var(--color-info, #0ea5e9); }
+.exec-card__bar .is-pending { background: var(--color-warning, #f59e0b); }
+.exec-card__bar .is-overdue { background: var(--color-danger); }
+.exec-card__legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--color-text-secondary); }
+.exec-card__legend li { display: inline-flex; align-items: center; gap: 6px; }
+.exec-card__legend li::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.exec-card__legend .is-paid::before { background: var(--color-success); }
+.exec-card__legend .is-reported::before { background: var(--color-info, #0ea5e9); }
+.exec-card__legend .is-pending::before { background: var(--color-warning, #f59e0b); }
+.exec-card__legend .is-overdue::before { background: var(--color-danger); }
+.exec-card__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--color-border); font-size: 13px; color: var(--color-text-secondary); }
+.exec-card__link { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--color-primary-text, var(--color-primary)); text-decoration: none; }
+.exec-card__link:hover { text-decoration: underline; }
+
 .stat-card {
   position: relative;
   display: block;

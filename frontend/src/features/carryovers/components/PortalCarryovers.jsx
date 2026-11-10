@@ -3,14 +3,17 @@ import { useFetch } from '../../../hooks/useFetch';
 import Badge from '../../../components/ui/Badge';
 import Card from '../../../components/ui/Card';
 import MomentTimeline, { CARRYOVER_STATUS, fmtGrade } from './MomentTimeline';
+import { isFeatureOn } from '../../../lib/features';
 
 /**
  * Portal: materias pendientes del alumno, sobre sus calificaciones del año. Si no
  * tiene ninguna (lo normal), no ocupa lugar.
  */
 function PortalCarryovers({ studentId }) {
-  const { data } = useFetch(() => portalApi.getStudentCarryovers(studentId), [studentId]);
-  if (!data?.length) return null;
+  // Módulo apagado (lib/features.js): ni se consulta.
+  const on = isFeatureOn('carryovers');
+  const { data } = useFetch(() => (on ? portalApi.getStudentCarryovers(studentId) : Promise.resolve([])), [studentId, on]);
+  if (!on || !data?.length) return null;
   const open = data.filter((c) => ['pending', 'in_progress'].includes(c.status)).length;
   return (
     <Card title="Materias pendientes" subtitle={open ? `${open} por aprobar, en paralelo a su año actual` : 'De años anteriores'}>

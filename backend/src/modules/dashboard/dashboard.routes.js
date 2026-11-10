@@ -6,6 +6,7 @@ const { requirePermission } = require('../../middlewares/permission.middleware')
 const scope = require('../access/teacherScope');
 const coordinator = require('../access/coordinatorScope');
 const { asyncHandler } = require('../../utils/asyncHandler');
+const { z } = require('zod');
 
 // Cifras de todo el colegio: administración y directiva (el docente con carga restringida → 403).
 router.use(authMiddleware, tenantMiddleware, scope.denyTeachers);
@@ -17,7 +18,9 @@ router.get(
   asyncHandler(async (req, res) => {
     // Coordinador: las cifras de personal, solo de los docentes de su nivel.
     const coord = await coordinator.getCoordinatorScope(req);
-    res.status(200).json(await service.getSummary(req.db, req.tenantId, req.permissions, { levelCode: coord?.level || null, coordinator: Boolean(coord) }));
+    // schoolPeriodId: el año elegido en la barra superior (sin él, el año en curso).
+    const schoolPeriodId = req.query.schoolPeriodId ? z.string().uuid('Año escolar inválido.').parse(req.query.schoolPeriodId) : null;
+    res.status(200).json(await service.getSummary(req.db, req.tenantId, req.permissions, { levelCode: coord?.level || null, coordinator: Boolean(coord), schoolPeriodId }));
   })
 );
 

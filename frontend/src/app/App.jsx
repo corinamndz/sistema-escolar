@@ -39,6 +39,7 @@ import SupportPage from '../features/support/pages/SupportPage';
 import GradeSummaryPage from '../features/grading/pages/GradeSummaryPage';
 import CarryoversPage from '../features/carryovers/pages/CarryoversPage';
 import CarryoverSimulatorPage from '../features/carryovers/pages/CarryoverSimulatorPage';
+import { isFeatureOn } from '../lib/features';
 import CertificateEditorPage from '../features/certificates/pages/CertificateEditorPage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
@@ -165,8 +166,9 @@ function App() {
             </Route>
             {/* Materias pendientes: dirección, coordinación y el profesor asignado (el backend filtra). */}
             <Route element={<PermissionRoute carryoverUsers />}>
-              <Route path="carryovers" element={<CarryoversPage />} />
-              <Route path="carryovers/simulator" element={<CarryoverSimulatorPage />} />
+              {/* Apagado temporalmente (lib/features.js): la dirección lleva al inicio. */}
+              <Route path="carryovers" element={isFeatureOn('carryovers') ? <CarryoversPage /> : <Navigate to="/" replace />} />
+              <Route path="carryovers/simulator" element={isFeatureOn('carryovers') ? <CarryoverSimulatorPage /> : <Navigate to="/" replace />} />
             </Route>
             {/* Resumen de calificaciones: también el Coordinador (su nivel), para ajustar definitivas. */}
             <Route element={<PermissionRoute module="grading" blockTeacher orCoordinator />}>

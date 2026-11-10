@@ -11,7 +11,10 @@ import StatCard from '../../../components/ui/StatCard';
 import Alert from '../../../components/ui/Alert';
 import Icon from '../../../components/ui/Icon';
 import { NAV_SECTIONS } from '../../../components/layout/navigation';
+import { isFeatureOn } from '../../../lib/features';
 import GuardianPanel from '../components/GuardianPanel';
+import ExecutiveMetrics from '../components/ExecutiveMetrics';
+import { useAcademicYear } from '../../../context/AcademicYearContext';
 
 // Recharts solo se descarga para quien ve los gráficos (administración y directiva).
 const DashboardCharts = lazy(() => import('../components/DashboardCharts'));
@@ -88,7 +91,12 @@ function DashboardPage() {
   const isTeacher = Boolean(user?.isRestrictedTeacher);
   const showManagement = !isGuardian && !isTeacher && can('dashboard', 'read');
 
-  const { data: summary, loading, error } = useFetch(() => (showManagement ? dashboardApi.summary() : Promise.resolve(null)), [showManagement]);
+  // Año escolar de la barra superior: la tarjeta de inscritos sigue al año elegido.
+  const { periodId } = useAcademicYear();
+  const { data: summary, loading, error } = useFetch(
+    () => (showManagement ? dashboardApi.summary(periodId ? { schoolPeriodId: periodId } : undefined) : Promise.resolve(null)),
+    [showManagement, periodId]
+  );
 
   // Docente: las mismas tarjetas que antes, cada una solo con permiso de lectura.
   const [teacherStats, setTeacherStats] = useState({});
@@ -118,7 +126,7 @@ function DashboardPage() {
 
   const displayName = user?.fullName || user?.username || '';
   const quickLinks = NAV_SECTIONS.flatMap((s) => s.items)
-    .filter((item) => item.path !== '/' && (item.public || can(item.moduleCode, 'read')))
+    .filter((item) => item.path !== '/' && isFeatureOn(item.feature) && (item.public || can(item.moduleCode, 'read')))
     .slice(0, 6);
   const today = new Date().toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -143,6 +151,8 @@ function DashboardPage() {
           ))}
         </div>
       )}
+
+      {showManagement && summary && <ExecutiveMetrics summary={summary} />}
 
       {showManagement && summary && (
         <Suspense

@@ -215,6 +215,7 @@ async function listForms(trx, tenantId) {
       'sp.name as school_period_name',
       'f.updated_at',
       'f.published_at',
+      'f.public_intake',
       trx.raw("jsonb_array_length(f.fields) - (SELECT count(*) FROM jsonb_array_elements(f.fields) e WHERE e->>'type' = 'section')::int AS question_count"),
       trx.raw("(SELECT count(*)::int FROM enrollment_form_submissions s WHERE s.form_id = f.id AND s.status <> 'pending') AS submissions"),
       trx.raw("(SELECT count(*)::int FROM enrollment_form_submissions s WHERE s.form_id = f.id AND s.status = 'submitted') AS pending"),
@@ -286,15 +287,17 @@ const submissionColumns = (trx) => [
   's.submitted_at',
   's.updated_at',
   'g.id as guardian_id',
-  trx.raw("g.first_name || ' ' || g.last_name AS guardian_name"),
-  'g.national_id as guardian_national_id',
+  // Solicitud web (098): no hay representante con cuenta; se muestra el contacto que dejó.
+  trx.raw("COALESCE(g.first_name || ' ' || g.last_name, s.web_contact->>'name') AS guardian_name"),
+  trx.raw("COALESCE(g.national_id, s.web_contact->>'national_id') AS guardian_national_id"),
+  's.source',
   trx.raw("COALESCE(st.first_name || ' ' || st.last_name, s.applicant_name) AS student_name"),
 ];
 
 async function listSubmissions(trx, tenantId, formId, { status = null } = {}) {
   await loadForm(trx, tenantId, formId);
   return trx('enrollment_form_submissions as s')
-    .join('guardians as g', 'g.id', 's.guardian_id')
+    .leftJoin('guardians as g', 'g.id', 's.guardian_id')
     .leftJoin('students as st', 'st.id', 's.student_id')
     .where({ 's.tenant_id': tenantId, 's.form_id': formId })
     .modify((q) => (status ? q.andWhere('s.status', status) : q.whereNot('s.status', PENDING)))
@@ -307,10 +310,10 @@ async function listSubmissions(trx, tenantId, formId, { status = null } = {}) {
  * con filtros (estado, formulario, tipo, búsqueda por nombre o cédula) y el
  * conteo por estado para las pestañas.
  */
-async function inbox(trx, tenantId, { status = null, formId = null, kind = null, q = null, schoolPeriodId = null } = {}) {
+async function inbox(trx, tenantId, { status = null, formId = null, kind = null, q = null, schoolPeriodId = null, source = null } = {}) {
   const base = () =>
     trx('enrollment_form_submissions as s')
-      .join('guardians as g', 'g.id', 's.guardian_id')
+      .leftJoin('guardians as g', 'g.id', 's.guardian_id')
       .join('enrollment_forms as f', 'f.id', 's.form_id')
       .join('school_periods as sp', 'sp.id', 'f.school_period_id')
       .leftJoin('students as st', 'st.id', 's.student_id')
@@ -320,12 +323,16 @@ async function inbox(trx, tenantId, { status = null, formId = null, kind = null,
         if (schoolPeriodId) x.andWhere('f.school_period_id', schoolPeriodId); // año escolar global (barra superior)
         if (kind === 'new') x.whereNull('s.student_id');
         if (kind === 'renewal') x.whereNotNull('s.student_id');
+        // Origen: 'web' (sitio público, sin cuenta) o 'portal' (representante con cuenta).
+        if (source) x.andWhere('s.source', source);
         if (q) {
           const like = `%${q.toLowerCase()}%`;
           x.andWhere((w) =>
             w
               .whereRaw("lower(COALESCE(st.first_name || ' ' || st.last_name, s.applicant_name)) LIKE ?", [like])
               .orWhereRaw("lower(g.first_name || ' ' || g.last_name) LIKE ?", [like])
+              .orWhereRaw("lower(coalesce(s.web_contact->>'name', '')) LIKE ?", [like])
+              .orWhereRaw("coalesce(s.web_contact->>'national_id', '') ILIKE ?", [like])
               .orWhereRaw("coalesce(st.national_id, '') ILIKE ?", [like])
               .orWhereRaw("coalesce(g.national_id, '') ILIKE ?", [like])
           );
@@ -338,17 +345,27 @@ async function inbox(trx, tenantId, { status = null, formId = null, kind = null,
     .orderByRaw("CASE s.status WHEN 'submitted' THEN 0 WHEN 'changes_requested' THEN 1 ELSE 2 END, s.submitted_at DESC")
     .limit(500);
   const counts = Object.fromEntries((await base().groupBy('s.status').select('s.status').count('* as n')).map((r) => [r.status, Number(r.n)]));
+  // Cuántas llegaron por la web (sin el filtro de origen), para el selector.
+  const webCount = Number((await base().where('s.source', 'web').whereNot('s.status', PENDING).count('* as n').first()).n);
   const formsList = await trx('enrollment_forms as f').join('school_periods as sp', 'sp.id', 'f.school_period_id').where('f.tenant_id', tenantId).orderBy('sp.start_date', 'desc').select('f.id', 'f.title', 'f.school_period_id', 'sp.name as school_period_name');
-  return { rows, counts, forms: formsList };
+  return { rows, counts, forms: formsList, web_count: webCount };
 }
 
 async function getSubmission(trx, tenantId, id) {
   const row = await trx('enrollment_form_submissions as s')
-    .join('guardians as g', 'g.id', 's.guardian_id')
+    .leftJoin('guardians as g', 'g.id', 's.guardian_id')
     .leftJoin('students as st', 'st.id', 's.student_id')
     .leftJoin('users as u', 'u.id', 's.reviewed_by')
     .where({ 's.id': id, 's.tenant_id': tenantId })
-    .first([...submissionColumns(trx), 's.answers', 's.fields_snapshot', 'g.phone as guardian_phone', 'g.email as guardian_email', 'u.full_name as reviewed_by_name']);
+    .first([
+      ...submissionColumns(trx),
+      's.answers',
+      's.fields_snapshot',
+      's.web_contact',
+      trx.raw("COALESCE(g.phone, s.web_contact->>'phone') AS guardian_phone"),
+      trx.raw("COALESCE(g.email, s.web_contact->>'email') AS guardian_email"),
+      'u.full_name as reviewed_by_name',
+    ]);
   if (!row) throw ApiError.notFound('Planilla recibida no encontrada.');
   return row;
 }
@@ -366,7 +383,7 @@ async function reviewSubmission(trx, tenantId, userId, id, { status, note = null
     .where({ id })
     .update({ status, review_note: note?.trim() || null, reviewed_by: userId, reviewed_at: trx.fn.now(), updated_at: trx.fn.now() });
   const form = await loadForm(trx, tenantId, sub.form_id);
-  await notify(trx, tenantId, {
+  if (sub.guardian_id) await notify(trx, tenantId, {
     event: 'enrollment_form',
     guardianIds: [sub.guardian_id],
     title: `Planilla de inscripción ${REVIEW_LABELS[status]}`,

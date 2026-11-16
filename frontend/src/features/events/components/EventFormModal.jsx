@@ -36,6 +36,7 @@ function EventFormModal({ initial = {}, onClose, onSaved }) {
     gradeId: initial.grade_id || '',
     sectionId: initial.section_id || '',
     isPublished: initial.is_published ?? true,
+    showOnWebsite: initial.show_on_website ?? false,
     eventDate: initial.event_date || '',
     startTime: initial.start_time || '',
     endTime: initial.end_time || '',
@@ -70,6 +71,7 @@ function EventFormModal({ initial = {}, onClose, onSaved }) {
         gradeId: form.audience === 'grade' ? form.gradeId : null,
         sectionId: form.audience === 'section' ? form.sectionId : null,
         isPublished: form.isPublished,
+        showOnWebsite: form.showOnWebsite,
         eventDate: form.eventDate,
         startTime: form.startTime,
         endTime: form.endTime || null,
@@ -188,6 +190,18 @@ function EventFormModal({ initial = {}, onClose, onSaved }) {
               onChange={(isPublished) => setForm((f) => ({ ...f, isPublished }))}
               label="Publicar en el portal de representantes"
               description="Apagado, queda como borrador: solo lo ve la administración."
+            />
+          </div>
+          <div className="form-field form-field--full settings-switch">
+            <Switch
+              checked={form.showOnWebsite}
+              onChange={(showOnWebsite) => setForm((f) => ({ ...f, showOnWebsite }))}
+              label="Mostrar en el sitio web del colegio"
+              description={
+                form.isPublished
+                  ? 'Aparece en «Próximos eventos» de la página pública (título, fecha, hora, lugar y el comienzo de la descripción) hasta que termine.'
+                  : 'Se mostrará en la página pública cuando el evento esté publicado.'
+              }
             />
           </div>
         </div>

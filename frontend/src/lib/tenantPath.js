@@ -24,6 +24,8 @@ export const APP_ROUTES = new Set([
   // Faltaban: recargar estas páginas (F5) o abrir sus enlaces las tomaba como colegio y mandaba al login.
   'appointments', 'notifications', 'configuracion-inicial', 'secciones-academicas', 'audit',
   'recognitions', 'support', 'forgot-password', 'reset-password',
+  // Mini-sitio público (/colegio/<slug>) y su editor (/website).
+  'colegio', 'website',
 ]);
 // ⚠ Toda ruta NUEVA de primer nivel de App.jsx va aquí (y en admin-modo-educa: utils/slug.js y lib/slug.js).
 
@@ -64,6 +66,8 @@ export const appUrl = (path = '/') => (PATH_TENANT ? tenantUrl(PATH_TENANT, path
  */
 export function redirectLegacyUrl(loc = window.location) {
   if (PATH_TENANT) return false;
+  // El sitio público de un colegio (/colegio/<slug>) no pertenece a ninguna sesión: no se redirige.
+  if (firstSegment(loc.pathname) === 'colegio') return false;
   const { slug, source } = resolveTenantSlug(loc);
   if (!slug || source === 'subdomain') return false;
 

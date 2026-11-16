@@ -18,6 +18,8 @@ const enrollmentFormsApi = {
   formPdfPreview: (id, template) => axiosClient.get(`/enrollment-forms/${id}/pdf-preview`, { params: { template }, responseType: 'blob' }).then(data),
   /** status: draft | published | closed */
   setStatus: (id, status) => axiosClient.post(`/enrollment-forms/${id}/status`, { status }).then(data),
+  /** Solicitud de cupo en el sitio web (una por colegio; solo Administrador) → { public_intake, warnings } */
+  setPublicIntake: (id, enabled) => axiosClient.put(`/enrollment-forms/${id}/public-intake`, { enabled }).then(data),
   remove: (id) => axiosClient.delete(`/enrollment-forms/${id}`).then(data),
   submissions: (id, status) => axiosClient.get(`/enrollment-forms/${id}/submissions`, { params: status ? { status } : {} }).then(data),
   submission: (id) => axiosClient.get(`/enrollment-forms/submissions/${id}`).then(data),

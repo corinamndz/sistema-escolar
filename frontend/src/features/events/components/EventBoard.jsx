@@ -184,6 +184,7 @@ function EventCard({ ev, onSelect }) {
           <Icon name={cat.icon} size={12} /> {cat.label}
         </span>
         {!ev.is_published && <span className="chip">Borrador</span>}
+        {ev.show_on_website && <span className="chip chip--web" title="Se muestra en el sitio web del colegio">En la web</span>}
         {ev.event_date === todayStr() && <span className="chip evt-card__today">Hoy</span>}
       </span>
       <span className="evt-card__main">
@@ -251,6 +252,7 @@ function TableView({ events, onSelect, onEdit, onDelete, filtered }) {
           </button>
           <span className="evt-table__chips">
             {!ev.is_published && <span className="chip">Borrador</span>}
+            {ev.show_on_website && <span className="chip chip--web" title="Se muestra en el sitio web del colegio">En la web</span>}
             {ev.kind === 'appointment' && ev.status_label && <span className="chip">{ev.status_label}</span>}
           </span>
           {ev.description && <div className="cell-person__sub evt-table__excerpt">{excerpt(ev.description, 90)}</div>}

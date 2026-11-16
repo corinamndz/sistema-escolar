@@ -161,7 +161,10 @@ async function approvalDraft(trx, tenantId, id) {
   const sub = await forms.getSubmission(trx, tenantId, id);
   const form = await forms.loadForm(trx, tenantId, sub.form_id);
   const data = extract(sub.fields_snapshot, sub.answers);
-  const submitter = await trx('guardians as g').where('g.id', sub.guardian_id).first(guardianRow(trx));
+  // Solicitud web (098): no hay representante con cuenta; el contacto que dejó hace sus veces.
+  const submitter = sub.guardian_id ? await trx('guardians as g').where('g.id', sub.guardian_id).first(guardianRow(trx)) : null;
+  const web = sub.web_contact || {};
+  const webName = splitName(web.name);
 
   // ---- Alumno ----
   let student;
@@ -209,15 +212,17 @@ async function approvalDraft(trx, tenantId, id) {
         phone: fromForm.phone || '',
         email: fromForm.email || '',
       }
-    : { firstName: submitter.first_name, lastName: submitter.last_name, nationalId: submitter.national_id || '', phone: submitter.phone || '', email: submitter.email || '' };
-  const match = hasLegal ? await findGuardian(trx, tenantId, legalIn) : { ...submitter, via: 'cuenta' };
+    : submitter
+      ? { firstName: submitter.first_name, lastName: submitter.last_name, nationalId: submitter.national_id || '', phone: submitter.phone || '', email: submitter.email || '' }
+      : { firstName: webName.first, lastName: webName.last, nationalId: web.national_id || '', phone: web.phone || '', email: web.email || '' };
+  const match = hasLegal || !submitter ? await findGuardian(trx, tenantId, legalIn) : { ...submitter, via: 'cuenta' };
   const links = sub.student_id ? await trx('student_guardians').where({ student_id: sub.student_id }).select('guardian_id', 'relationship', 'is_primary') : [];
   const linkOf = (gid) => links.find((l) => l.guardian_id === gid) || null;
   const legal = {
     ...legalIn,
     relationship: toRelationship(fromForm.relationship) || linkOf(match?.id)?.relationship || 'Representante Legal',
     match: match ? { id: match.id, name: `${match.first_name} ${match.last_name}`, via: match.via, nationalId: match.national_id, email: match.email } : null,
-    isSubmitter: match?.id === submitter.id,
+    isSubmitter: Boolean(submitter && match?.id === submitter.id),
     linked: Boolean(match && linkOf(match.id)),
   };
 
@@ -228,14 +233,19 @@ async function approvalDraft(trx, tenantId, id) {
     student,
     placement: { requestedGrade: data.requestedGrade, suggestedSectionId: suggested?.id || null, current: current || null, sections },
     legal,
-    submitter: {
-      id: submitter.id,
-      name: `${submitter.first_name} ${submitter.last_name}`,
-      nationalId: submitter.national_id,
-      email: submitter.email,
-      linked: Boolean(linkOf(submitter.id)),
-      relationship: linkOf(submitter.id)?.relationship || null,
-    },
+    submitter: submitter
+      ? {
+          id: submitter.id,
+          name: `${submitter.first_name} ${submitter.last_name}`,
+          nationalId: submitter.national_id,
+          email: submitter.email,
+          linked: Boolean(linkOf(submitter.id)),
+          relationship: linkOf(submitter.id)?.relationship || null,
+        }
+      : null,
+    // Solicitud web: quién la pidió (para contactarlo), sin cuenta en el sistema.
+    source: sub.source || 'portal',
+    webContact: sub.source === 'web' ? web : null,
     relationships: RELATIONSHIPS,
   };
 }
@@ -272,7 +282,7 @@ async function approveSubmission(trx, tenantId, userId, id, data) {
   }
   const form = await forms.loadForm(trx, tenantId, sub.form_id);
   if (form.period_closed_at) throw ApiError.conflict(`El año escolar ${form.school_period_name} ya está cerrado: no se puede inscribir.`);
-  const submitter = await trx('guardians').where({ id: sub.guardian_id }).first();
+  const submitter = sub.guardian_id ? await trx('guardians').where({ id: sub.guardian_id }).first() : null;
 
   // ---- 1. Alumno ----
   const st = data.student;
@@ -332,7 +342,7 @@ async function approveSubmission(trx, tenantId, userId, id, data) {
   }
   const legalLink = await upsertLink(trx, studentId, legal.id, { relationship: L.relationship, primary: true });
   const guardians = [{ id: legal.id, name: `${legal.first_name} ${legal.last_name}`, role: 'legal', created: legalCreated, linked: legalLink.created, relationship: L.relationship, primary: true }];
-  if (submitter.id !== legal.id) {
+  if (submitter && submitter.id !== legal.id) {
     const current = await trx('student_guardians').where({ student_id: studentId, guardian_id: submitter.id }).first();
     const rel = data.submitterRelationship || current?.relationship || 'Tutor / Familiar';
     const link = await upsertLink(trx, studentId, submitter.id, { relationship: rel, primary: false });
@@ -366,7 +376,8 @@ async function approveSubmission(trx, tenantId, userId, id, data) {
     .where({ id: sub.id })
     .update({ status: 'approved', student_id: studentId, review_note: note, reviewed_by: userId, reviewed_at: trx.fn.now(), updated_at: trx.fn.now() });
   const name = `${st.firstName} ${st.lastName}`;
-  await notify(trx, tenantId, {
+  // Solicitud web: sin cuenta no hay campana; el colegio le avisa por teléfono o correo.
+  if (sub.guardian_id) await notify(trx, tenantId, {
     event: 'enrollment_form',
     guardianIds: [sub.guardian_id],
     title: 'Planilla de inscripción aprobada',
@@ -394,7 +405,7 @@ async function studentHistory(trx, tenantId, studentId) {
   const rows = await trx('enrollment_form_submissions as s')
     .join('enrollment_forms as f', 'f.id', 's.form_id')
     .join('school_periods as sp', 'sp.id', 'f.school_period_id')
-    .join('guardians as g', 'g.id', 's.guardian_id')
+    .leftJoin('guardians as g', 'g.id', 's.guardian_id')
     .leftJoin('users as u', 'u.id', 's.reviewed_by')
     // Matrícula de ese año (la más reciente si hubo cambio de sección; las retiradas al final).
     .joinRaw(
@@ -422,7 +433,7 @@ async function studentHistory(trx, tenantId, studentId) {
       'f.title as form_title',
       'sp.name as school_period_name',
       'sp.closed_at as period_closed_at',
-      trx.raw("g.first_name || ' ' || g.last_name AS guardian_name"),
+      trx.raw("COALESCE(g.first_name || ' ' || g.last_name, s.web_contact->>'name') AS guardian_name"),
       'u.full_name as reviewed_by_name',
       'enr.grade_name',
       'enr.section_name',

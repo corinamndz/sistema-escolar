@@ -2,6 +2,7 @@ const router = require('express').Router();
 
 // Rutas públicas (sin sesión): deben ir antes del montaje en '/', que exige autenticación.
 router.use('/public', require('../modules/tenants/tenant.public'));
+router.use('/public', require('../modules/website/website.public')); // mini-sitio del colegio, sin sesión
 // Fuentes del certificado (OFL, sin sesión): el editor usa el mismo archivo que el PDF.
 router.use('/certificate-fonts', require('../modules/certificates/certificateFonts.routes'));
 // Regreso desde Google al conectar la cuenta de correo del colegio (OAuth2).
@@ -14,6 +15,7 @@ router.use('/staff', require('../modules/staff/staff.routes'));
 router.use('/imports', require('../modules/imports/import.routes'));
 // Antes del montaje en '/': ese router aplica auth + tenant a todo lo que pasa por él.
 router.use('/portal', require('../modules/portal/portal.routes'));
+router.use('/website', require('../modules/website/website.routes')); // editor del mini-sitio (Administrador)
 router.use('/certificate-template', require('../modules/certificates/certificate.routes')); // certificado de promoción del colegio
 router.use('/carryovers', require('../modules/carryovers/carryover.routes')); // materias pendientes (arrastres)
 router.use('/', require('../modules/students/student.routes')); // expone /students y /guardians

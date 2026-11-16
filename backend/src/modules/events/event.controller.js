@@ -19,6 +19,8 @@ const eventFields = z.object({
   gradeId: z.preprocess((v) => (v === '' ? null : v), uuid.nullable().optional()),
   sectionId: z.preprocess((v) => (v === '' ? null : v), uuid.nullable().optional()),
   isPublished: z.boolean().optional(),
+  // «Mostrar en el sitio web del colegio» (migración 099): explícito, desactivado por defecto.
+  showOnWebsite: z.boolean().optional(),
   // Una sola fecha por evento, con su hora de inicio y (opcional) de fin.
   eventDate: day,
   startTime: z.string({ required_error: 'Indica la hora de inicio.' }).regex(hhmm, 'Hora inválida (HH:MM).'),

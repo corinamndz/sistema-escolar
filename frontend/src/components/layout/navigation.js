@@ -91,6 +91,8 @@ const NAV_SECTIONS = [
       { moduleCode: 'tenant_settings', label: 'Log de notificaciones', icon: 'inbox', path: '/notifications/log', blockTeacher: true },
       // Certificado de promoción: el diseño propio de cada colegio.
       { moduleCode: 'certificates', label: 'Certificado de promoción', icon: 'award', path: '/certificates', adminOnly: true },
+      // Mini-sitio web público del colegio (/colegio/<slug>).
+      { moduleCode: 'website', label: 'Sitio web', icon: 'link', path: '/website', adminOnly: true },
       // Bitácora de actividad: exclusiva del Administrador (rol de sistema), no depende de permisos de módulo.
       { moduleCode: 'audit', label: 'Auditoría', icon: 'eye', path: '/audit', adminOnly: true },
       // Soporte técnico: el Administrador reporta fallas a la plataforma (panel central del superadmin).

@@ -23,6 +23,7 @@ function EventDetailModal({ event: ev, onClose, onEdit, onDelete, onManageAppoin
             <span className="evt-tag">{cat.label}</span>
             {isAppointment && ev.status_label && <span className="chip">{ev.status_label}</span>}
             {!ev.is_published && <span className="chip">Borrador · no visible en el portal</span>}
+            {ev.show_on_website && <span className="chip chip--web">{ev.is_published ? 'Visible en el sitio web' : 'En el sitio web al publicarlo'}</span>}
             {ev.is_past && <span className="chip">Finalizado</span>}
           </div>
         </div>

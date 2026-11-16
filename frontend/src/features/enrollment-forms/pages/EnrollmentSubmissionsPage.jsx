@@ -30,6 +30,8 @@ function EnrollmentSubmissionsPage() {
   const [status, setStatus] = useState('submitted');
   const [formId, setFormId] = useState('');
   const [kind, setKind] = useState('');
+  // Origen: 'web' (solicitud de cupo del sitio público) o 'portal'.
+  const [source, setSource] = useState(() => new URLSearchParams(window.location.search).get('origen') || '');
   const [search, setSearch] = useState('');
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState(null);
@@ -46,8 +48,8 @@ function EnrollmentSubmissionsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const params = { ...(status && { status }), ...(formId && { formId }), ...(kind && { kind }), ...(q && { q }), ...(periodFilter && { schoolPeriodId: periodFilter }) };
-  const { data, loading, error, refetch } = useFetch(() => enrollmentFormsApi.inbox(params), [status, formId, kind, q, periodFilter]);
+  const params = { ...(status && { status }), ...(formId && { formId }), ...(kind && { kind }), ...(source && { source }), ...(q && { q }), ...(periodFilter && { schoolPeriodId: periodFilter }) };
+  const { data, loading, error, refetch } = useFetch(() => enrollmentFormsApi.inbox(params), [status, formId, kind, source, q, periodFilter]);
   // Una planilla de otro año elegida antes deja de aplicar al cambiar de año.
   useEffect(() => {
     if (formId && data?.forms && periodFilter && !data.forms.some((f) => f.id === formId && f.school_period_id === periodFilter)) setFormId('');
@@ -55,7 +57,7 @@ function EnrollmentSubmissionsPage() {
   const formOptions = (data?.forms || []).filter((f) => !periodFilter || f.school_period_id === periodFilter);
   const counts = data?.counts || {};
   const total = Object.values(counts).reduce((a, n) => a + n, 0);
-  const filtered = Boolean(formId || kind || q);
+  const filtered = Boolean(formId || kind || source || q);
 
   return (
     <div>
@@ -101,8 +103,13 @@ function EnrollmentSubmissionsPage() {
               <option value="new">Solo aspirantes nuevos</option>
               <option value="renewal">Solo renovaciones</option>
             </Select>
+            <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Origen">
+              <option value="">Todos los orígenes</option>
+              <option value="web">Página web{data?.web_count ? ` (${data.web_count})` : ''}</option>
+              <option value="portal">Portal de familias</option>
+            </Select>
             {filtered && (
-              <Button variant="ghost" size="sm" onClick={() => (setFormId(''), setKind(''), setSearch(''))}>
+              <Button variant="ghost" size="sm" onClick={() => (setFormId(''), setKind(''), setSource(''), setSearch(''))}>
                 Limpiar
               </Button>
             )}
@@ -130,6 +137,11 @@ function EnrollmentSubmissionsPage() {
                     <strong>
                       {s.student_name}
                       {s.student_id ? <span className="es-kind">Renovación</span> : <span className="ef-sub__new">Aspirante nuevo</span>}
+                      {s.source === 'web' && (
+                        <span className="es-web" title="Llegó por la solicitud de cupo del sitio web (sin cuenta)">
+                          <Icon name="link" size={11} /> Página web
+                        </span>
+                      )}
                     </strong>
                     <span>
                       {s.form_title} · Representante: {s.guardian_name} · {when(s.submitted_at)}

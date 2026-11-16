@@ -7,6 +7,7 @@ const { authMiddleware } = require('../../middlewares/auth.middleware');
 const { tenantMiddleware } = require('../../middlewares/tenant.middleware');
 const { requireAdmissions, requireAdmin } = require('../../middlewares/admin.middleware');
 const approval = require('./enrollmentApproval.service');
+const publicIntake = require('./publicIntake.service');
 const { ApiError } = require('../../utils/ApiError');
 const { enrollmentPhotoUpload } = require('../../middlewares/upload.middleware');
 const { savePhoto, removePhoto } = require('../../services/storage/enrollmentPhotoStorage');
@@ -189,10 +190,12 @@ router.get(
         formId: uuid.optional(),
         schoolPeriodId: uuid.optional(),
         kind: z.enum(['new', 'renewal']).optional(),
+        // Origen: 'web' (solicitud de cupo del sitio público) o 'portal' (representante con cuenta).
+        source: z.enum(['web', 'portal']).optional(),
         q: z.string().trim().max(100).optional(),
       })
       .parse(req.query);
-    res.status(200).json(await service.inbox(req.db, req.tenantId, { status: f.status, formId: f.formId, kind: f.kind, q: f.q || null, schoolPeriodId: f.schoolPeriodId || null }));
+    res.status(200).json(await service.inbox(req.db, req.tenantId, { status: f.status, formId: f.formId, kind: f.kind, q: f.q || null, schoolPeriodId: f.schoolPeriodId || null, source: f.source || null }));
   })
 );
 /** GET /enrollment-forms/submissions/:id/approval — propuesta de alta (alumno, sección, representantes). */
@@ -288,6 +291,19 @@ router.put(
       })
       .parse(req.body);
     res.status(200).json(await service.updateForm(req.db, req.tenantId, idParam(req), data));
+  })
+);
+/**
+ * PUT /enrollment-forms/:id/public-intake { enabled } — esta planilla es (o deja de
+ * ser) la «Solicitud de cupo» del sitio web público. Solo el Administrador: abre una
+ * vía de entrada sin cuenta. Una por colegio. → { public_intake, warnings }
+ */
+router.put(
+  '/:id/public-intake',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
+    res.status(200).json(await publicIntake.setPublicIntake(req.db, req.tenantId, idParam(req), enabled));
   })
 );
 router.post(

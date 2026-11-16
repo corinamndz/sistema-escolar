@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import Switch from '../../../components/ui/Switch';
+import { getErrorMessage } from '../../../api/axiosClient';
 import { useNavigate } from 'react-router-dom';
 import enrollmentFormsApi from '../../../api/endpoints/enrollmentForms.api';
 import { useFetch } from '../../../hooks/useFetch';
@@ -23,6 +25,46 @@ import { FORM_STATUS } from '../fieldTypes';
  * Planillas de inscripción: el colegio diseña la planilla de cada año escolar,
  * la publica en el portal de los representantes y revisa las que recibe.
  */
+/** «Habilitar como solicitud de cupo en la web pública» (una planilla por colegio). */
+function PublicIntakeToggle({ form, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  const [warnings, setWarnings] = useState([]);
+  const toast = useToast();
+  const change = async (enabled) => {
+    setBusy(true);
+    try {
+      const r = await enrollmentFormsApi.setPublicIntake(form.id, enabled);
+      setWarnings(r.warnings || []);
+      toast.success(enabled ? 'Solicitud de cupo habilitada' : 'Solicitud de cupo retirada', enabled ? 'Se muestra en el sitio web del colegio (sin cuenta).' : 'Ya no se ofrece en el sitio web.');
+      onChanged();
+    } catch (err) {
+      toast.error('No se pudo cambiar', getErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="ef-web">
+      <Switch
+        checked={form.public_intake}
+        onChange={change}
+        disabled={busy}
+        label="Habilitar como solicitud de cupo en la web pública"
+        description="Cualquier visitante del sitio del colegio podrá llenarla sin cuenta. Llega a «Planillas recibidas» marcada como «Página web». Solo una planilla a la vez."
+      />
+      {form.public_intake && warnings.length > 0 && (
+        <ul className="ef-web__warnings">
+          {warnings.map((w) => (
+            <li key={w}>
+              <Icon name="alertTriangle" size={13} /> {w}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function EnrollmentFormsPage() {
   const { data: forms, loading, error, refetch } = useFetch(() => enrollmentFormsApi.list(), []);
   const [creating, setCreating] = useState(false);
@@ -56,7 +98,8 @@ function EnrollmentFormsPage() {
       ) : (
         <div className="ef-list">
           {forms.map((f) => (
-            <button key={f.id} type="button" className="ef-card" onClick={() => navigate(`/enrollment-forms/${f.id}`)}>
+            <div key={f.id} className={`ef-card-wrap ${f.public_intake ? 'is-web' : ''}`}>
+            <button type="button" className="ef-card" onClick={() => navigate(`/enrollment-forms/${f.id}`)}>
               <span className="ef-card__icon">
                 <Icon name="clipboard" size={20} />
               </span>
@@ -72,9 +115,13 @@ function EnrollmentFormsPage() {
                 </span>
                 {f.pending > 0 && <span className="ef-card__pending">{f.pending} por revisar</span>}
               </span>
+              {f.public_intake && <Badge variant="primary">En la web</Badge>}
               <Badge variant={FORM_STATUS[f.status].variant}>{FORM_STATUS[f.status].label}</Badge>
               <Icon name="chevronRight" size={18} className="ef-card__chevron" />
             </button>
+            {/* Solicitud de cupo pública: abre una entrada SIN cuenta, por eso solo el Administrador. */}
+            {user?.isAdmin && <PublicIntakeToggle form={f} onChanged={refetch} />}
+            </div>
           ))}
         </div>
       )}

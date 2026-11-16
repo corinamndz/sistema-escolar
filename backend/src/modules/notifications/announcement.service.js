@@ -338,4 +338,4 @@ async function options(trx, tenantId) {
   return { categories: CATEGORIES, levels: LEVEL_NAMES, grades, sections, guardians, staff };
 }
 
-module.exports = { CATEGORIES, sanitizeMessage, toPlainText, resolveRecipients, preview, send, listSent, options, readLog };
+module.exports = { SANITIZE, CATEGORIES, sanitizeMessage, toPlainText, resolveRecipients, preview, send, listSent, options, readLog };

@@ -50,7 +50,7 @@ function ApprovalPanel({ submissionId, onCancel, onApproved }) {
         const sug = d.placement.sections.find((s) => s.id === d.placement.suggestedSectionId);
         setGradeId(sug?.grade_id || '');
         setSectionId(sug?.id || '');
-        if (d.submitter.relationship) setSubmitterRel(d.submitter.relationship);
+        if (d.submitter?.relationship) setSubmitterRel(d.submitter.relationship);
       })
       .catch((err) => setLoadError(getErrorMessage(err)));
   }, [submissionId]);
@@ -92,7 +92,7 @@ function ApprovalPanel({ submissionId, onCancel, onApproved }) {
         legal: legalIsNew
           ? { firstName: legal.firstName, lastName: legal.lastName, nationalId: legal.nationalId || null, phone: legal.phone || null, email: legal.email || '', relationship: legal.relationship }
           : { guardianId: legal.guardianId, relationship: legal.relationship },
-        submitterRelationship: draft.legal.isSubmitter ? null : submitterRel,
+        submitterRelationship: draft.legal.isSubmitter || !draft.submitter ? null : submitterRel,
         note: note.trim() || null,
       });
       const parts = [
@@ -280,7 +280,15 @@ function ApprovalPanel({ submissionId, onCancel, onApproved }) {
             </Select>
           </Field>
         </div>
-        {!draft.legal.isSubmitter && (
+        {/* Solicitud web: no hay cuenta que vincular; solo el contacto que dejó. */}
+        {!draft.submitter && draft.webContact && (
+          <p className="text-sm text-muted ap__web">
+            <Icon name="link" size={13} /> Llegó por la página web. Contacto: {draft.webContact.name}
+            {draft.webContact.phone ? ` · ${draft.webContact.phone}` : ''}
+            {draft.webContact.email ? ` · ${draft.webContact.email}` : ''}. Para que vea al alumno en el portal, dale acceso luego desde Representantes.
+          </p>
+        )}
+        {!draft.legal.isSubmitter && draft.submitter && (
           <div className="ap__submitter">
             <div>
               <strong>{draft.submitter.name}</strong>

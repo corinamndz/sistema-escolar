@@ -51,6 +51,20 @@ app.use(
   })
 );
 
+// Imágenes del mini-sitio público (portada y galería; ver websiteImageStorage.js).
+app.use(
+  '/storage/website',
+  express.static(path.join(__dirname, '..', 'storage', 'website'), {
+    index: false,
+    dotfiles: 'deny',
+    maxAge: '30d',
+    setHeaders: (res) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    },
+  })
+);
+
 app.get('/health', (req, res) => res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 app.use('/api', require('./routes'));

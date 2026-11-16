@@ -41,6 +41,9 @@ import CarryoversPage from '../features/carryovers/pages/CarryoversPage';
 import CarryoverSimulatorPage from '../features/carryovers/pages/CarryoverSimulatorPage';
 import { isFeatureOn } from '../lib/features';
 import CertificateEditorPage from '../features/certificates/pages/CertificateEditorPage';
+import WebsiteEditorPage from '../features/website/pages/WebsiteEditorPage';
+import PublicSitePage from '../features/website/pages/PublicSitePage';
+import PublicIntakePage from '../features/website/pages/PublicIntakePage';
 import PortalEventsPage from '../features/portal/pages/PortalEventsPage';
 import SectionDetailPage from '../features/academics/pages/SectionDetailPage';
 import SubjectsPage from '../features/academics/subjects/SubjectsPage';
@@ -62,6 +65,10 @@ function App() {
         {/* Recuperación de contraseña: mismo diseño del login, otra tarjeta. */}
         <Route path="/forgot-password" element={<LoginPage mode="forgot" />} />
         <Route path="/reset-password" element={<LoginPage mode="reset" />} />
+        {/* Mini-sitio público del colegio: sin iniciar sesión (lib/tenantPath.js reserva «colegio»). */}
+        <Route path="/colegio/:slug" element={<PublicSitePage />} />
+        {/* Solicitud de cupo pública (sin cuenta): la planilla que el colegio habilitó en la web. */}
+        <Route path="/colegio/:slug/solicitud" element={<PublicIntakePage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
@@ -133,6 +140,7 @@ function App() {
             <Route element={<PermissionRoute adminOnly />}>
               <Route path="audit" element={<AuditPage />} />
               <Route path="certificates" element={<CertificateEditorPage />} />
+              <Route path="website" element={<WebsiteEditorPage />} />
               <Route path="support" element={<SupportPage />} />
             </Route>
             <Route element={<PermissionRoute module="appointments" />}>

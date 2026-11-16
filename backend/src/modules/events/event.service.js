@@ -11,6 +11,8 @@ const notices = require('../notifications/notices');
  *   - Los borradores (is_published = false) solo los ve la administración.
  *   - El representante ve en el portal los eventos publicados de todo el
  *     colegio y los dirigidos al grado o la sección de alguno de sus hijos.
+ *   - El sitio web público (/colegio/<slug>) muestra los publicados que además
+ *     tengan show_on_website (migración 099) y no hayan terminado: websiteEvents.
  */
 
 const CATEGORIES = ['cultural', 'familiar', 'asamblea', 'deportivo', 'institucional', 'otro'];
@@ -136,6 +138,7 @@ async function createEvent(trx, tenantId, userId, data) {
       start_time: data.startTime,
       end_time: data.endTime || null,
       is_published: data.isPublished ?? true,
+      show_on_website: data.showOnWebsite ?? false,
       created_by: userId || null,
     })
     .returning('id');
@@ -157,6 +160,7 @@ async function updateEvent(trx, tenantId, id, data) {
     start_time: data.startTime,
     end_time: data.endTime === undefined ? undefined : data.endTime || null,
     is_published: data.isPublished,
+    show_on_website: data.showOnWebsite,
     updated_at: trx.fn.now(),
   };
   // El destino se recalcula si cambia cualquiera de sus tres campos.
@@ -250,7 +254,7 @@ async function portalEvents(trx, tenantId, userId, { from } = {}) {
   // El portal no necesita quién lo creó.
   return rows
     .map((r) => {
-      const { created_by: _c, created_by_name: _n, ...ev } = shape(r);
+      const { created_by: _c, created_by_name: _n, show_on_website: _w, ...ev } = shape(r);
       return { ...ev, for_students: namesFor(r) };
     })
     .sort(chronological);
@@ -275,7 +279,56 @@ async function sendEventReminders(trx, tenantId, days) {
   return { sent, due: due.length };
 }
 
+// ---------------------------------------------------------------------------
+// Sitio web público del colegio
+// ---------------------------------------------------------------------------
+
+const WEBSITE_EVENTS_LIMIT = 6;
+const WEBSITE_DESCRIPTION_MAX = 220;
+
+/** Texto plano breve para la tarjeta: sin saltos repetidos y cortado en una palabra. */
+function shortText(text, max = WEBSITE_DESCRIPTION_MAX) {
+  const plain = String(text || '').replace(/\s+/g, ' ').trim();
+  if (plain.length <= max) return plain || null;
+  const cut = plain.slice(0, max);
+  return `${cut.slice(0, cut.lastIndexOf(' ') > max * 0.6 ? cut.lastIndexOf(' ') : max).replace(/[\s.,;:–-]+$/, '')}…`;
+}
+
+/**
+ * «Próximos eventos» del mini-sitio: publicados, marcados para la web y que no
+ * hayan terminado (hoy cuenta mientras no pase su hora de fin, o la de inicio si
+ * no tiene fin; los de todo el día, el día entero). Hora de Venezuela, como los
+ * recordatorios. Orden cronológico. Se consulta en vivo en cada visita: crear,
+ * editar o borrar un evento cambia el sitio al instante.
+ *
+ * Solo datos aptos para internet: ni el público (grado/sección) ni quién lo creó.
+ */
+async function websiteEvents(trx, tenantId, { limit = WEBSITE_EVENTS_LIMIT } = {}) {
+  const { rows } = await trx.raw(
+    `SELECT id, title, category, description, location, event_date::text AS event_date, start_time, end_time
+       FROM school_events
+      WHERE tenant_id = ? AND is_published AND show_on_website
+        AND (event_date > (now() AT TIME ZONE 'America/Caracas')::date
+             OR (event_date = (now() AT TIME ZONE 'America/Caracas')::date
+                 AND (start_time IS NULL OR COALESCE(end_time, start_time) >= (now() AT TIME ZONE 'America/Caracas')::time)))
+      ORDER BY event_date, start_time NULLS FIRST, title
+      LIMIT ?`,
+    [tenantId, limit]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    category: r.category,
+    description: shortText(r.description),
+    location: r.location || null,
+    event_date: r.event_date,
+    start_time: hhmm(r.start_time),
+    end_time: hhmm(r.end_time),
+  }));
+}
+
 module.exports = {
+  websiteEvents,
   sendEventReminders,
   CATEGORIES,
   AUDIENCES,

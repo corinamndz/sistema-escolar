@@ -87,6 +87,11 @@ function SubmissionsPanel({ formId, canReview }) {
                   <strong>
                     {s.student_name}
                     {!s.student_id && <span className="ef-sub__new">Aspirante nuevo</span>}
+                    {s.source === 'web' && (
+                      <span className="es-web">
+                        <Icon name="link" size={11} /> Página web
+                      </span>
+                    )}
                   </strong>
                   <span>
                     Representante: {s.guardian_name} · enviada {when(s.submitted_at)}
@@ -171,6 +176,13 @@ export function SubmissionDrawer({ id, canReview, onClose, onReviewed }) {
               <FormPdfButton load={() => enrollmentFormsApi.submissionPdf(s.id)} fileName={`planilla-${s.student_name}.pdf`} />
             </span>
           </div>
+          {s.source === 'web' && (
+            <Alert variant="info">
+              Llegó por la <strong>solicitud de cupo del sitio web</strong>: quien la pidió no tiene cuenta. Comunícate con {s.guardian_name}
+              {s.guardian_phone ? ` al ${s.guardian_phone}` : ''}
+              {s.guardian_email ? ` o al correo ${s.guardian_email}` : ''}.
+            </Alert>
+          )}
           {s.review_note && (
             <Alert variant={s.status === 'approved' ? 'success' : 'warning'}>
               {s.reviewed_by_name ? `${s.reviewed_by_name}: ` : ''}
@@ -184,7 +196,7 @@ export function SubmissionDrawer({ id, canReview, onClose, onReviewed }) {
             <div className="ef-review__actions">
               {mode ? (
                 <>
-                  <Field label={mode === 'rejected' ? 'Motivo del rechazo' : 'Qué debe corregir'} required hint="El representante lo verá en su portal.">
+                  <Field label={mode === 'rejected' ? 'Motivo del rechazo' : 'Qué debe corregir'} required hint={s.source === 'web' ? 'Queda registrado. Sin cuenta, no recibe aviso: comunícate por teléfono o correo.' : 'El representante lo verá en su portal.'}>
                     <textarea className="input" rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} autoFocus />
                   </Field>
                   <div className="form-actions">

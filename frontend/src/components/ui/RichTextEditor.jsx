@@ -9,6 +9,7 @@ import Icon from './Icon';
  *   value          HTML inicial (se lee al montar)
  *   onChange       (html) => void en cada cambio
  *   onUploadImage  async (file) => url   — sin él, la imagen solo se inserta por URL
+ *   allowImages    false: sin botón de imagen (p. ej. secciones del sitio web, que tienen su propia imagen)
  *
  * Lo que produce se SANEA en el servidor (lista blanca). Aquí además se pega
  * siempre como texto plano, para no arrastrar estilos de Word o de la web.
@@ -58,7 +59,7 @@ const GROUPS = [
 ];
 const STATEFUL = ['bold', 'italic', 'underline', 'strikeThrough', 'insertUnorderedList', 'insertOrderedList', 'justifyLeft', 'justifyCenter', 'justifyRight', 'justifyFull'];
 
-function RichTextEditor({ value = '', onChange, onUploadImage, placeholder = 'Escribe el mensaje…', ariaLabel = 'Mensaje', invalid = false, minHeight = 200 }) {
+function RichTextEditor({ value = '', onChange, onUploadImage, allowImages = true, placeholder = 'Escribe el mensaje…', ariaLabel = 'Mensaje', invalid = false, minHeight = 200 }) {
   const ref = useRef(null);
   const wrapRef = useRef(null);
   const savedRange = useRef(null);
@@ -240,7 +241,7 @@ function RichTextEditor({ value = '', onChange, onUploadImage, placeholder = 'Es
         </div>
         {GROUPS.map((group, gi) => (
           <div key={gi} className="rte__group">
-            {group.map((t) => (
+            {group.filter((t) => allowImages || t.pop !== 'image').map((t) => (
               <button
                 key={t.cmd || t.pop}
                 type="button"

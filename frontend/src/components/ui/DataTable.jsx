@@ -85,6 +85,8 @@ function DataTable({
   getSearchText = defaultSearchText,
   filters = null,
   searchAddons = null,
+  // Avisa el texto del buscador (ej. para exportar exactamente lo filtrado).
+  onQueryChange,
   // Paginación
   pageSize: initialPageSize = 10,
   // false: muestra todas las filas, sin pie de paginación (ej. tablas dentro de un grupo)
@@ -119,6 +121,9 @@ function DataTable({
   const confirm = useConfirm();
   const toast = useToast();
   const [query, setQuery] = useState('');
+  useEffect(() => {
+    onQueryChange?.(query);
+  }, [query, onQueryChange]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);
   const [sort, setSort] = useState(null); // { key, dir: 'asc' | 'desc' }

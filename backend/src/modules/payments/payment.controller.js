@@ -1,6 +1,7 @@
 const fs = require('fs');
 const { z } = require('zod');
 const service = require('./payment.service');
+const paymentExport = require('./paymentExport.service');
 const tuition = require('./tuition.service');
 const exchange = require('./exchangeRate.service');
 const bcvSync = require('./bcvSync.service');
@@ -48,6 +49,22 @@ const listQuerySchema = z.object({
 const list = asyncHandler(async (req, res) => {
   const filters = listQuerySchema.parse(req.query);
   res.status(200).json(await service.listPayments(req.db, req.tenantId, filters));
+});
+
+/**
+ * GET /payments/export → .xlsx con los pagos de los filtros activos en pantalla
+ * (estado, año escolar y el texto del buscador `q`). Ver paymentExport.service.
+ */
+const exportExcel = asyncHandler(async (req, res) => {
+  const { status, schoolPeriodId, q } = listQuerySchema.extend({ q: z.string().max(120).optional() }).parse(req.query);
+  const file = await paymentExport.exportPayments(req.db, req.tenantId, { status, schoolPeriodId, q });
+  res.set({
+    'Content-Type': paymentExport.XLSX_MIME,
+    'Content-Disposition': `attachment; filename="${file.fileName}"`,
+    'Cache-Control': 'no-store',
+    'X-Export-Count': String(file.count),
+  });
+  res.status(200).send(file.buffer);
 });
 
 const summary = asyncHandler(async (req, res) => {
@@ -373,6 +390,7 @@ module.exports = {
   deleteRate,
   list,
   summary,
+  exportExcel,
   listMine,
   getOne,
   register,

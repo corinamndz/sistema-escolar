@@ -1,5 +1,6 @@
 import { axiosClient } from '../axiosClient';
 import { registerCurrencies } from '../../features/payments/currency';
+import { fileNameFrom, saveBlob, unwrapBlobError } from './imports.api';
 
 const get = (url, params) => axiosClient.get(url, { params }).then((r) => r.data);
 const post = (url, data) => axiosClient.post(url, data).then((r) => r.data);
@@ -23,6 +24,16 @@ const paymentsApi = {
    * `currency`: moneda de referencia en que se estiman los pendientes (columnas conv_*).
    */
   list: (params) => get('/payments', params),
+  /**
+   * Descarga el Excel con los filtros de la pantalla: { status, schoolPeriodId, q }.
+   * Devuelve { fileName, count }.
+   */
+  exportExcel: async (params) => {
+    const res = await axiosClient.get('/payments/export', { params, responseType: 'blob' }).catch(unwrapBlobError);
+    const fileName = fileNameFrom(res.headers, 'reporte_pagos_filtrados.xlsx');
+    saveBlob(res.data, fileName);
+    return { fileName, count: Number(res.headers?.['x-export-count'] ?? 0) };
+  },
   // Datos de otros módulos para los formularios, bajo el permiso de Pagos (rol Finanzas).
   schoolPeriodOptions: () => get('/payments/options/school-periods'),
   studentOptions: () => get('/payments/options/students'),

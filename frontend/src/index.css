@@ -2107,6 +2107,8 @@ input[type='checkbox'] {
   gap: 8px;
   flex-wrap: wrap;
 }
+/* Pagos: «Exportar a Excel» al final de la fila de filtros. */
+.data-table__filters .payments-export { margin-left: auto; }
 
 .data-table__filters .input {
   width: auto;

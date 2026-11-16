@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import paymentsApi from '../../../api/endpoints/payments.api';
 import { useAuth } from '../../../context/AuthContext';
 import { useFetch } from '../../../hooks/useFetch';
@@ -96,6 +96,22 @@ function PaymentsPage() {
   useRateAutoRefresh(rates, reload);
 
   const [viewing, setViewing] = useState(null); // cobro en "Ver detalle"
+  // Texto del buscador de la tabla: el Excel exporta exactamente lo filtrado en pantalla.
+  const [search, setSearch] = useState('');
+  const onQueryChange = useCallback((q) => setSearch(q), []);
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const q = search.trim();
+      const { fileName, count } = await paymentsApi.exportExcel({ ...(status ? { status } : {}), ...(schoolPeriodId ? { schoolPeriodId } : {}), ...(q ? { q } : {}) });
+      toast.success('Excel descargado', `${count} registro(s) · ${fileName}`);
+    } catch (err) {
+      toast.error('No se pudo exportar', getErrorMessage(err));
+    } finally {
+      setExporting(false);
+    }
+  };
   const [paying, setPaying] = useState(null); // { payment, mode: 'register' | 'report' }
 
   const canRegister = can('payments', 'approve_payment');
@@ -322,8 +338,10 @@ function PaymentsPage() {
         error={error}
         searchPlaceholder="Buscar alumno, representante o concepto…"
         getSearchText={(p) =>
+          // Misma regla en el Excel (backend/src/modules/payments/paymentExport.service.js).
           [p.student_first_name, p.student_last_name, p.guardian_first_name, p.guardian_last_name, p.period_label, p.report_reference].join(' ')
         }
+        onQueryChange={onQueryChange}
         filters={
           <>
             <div className="level-filter" role="group" aria-label="Estado">
@@ -351,6 +369,18 @@ function PaymentsPage() {
                 </option>
               ))}
             </Select>
+            <Button
+              variant="secondary"
+              icon="download"
+              className="payments-export"
+              onClick={handleExport}
+              loading={exporting}
+              loadingText="Generando…"
+              disabled={loading || !rows?.length}
+              title={rows?.length ? 'Descarga en Excel los pagos con los filtros aplicados (estado, año y búsqueda)' : 'No hay pagos para exportar'}
+            >
+              Exportar a Excel
+            </Button>
           </>
         }
         emptyMessage={

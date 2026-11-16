@@ -16,7 +16,7 @@ if (process.env.TRUST_PROXY) {
 
 app.use(helmet());
 // Content-Disposition expuesto: el frontend lee el nombre de los archivos descargados (PDF de horarios).
-app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true, exposedHeaders: ['Content-Disposition'] }));
+app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true, exposedHeaders: ['Content-Disposition', 'X-Export-Count'] }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));

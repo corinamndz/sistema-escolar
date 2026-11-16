@@ -95,6 +95,8 @@ router.get('/options/students', requirePermission('payments', 'create'), options
 router.get('/options/students/:id/guardians', requirePermission('payments', 'create'), options.studentGuardians);
 
 // ---- Administración ----
+// Exportar a Excel con los filtros de la pantalla (antes de "/:id").
+router.get('/export', requirePermission('payments', 'read'), controller.exportExcel);
 router.get('/summary', requirePermission('payments', 'read'), controller.summary);
 router.get('/', requirePermission('payments', 'read'), controller.list);
 router.post('/', requirePermission('payments', 'create'), controller.register);

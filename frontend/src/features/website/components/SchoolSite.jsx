@@ -1,7 +1,12 @@
+import { useEffect } from 'react';
 import Icon from '../../../components/ui/Icon';
 import RichTextView, { sanitizePreview } from '../../../components/ui/RichTextView';
 import GalleryCarousel from './GalleryCarousel';
 import { categoryOf, dateParts, longDate, timeLabel, todayStr } from '../../events/eventCatalog';
+import { FONTS, TEMPLATES, fontOf, templateOf } from '../templates';
+
+// El catálogo vive en ../templates.js; se reexporta por compatibilidad.
+export { TEMPLATES };
 
 /** /storage/... del API: en producción el API puede estar en otro dominio (VITE_API_URL). */
 export const assetUrl = (url) => (url && url.startsWith('/') ? `${import.meta.env.VITE_API_URL || ''}${url}` : url || null);
@@ -17,43 +22,22 @@ export const SOCIAL_LABELS = {
 };
 
 /**
- * Plantillas de distribución. Todas usan los mismos bloques; cambia su ORDEN, la
- * portada y cómo se presentan las secciones adicionales:
- *   hero      centered (degradado centrado) · full (foto a pantalla completa) ·
- *             light (clara y sobria) · split (texto | foto)
- *   sections  stack (una debajo de otra) · alternate (foto y texto alternados) ·
- *             cards (tarjetas en cuadrícula)
+ * Descarga la tipografía del sitio solo cuando se usa (una vez por familia):
+ * la plataforma no carga fuentes que la página no necesita.
  */
-export const TEMPLATES = {
-  classic: {
-    label: 'Clásica',
-    description: 'Portada centrada con degradado y bloques en columna.',
-    hero: 'centered',
-    sections: 'stack',
-    order: ['about', 'pillars', 'sections', 'events', 'gallery', 'contact'],
-  },
-  modern: {
-    label: 'Moderna con banner grande',
-    description: 'Foto de portada a pantalla completa y secciones alternadas.',
-    hero: 'full',
-    sections: 'alternate',
-    order: ['pillars', 'about', 'events', 'sections', 'gallery', 'contact'],
-  },
-  minimal: {
-    label: 'Minimalista',
-    description: 'Portada clara, mucho espacio y una sola columna.',
-    hero: 'light',
-    sections: 'stack',
-    order: ['about', 'pillars', 'sections', 'events', 'gallery', 'contact'],
-  },
-  academic: {
-    label: 'Enfoque académico',
-    description: 'Portada dividida, misión y visión primero, secciones en tarjetas.',
-    hero: 'split',
-    sections: 'cards',
-    order: ['pillars', 'events', 'sections', 'about', 'gallery', 'contact'],
-  },
-};
+export function useSiteFont(key) {
+  useEffect(() => {
+    const family = FONTS[key]?.google;
+    if (!family || typeof document === 'undefined') return;
+    const id = `site-font-${key}`;
+    if (document.getElementById(id)) return;
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${family}&display=swap`;
+    document.head.appendChild(link);
+  }, [key]);
+}
 
 /** Texto de varios párrafos: respeta los saltos de línea (sin HTML: nada se interpreta). */
 const Paragraphs = ({ text }) =>
@@ -82,14 +66,14 @@ function relativeDay(date) {
   return date === t.toISOString().slice(0, 10) ? 'Mañana' : null;
 }
 
-/** Bloque «Próximos eventos»: tarjetas con la fecha destacada, hora, lugar y un extracto. */
-function UpcomingEvents({ events }) {
+/** Bloque «Próximos eventos»: tarjetas (cards) o agenda compacta (list). */
+function UpcomingEvents({ events, variant }) {
   return (
-    <section id="site-eventos" className="site__section site__section--events">
+    <section id="site-eventos" className={`site__section site__section--events site__section--events-${variant}`}>
       <div className="site__container">
         <span className="site__eyebrow">Agenda institucional</span>
         <h2>Próximos eventos</h2>
-        <ol className="site__events">
+        <ol className={`site__events site__events--${variant}`}>
           {events.map((ev) => {
             const d = dateParts(ev.event_date);
             const cat = categoryOf(ev.category);
@@ -133,20 +117,113 @@ function UpcomingEvents({ events }) {
   );
 }
 
+/** Galería: carrusel, cuadrícula o mosaico (la primera foto grande). */
+function Gallery({ images, variant, autoplay, schoolName }) {
+  if (variant === 'carousel') return <GalleryCarousel images={images} autoplay={autoplay} label={`Galería de fotos de ${schoolName}`} />;
+  return (
+    <ul className={`site__photos site__photos--${variant}`} aria-label={`Galería de fotos de ${schoolName}`}>
+      {images.map((g, i) => (
+        <li key={`${g.url}-${i}`}>
+          <figure>
+            <img src={g.url} alt={g.caption || g.alt} loading="lazy" />
+            {g.caption && <figcaption>{g.caption}</figcaption>}
+          </figure>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Accesos rápidos para familias y docentes: franja (bar) o mosaicos grandes (tiles). */
+function QuickLinks({ items, variant, onAnchor, target }) {
+  const link = (q, children, className) =>
+    q.anchor ? (
+      <a key={q.key} href={`#site-${q.anchor}`} onClick={onAnchor(q.anchor)} className={className}>
+        {children}
+      </a>
+    ) : (
+      <a key={q.key} href={q.href} className={className} {...(q.external ? { target: '_blank', rel: 'noreferrer noopener' } : target)}>
+        {children}
+      </a>
+    );
+  return (
+    <section className={`site__quick site__quick--${variant}`} aria-label="Accesos rápidos">
+      <div className="site__container">
+        {variant === 'tiles' && (
+          <>
+            <span className="site__eyebrow">Accesos rápidos</span>
+            <h2>¿Qué necesitas hoy?</h2>
+          </>
+        )}
+        <div className="site__quick-grid">
+          {items.map((q) =>
+            link(
+              q,
+              <>
+                <span className="site__quick-icon">
+                  <Icon name={q.icon} size={variant === 'tiles' ? 24 : 18} />
+                </span>
+                <span className="site__quick-text">
+                  <strong>{q.title}</strong>
+                  <small>{q.text}</small>
+                </span>
+                <Icon name="arrowRight" size={16} className="site__quick-go" />
+              </>,
+              `site__quick-item site__quick-item--${q.key}`
+            )
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Banner de bienvenida (p. ej. mensaje de la Dirección): tarjeta, franja o cita. */
+function Welcome({ site, variant, logo }) {
+  return (
+    <section className={`site__section site__welcome site__welcome--${variant}`} aria-label="Mensaje de bienvenida">
+      <div className="site__container">
+        <div className="site__welcome-inner">
+          {variant === 'card' && <span className="site__welcome-mark">{logo || <Icon name="megaphone" size={26} />}</span>}
+          {variant === 'quote' && (
+            <span className="site__welcome-quote" aria-hidden="true">
+              “
+            </span>
+          )}
+          <div className="site__welcome-body">
+            {site.welcome_title && <h2>{site.welcome_title}</h2>}
+            <div className="site__prose">
+              <Paragraphs text={site.welcome_text} />
+            </div>
+            {site.welcome_signature && <p className="site__welcome-sign">— {site.welcome_signature}</p>}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /**
  * La página pública del colegio. Se usa igual en /colegio/<slug> y en la vista
  * previa del editor (preview: los enlaces se abren en otra pestaña y el texto de
  * las secciones, aún sin guardar, se sanea en el navegador). Se adapta al ANCHO
- * DE SU CONTENEDOR (container queries), no al de la ventana.
+ * DE SU CONTENEDOR (container queries), no al de la ventana. La plantilla
+ * (../templates.js) decide la variante de cada bloque y su orden; los colores y
+ * el logo son siempre los del colegio.
  *   school { name, logo_url, phone?, email?, address?, login_slug }
  *   site   { tagline, primary_color, secondary_color, banner_url, history, mission,
- *            vision, gallery (carrusel), gallery_autoplay, social, template, sections: [{ id, title, body_html, image_url, visible }] }
+ *            vision, gallery, gallery_autoplay, social, template, font,
+ *            welcome_title, welcome_text, welcome_signature, show_quick_links,
+ *            sections: [{ id, title, body_html, image_url, visible }] }
  *   events próximos eventos de la cartelera marcados para la web (ya filtrados y
- *          ordenados por el backend): [{ id, title, category, description, location,
- *          event_date, start_time, end_time }]. Sin eventos, el bloque no aparece.
+ *          ordenados por el backend). Sin eventos, el bloque no aparece.
  */
 function SchoolSite({ school, site, preview = false, intake = null, intakeHref = null, events = [] }) {
-  const tpl = TEMPLATES[site.template] || TEMPLATES.classic;
+  const tplKey = TEMPLATES[site.template] ? site.template : 'classic';
+  const tpl = templateOf(tplKey);
+  const fontKey = fontOf(site);
+  useSiteFont(fontKey);
+  const font = FONTS[fontKey];
   const primary = site.primary_color || '#2563EB';
   const secondary = site.secondary_color || '#1E293B';
   const banner = assetUrl(site.banner_url);
@@ -157,9 +234,23 @@ function SchoolSite({ school, site, preview = false, intake = null, intakeHref =
   const contact = [school.phone, school.email, school.address].some(Boolean);
   const hasAbout = Boolean(site.history);
   const hasPillars = Boolean(site.mission || site.vision);
+  const hasWelcome = Boolean(site.welcome_text);
   const target = preview ? { target: '_blank', rel: 'noreferrer' } : {};
   const loginHref = school.login_slug ? `/${school.login_slug}/login` : null;
   const body = (html) => (preview ? sanitizePreview(html) : html);
+
+  // Accesos rápidos: solo lo que el colegio realmente ofrece.
+  const whatsapp = site.social?.whatsapp;
+  const quick = [
+    loginHref && { key: 'families', icon: 'users', title: 'Portal de familias', text: 'Notas, pagos, avisos y citas', href: loginHref },
+    loginHref && { key: 'teachers', icon: 'graduation', title: 'Acceso docentes', text: 'Planificación, notas y asistencia', href: loginHref },
+    intake && intakeHref && { key: 'intake', icon: 'clipboard', title: 'Solicitar cupo', text: `Inscripciones ${intake.school_period_name}`, href: intakeHref },
+    events.length > 0 && { key: 'events', icon: 'calendar', title: 'Agenda', text: `${events.length} próximo${events.length === 1 ? '' : 's'} evento${events.length === 1 ? '' : 's'}`, anchor: 'eventos' },
+    whatsapp
+      ? { key: 'contact', icon: 'phone', title: 'Escríbenos', text: 'Por WhatsApp', href: whatsapp, external: true }
+      : (contact || social.length > 0) && { key: 'contact', icon: 'phone', title: 'Contáctanos', text: school.phone || school.email || 'Teléfono y redes', anchor: 'contacto' },
+  ].filter(Boolean);
+  const showQuick = site.show_quick_links !== false && quick.length >= 2;
 
   // Menú: los bloques presentes, en el orden de la plantilla.
   const navOf = {
@@ -197,8 +288,74 @@ function SchoolSite({ school, site, preview = false, intake = null, intakeHref =
       )}
     </div>
   );
+  const heroText = (
+    <>
+      {heroLogo}
+      <h1>{school.name}</h1>
+      {site.tagline && <p className="site__tagline">{site.tagline}</p>}
+      {cta}
+    </>
+  );
+
+  let hero;
+  if (tpl.hero === 'split' || tpl.hero === 'statement') {
+    hero = (
+      <section id="site-top" className={`site__hero site__hero--${tpl.hero}`}>
+        <div className="site__container site__split">
+          <div className="site__split-text">{heroText}</div>
+          <div className="site__split-media" style={banner ? { backgroundImage: `url("${banner}")` } : undefined}>
+            {!banner && <Icon name="graduation" size={64} />}
+          </div>
+        </div>
+      </section>
+    );
+  } else if (tpl.hero === 'overlay') {
+    hero = (
+      <section id="site-top" className={`site__hero site__hero--overlay ${banner ? 'has-banner' : ''}`} style={banner ? { backgroundImage: `url("${banner}")` } : undefined}>
+        <div className="site__container">
+          <div className="site__overlay-panel">{heroText}</div>
+        </div>
+      </section>
+    );
+  } else if (tpl.hero === 'band') {
+    hero = (
+      <section id="site-top" className="site__hero site__hero--band">
+        <div className="site__container site__band">
+          {heroLogo}
+          <div className="site__band-text">
+            <h1>{school.name}</h1>
+            {site.tagline && <p className="site__tagline">{site.tagline}</p>}
+          </div>
+          {cta}
+        </div>
+      </section>
+    );
+  } else {
+    hero = (
+      <section
+        id="site-top"
+        className={`site__hero site__hero--${tpl.hero} ${banner && tpl.hero !== 'light' ? 'has-banner' : ''}`}
+        style={banner && tpl.hero !== 'light' ? { backgroundImage: `url("${banner}")` } : undefined}
+      >
+        <div className="site__hero-inner">{heroText}</div>
+        {tpl.hero === 'light' && banner && <img className="site__hero-photo" src={banner} alt="" />}
+      </section>
+    );
+  }
+
+  const sectionCard = (s, i, extra = '') => (
+    <article key={s.id || i} id={`site-${anchorOf(s, i)}`} className={`site__card ${extra}`}>
+      {s.image_url && <img src={assetUrl(s.image_url)} alt="" loading="lazy" />}
+      <div className="site__card-body">
+        {s.title && <h3>{s.title}</h3>}
+        {s.body_html && <RichTextView html={body(s.body_html)} className="site__rich" />}
+      </div>
+    </article>
+  );
 
   const blocks = {
+    quick: showQuick && <QuickLinks key="quick" items={quick} variant={tpl.quick} onAnchor={go} target={target} />,
+    welcome: hasWelcome && <Welcome key="welcome" site={site} variant={tpl.welcome} logo={logo ? <img src={logo} alt="" /> : null} />,
     about: hasAbout && (
       <section key="about" id="site-nosotros" className="site__section site__section--about">
         <div className="site__container site__about">
@@ -242,18 +399,16 @@ function SchoolSite({ school, site, preview = false, intake = null, intakeHref =
     ),
     sections: sections.length > 0 && (
       <div key="sections" className={`site__extras site__extras--${tpl.sections}`}>
-        {tpl.sections === 'cards' ? (
+        {tpl.sections === 'cards' || tpl.sections === 'news' ? (
           <section className="site__section">
-            <div className="site__container site__cards">
-              {sections.map((s, i) => (
-                <article key={s.id || i} id={`site-${anchorOf(s, i)}`} className="site__card">
-                  {s.image_url && <img src={assetUrl(s.image_url)} alt="" loading="lazy" />}
-                  <div className="site__card-body">
-                    {s.title && <h3>{s.title}</h3>}
-                    {s.body_html && <RichTextView html={body(s.body_html)} className="site__rich" />}
-                  </div>
-                </article>
-              ))}
+            <div className="site__container">
+              {tpl.sections === 'news' && (
+                <>
+                  <span className="site__eyebrow">Novedades</span>
+                  <h2>Lo que pasa en el colegio</h2>
+                </>
+              )}
+              <div className={tpl.sections === 'news' ? 'site__news' : 'site__cards'}>{sections.map((s, i) => sectionCard(s, i, tpl.sections === 'news' && i === 0 ? 'is-lead' : ''))}</div>
             </div>
           </section>
         ) : (
@@ -271,16 +426,17 @@ function SchoolSite({ school, site, preview = false, intake = null, intakeHref =
         )}
       </div>
     ),
-    events: events.length > 0 && <UpcomingEvents key="events" events={events} />,
+    events: events.length > 0 && <UpcomingEvents key="events" events={events} variant={tpl.events} />,
     gallery: gallery.length > 0 && (
-      <section key="gallery" id="site-galeria" className="site__section site__section--tinted">
+      <section key="gallery" id="site-galeria" className={`site__section site__section--tinted site__section--gallery-${tpl.gallery}`}>
         <div className="site__container">
           <span className="site__eyebrow">Galería</span>
           <h2>Vida en el colegio</h2>
-          <GalleryCarousel
+          <Gallery
             images={gallery.map((g, i) => ({ url: assetUrl(g.url), caption: g.caption || '', alt: `Foto ${i + 1} de ${school.name}` }))}
+            variant={tpl.gallery}
             autoplay={Boolean(site.gallery_autoplay)}
-            label={`Galería de fotos de ${school.name}`}
+            schoolName={school.name}
           />
         </div>
       </section>
@@ -335,8 +491,15 @@ function SchoolSite({ school, site, preview = false, intake = null, intakeHref =
     ),
   };
 
+  // La solicitud de cupo va antes del contacto (o al final si no hay contacto).
+  const order = tpl.order.flatMap((k) => (k === 'contact' ? ['intake', 'contact'] : [k]));
+  if (!order.includes('intake')) order.push('intake');
+
   return (
-    <div className={`site site--${TEMPLATES[site.template] ? site.template : 'classic'} site--hero-${tpl.hero}`} style={{ '--site-primary': primary, '--site-secondary': secondary }}>
+    <div
+      className={`site site--${tplKey} site--hero-${tpl.hero} site--font-${fontKey}`}
+      style={{ '--site-primary': primary, '--site-secondary': secondary, '--site-heading-font': font.heading, '--site-body-font': font.body }}
+    >
       <header className="site__bar">
         <a href="#top" className="site__brand" onClick={go('top')}>
           {brand}
@@ -361,38 +524,9 @@ function SchoolSite({ school, site, preview = false, intake = null, intakeHref =
         </nav>
       </header>
 
-      {tpl.hero === 'split' ? (
-        <section id="site-top" className="site__hero site__hero--split">
-          <div className="site__container site__split">
-            <div className="site__split-text">
-              {heroLogo}
-              <h1>{school.name}</h1>
-              {site.tagline && <p className="site__tagline">{site.tagline}</p>}
-              {cta}
-            </div>
-            <div className="site__split-media" style={banner ? { backgroundImage: `url("${banner}")` } : undefined}>
-              {!banner && <Icon name="graduation" size={64} />}
-            </div>
-          </div>
-        </section>
-      ) : (
-        <section
-          id="site-top"
-          className={`site__hero site__hero--${tpl.hero} ${banner && tpl.hero !== 'light' ? 'has-banner' : ''}`}
-          style={banner && tpl.hero !== 'light' ? { backgroundImage: `url("${banner}")` } : undefined}
-        >
-          <div className="site__hero-inner">
-            {heroLogo}
-            <h1>{school.name}</h1>
-            {site.tagline && <p className="site__tagline">{site.tagline}</p>}
-            {cta}
-          </div>
-          {tpl.hero === 'light' && banner && <img className="site__hero-photo" src={banner} alt="" />}
-        </section>
-      )}
+      {hero}
 
-      {tpl.order.map((k) => blocks[k] || null)}
-      {blocks.intake || null}
+      {order.map((k) => blocks[k] || null)}
 
       <footer className="site__footer">
         <span className="site__footer-brand">

@@ -61,6 +61,11 @@ const siteSchema = z.object({
     .partial()
     .default({}),
   show_contact: z.boolean().default(true),
+  font: z.preprocess((v) => (v === '' ? null : v), z.enum(service.FONTS, { errorMap: () => ({ message: 'Tipografía inválida.' }) }).nullable().default(null)),
+  welcome_title: text(120),
+  welcome_text: text(1500),
+  welcome_signature: text(120),
+  show_quick_links: z.boolean().default(true),
   template: z.enum(service.TEMPLATES, { errorMap: () => ({ message: 'Plantilla inválida.' }) }).default('classic'),
   sections: z
     .array(

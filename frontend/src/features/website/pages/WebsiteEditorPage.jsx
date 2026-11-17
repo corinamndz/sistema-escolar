@@ -15,6 +15,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { useTenant } from '../../../context/TenantContext';
 import SchoolSite, { SOCIAL_LABELS, assetUrl } from '../components/SchoolSite';
 import TemplatePicker from '../components/TemplatePicker';
+import { FONTS, TEMPLATES } from '../templates';
 import SectionsEditor from '../components/SectionsEditor';
 
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
@@ -43,6 +44,11 @@ const draftFrom = (d) => ({
   gallery_autoplay: Boolean(d.site.gallery_autoplay),
   social: d.site.social || {},
   show_contact: d.site.show_contact !== false,
+  font: d.site.font || '',
+  welcome_title: d.site.welcome_title || '',
+  welcome_text: d.site.welcome_text || '',
+  welcome_signature: d.site.welcome_signature || '',
+  show_quick_links: d.site.show_quick_links !== false,
   template: d.site.template || 'classic',
   sections: (d.site.sections || []).map((s) => ({ id: s.id, title: s.title || '', body_html: s.body_html || '', image_url: s.image_url || null, visible: s.visible !== false })),
 });
@@ -306,6 +312,39 @@ function WebsiteEditorPage() {
             <h3 className="card__title">Plantilla de diseño</h3>
             <p className="text-sm text-muted">Cambia la distribución de la página: el contenido es el mismo en todas.</p>
             <TemplatePicker value={draft.template} onChange={(template) => set({ template })} />
+            <Field label="Tipografía" hint="Los colores siempre son los del colegio; la letra la elige la plantilla o tú." error={errors.font}>
+              <div className="web-fonts" role="radiogroup" aria-label="Tipografía">
+                {[['', `La de la plantilla (${FONTS[(TEMPLATES[draft.template] || TEMPLATES.classic).font].label.split(' (')[0]})`], ...Object.entries(FONTS).map(([k, f]) => [k, f.label])].map(([k, label]) => (
+                  <button key={k || 'tpl'} type="button" role="radio" aria-checked={draft.font === k} className={`web-font ${draft.font === k ? 'is-selected' : ''}`} onClick={() => set({ font: k })}>
+                    <span className="web-font__sample" style={{ fontFamily: FONTS[k || (TEMPLATES[draft.template] || TEMPLATES.classic).font].heading }}>
+                      Aa
+                    </span>
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </section>
+
+          <section className="card web-card">
+            <h3 className="card__title">Bienvenida y accesos rápidos</h3>
+            <p className="text-sm text-muted">Un mensaje de la Dirección para quien visita la página. Sin texto, el banner no aparece.</p>
+            <Field label="Título" error={errors.welcome_title}>
+              <Input value={draft.welcome_title} maxLength={120} onChange={(e) => set({ welcome_title: e.target.value })} placeholder="Bienvenidos a nuestra comunidad" />
+            </Field>
+            <Field label="Mensaje" hint={`${draft.welcome_text.length}/1500`} error={errors.welcome_text}>
+              <textarea className="input web-textarea" rows={4} maxLength={1500} value={draft.welcome_text} onChange={(e) => set({ welcome_text: e.target.value })} placeholder="Gracias por visitarnos. En nuestro colegio…" />
+            </Field>
+            <Field label="Firma" error={errors.welcome_signature}>
+              <Input value={draft.welcome_signature} maxLength={120} onChange={(e) => set({ welcome_signature: e.target.value })} placeholder="Lcda. Ana Pérez, Directora" />
+            </Field>
+            <label className="web-check">
+              <input type="checkbox" checked={draft.show_quick_links} onChange={(e) => set({ show_quick_links: e.target.checked })} />
+              <span>
+                Mostrar «Accesos rápidos» para familias y docentes
+                <small>Portal de familias, acceso docentes y, si aplica, solicitud de cupo, agenda y contacto. Cada plantilla los presenta a su manera.</small>
+              </span>
+            </label>
           </section>
 
           <section className="card web-card">

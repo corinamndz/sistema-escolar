@@ -28,7 +28,11 @@ const RESERVED = new Set(['colegio', 'website', 'login', 'api', 'storage', 'asse
 const SOCIAL_KEYS = ['facebook', 'instagram', 'x', 'youtube', 'tiktok', 'whatsapp', 'website'];
 const MAX_GALLERY = 24;
 const MAX_SECTIONS = 12;
-const TEMPLATES = ['classic', 'modern', 'minimal', 'academic'];
+// Catálogo de plantillas (claves): el diseño de cada una está en el frontend
+// (features/website/templates.js). Migración 101: misma lista en el CHECK.
+const TEMPLATES = ['classic', 'modern', 'minimal', 'academic', 'prestige', 'playful', 'magazine', 'portal', 'showcase', 'contrast'];
+// Tipografías que el colegio puede elegir (null = la de la plantilla).
+const FONTS = ['sans', 'serif', 'rounded', 'elegant'];
 
 /**
  * Texto de las secciones: la misma lista blanca que los comunicados, SIN imágenes
@@ -53,6 +57,11 @@ const EMPTY = {
   vision: null,
   gallery: [],
   gallery_autoplay: false,
+  font: null,
+  welcome_title: null,
+  welcome_text: null,
+  welcome_signature: null,
+  show_quick_links: true,
   social: {},
   show_contact: true,
   template: 'classic',
@@ -103,7 +112,7 @@ async function getForEditor(trx, tenantId) {
       custom: tenant.website_slug,
       default: tenant.slug,
     },
-    limits: { gallery: MAX_GALLERY, social: SOCIAL_KEYS, sections: MAX_SECTIONS, templates: TEMPLATES },
+    limits: { gallery: MAX_GALLERY, social: SOCIAL_KEYS, sections: MAX_SECTIONS, templates: TEMPLATES, fonts: FONTS },
   };
 }
 
@@ -154,6 +163,11 @@ async function save(trx, tenantId, userId, input) {
     vision: input.vision || null,
     gallery: JSON.stringify(input.gallery.map((g) => ({ url: g.url, caption: g.caption || '' }))),
     gallery_autoplay: Boolean(input.gallery_autoplay),
+    font: FONTS.includes(input.font) ? input.font : null,
+    welcome_title: input.welcome_title || null,
+    welcome_text: input.welcome_text || null,
+    welcome_signature: input.welcome_signature || null,
+    show_quick_links: input.show_quick_links !== false,
     social: JSON.stringify(Object.fromEntries(SOCIAL_KEYS.filter((k) => input.social?.[k]).map((k) => [k, input.social[k]]))),
     show_contact: input.show_contact,
     template: input.template || 'classic',
@@ -256,6 +270,11 @@ async function publicPayload(trx, tenantId) {
       gallery_autoplay: Boolean(site.gallery_autoplay),
       social: site.social,
       template: site.template,
+      font: site.font || null,
+      welcome_title: site.welcome_title,
+      welcome_text: site.welcome_text,
+      welcome_signature: site.welcome_signature,
+      show_quick_links: site.show_quick_links !== false,
       // Solo las visibles, en su orden.
       sections: site.sections.filter((s) => s.visible !== false).map(({ id, title, body_html, image_url }) => ({ id, title, body_html, image_url })),
     },
@@ -273,6 +292,7 @@ module.exports = {
   MAX_GALLERY,
   MAX_SECTIONS,
   TEMPLATES,
+  FONTS,
   setLogo,
   getForEditor,
   save,
